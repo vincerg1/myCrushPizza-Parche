@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import moment from "moment";
-import "moment/locale/es";
+import 'moment/dist/locale/es';
 import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 

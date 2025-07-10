@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import QRCode   from "react-qr-code";
 import axios    from "axios";
 import moment   from "moment";
-import "moment/locale/es";
+import 'moment/dist/locale/es';
 
 export default function Ticket({ order }) {
   /* ───────── catálogo y tienda ───────── */
