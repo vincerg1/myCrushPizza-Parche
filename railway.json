@@ -1,0 +1,18 @@
+{
+  "services": [
+    {
+      "name": "backend",
+      "rootDirectory": "parche/back",
+      "installCommand": "npm install",
+      "startCommand": "node index.js",
+      "envFile": ".env"
+    },
+    {
+      "name": "frontend",
+      "rootDirectory": "parche/front",
+      "installCommand": "npm install",
+      "buildCommand": "npm run build",
+      "static": true
+    }
+  ]
+}
