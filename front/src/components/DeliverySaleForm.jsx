@@ -13,7 +13,7 @@ import { useAuth }   from "./AuthContext";
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ||
   (typeof import.meta !== "undefined"
-    ? import.meta.env.VITE_GOOGLE_KEY
+    ? import.meta.env.REACT_APP_GOOGLE_KEY
     : undefined);
 
 export default function DeliverySaleForm() {

@@ -7,7 +7,7 @@ import { GoogleMap, Marker, LoadScriptNext } from "@react-google-maps/api";
 /* ---------- Clave Maps ---------- */
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ??
-  (typeof import.meta !== "undefined" ? import.meta.env.VITE_GOOGLE_KEY : "");
+  (typeof import.meta !== "undefined" ? import.meta.env.REACT_APP_GOOGLE_KEY : "");
 
 /* ---------- Pines para TIENDAS ---------- */
 const STORE_GREEN_PIN = "https://maps.google.com/mapfiles/ms/icons/green-dot.png";
