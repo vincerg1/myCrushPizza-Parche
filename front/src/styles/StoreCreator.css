@@ -1,0 +1,54 @@
+@import './PizzaCreator.css';   /* reuse .save-btn, .ing-table, .del-btn */
+
+.store-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px 18px;
+  max-width: 960px;
+}
+
+.store-form h2 { grid-column: 1 / -1; margin: 0 0 6px 0; }
+
+.store-form label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+
+.store-form button { grid-column: 1 / -1; }
+
+/* modal */
+.modal-back {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 1000;
+}
+.modal-box {
+  background: #fff;
+  padding: 24px 28px;
+  border-radius: 10px;
+  max-width: 480px;
+  width: 90%;
+  box-shadow: 0 6px 20px rgba(0,0,0,.2);
+}
+.close-btn {
+  margin-top: 16px;
+  padding: 8px 18px;
+  border: none; border-radius: 6px;
+  background: #666; color:#fff; cursor:pointer;
+}
+.close-btn:hover { opacity:.85; }
+
+.stock-btn {
+  padding: 4px 10px;
+  background: #4285f4; color:#fff; border:none; border-radius:6px;
+  cursor:pointer; font-size: 12px;
+}
+.stock-btn:hover { opacity:.85; }
+.st-btn{
+  padding:4px 12px;
+  border:none;
+  border-radius:4px;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:600;
+}
+.st-btn.on{ background:#38d16a; color:#fff; }     /* verde   */
+.st-btn.off{background:#f5b5b5; color:#7a0000;}   /* rojizo  */

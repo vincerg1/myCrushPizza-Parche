@@ -1,0 +1,11 @@
+.orders { width:100%; border-collapse:collapse; }
+.orders th, .orders td { border:1px solid #ccc; padding:4px; text-align:center; }
+.modal-back{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;}
+.modal-card{background:#fff;padding:16px;border-radius:6px;max-width:90%;max-height:90%;overflow:auto;}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+.blink {
+  animation: blink 1s step-start infinite;
+}

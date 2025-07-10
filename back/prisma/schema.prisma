@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * ──────────────────────────── MENÚ ────────────────────────────
+ */
+model MenuPizza {
+  id            Int      @id @default(autoincrement())
+  name          String
+  category      String?
+  selectSize    Json // ["S","M","L"]
+  priceBySize   Json // {"S": 7.5, "M": 9}
+  ingredients   Json // [{IDI:1, qtyBySize:{"S":2}}]
+  cookingMethod String?
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  /**
+   * ⇄ stock por tienda
+   */
+  stocks StorePizzaStock[]
+}
+
+/**
+ * ────────────────────────── INVENTARIO ─────────────────────────
+ */
+model Ingredient {
+  id        Int      @id @default(autoincrement())
+  name      String
+  category  String
+  stock     Int      @default(0) // unidades totales
+  unit      String? // g, ml, pcs …
+  costPrice Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/*** ───────────────────────────── TIENDA ──────────────────────────*/
+model Store {
+  id        Int      @id @default(autoincrement())
+  storeName String
+  address   String
+  latitude  Float?
+  longitude Float?
+  city      String?
+  zipCode   String?
+  email     String?
+  tlf       String?
+
+  /** NUEVO — estado de la tienda (true = visible) */
+  active    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /* relaciones */
+  stocks StorePizzaStock[]
+  sales  Sale[]
+}
+
+
+/*** junction table Stock por tienda + pizza*/
+model StorePizzaStock {
+  storeId   Int
+  pizzaId   Int
+  stock     Int      @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  pizza MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
+
+  @@id([storeId, pizzaId])
+}
+
+/**
+ * ──────────────────────────── CLIENTE ─────────────────────────
+ */
+enum CustomerOrigin {
+  PHONE
+  WALKIN
+  UBER
+  GLOVO
+  QR // minijuego / código QR
+}
+
+model Customer {
+  id    Int    @id @default(autoincrement())
+  code  String @unique 
+  name      String?
+  phone     String?  @unique
+  address_1 String   @unique
+  portal    String?
+  observations String?
+  lat       Float?
+  lng       Float?
+  origin    CustomerOrigin @default(PHONE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  daysOff      Int? 
+  sales Sale[] @relation("CustomerSales")
+  
+}
+
+/*** ───────────────────────────── VENTA ───────────────────────────*/
+enum DeliveryMethod {
+  PICKUP // el cliente retira
+  COURIER // repartidor propio
+  UBER
+  GLOVO
+}
+
+model Sale {
+  id            Int             @id @default(autoincrement())
+  code          String          @unique
+  date          DateTime        @default(now())
+  deliveredAt   DateTime?       // ← NUEVO
+  storeId       Int
+  customerId    Int?
+  type          String
+  delivery      DeliveryMethod
+  customerData  Json?
+  products      Json
+  extras        Json            @default("[]")
+  totalProducts Float
+  discounts     Float           @default(0)
+  total         Float
+  processed     Boolean         @default(false)
+  notes         String?
+  createdAt     DateTime        @default(now())
+
+  store    Store     @relation(fields: [storeId], references: [id])
+  customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
+
+  @@index([date])
+}

@@ -1,0 +1,61 @@
+.ing-wrapper { display: flex; flex-direction: column; gap: 24px; }
+
+.ing-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px 18px;                 /* row / column gap */
+  align-items: end;               /* align inputs to bottom line */
+  max-width: 960px;
+  width: 100%;
+}
+.ing-title {
+  grid-column: 1 / -1;
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.ing-save {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #4285f4;
+  color: #fff;
+  cursor: pointer;
+}
+
+.ing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ing-form label { 
+  font-weight: 600; 
+  display: flex; 
+  flex-direction: 
+  column; gap: 4px; }
+
+.ing-form button {
+  grid-column: 1 / -1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: #4285f4;
+  color: #fff;
+  cursor: pointer;
+}
+
+.ing-table { border-collapse: collapse; width: 100%; }
+.ing-table th, .ing-table td {
+  border: 1px solid #ddd; padding: 6px 10px; text-align: left;
+}
+.del-btn {
+  all: unset;
+  cursor: pointer;
+  color: #c62828;
+  font-weight: 700;
+  padding: 2px 6px;
+}
+.del-btn:hover { opacity: .7; }

@@ -1,0 +1,49 @@
+.ticket {
+  width: 58mm;                /* Ancho fijo para el recibo de 58mm */
+  padding: 5px 2px;           /* Pequeños márgenes internos horizontal/vertical */
+  font-family: sans-serif;
+  font-size: 12px;
+}
+
+.ticket-header, .ticket-footer {
+  text-align: center;
+  margin-bottom: 5px;
+}
+
+.ticket-header strong {
+  font-size: 14px;            /* Nombre de tienda un poco más grande/negrita */
+}
+
+.ticket-items ul {
+  list-style: none;
+  padding: 0;
+  margin: 5px 0;
+}
+
+.ticket-items li {
+  margin: 2px 0;
+}
+
+.ticket-total {
+  border-top: 1px dashed #000;
+  margin: 5px 0;
+  padding-top: 5px;
+  text-align: right;
+}
+
+.ticket-type, .ticket-notes {
+  margin: 3px 0;
+}
+
+.ticket-qr {
+  text-align: center;
+  margin: 10px 0;
+}
+
+.ticket-footer {
+  text-align: center;
+  border-top: 1px solid #000;
+  margin-top: 5px;
+  padding-top: 5px;
+  font-size: 11px;
+}

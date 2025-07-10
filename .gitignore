@@ -1,0 +1,17 @@
+# Ignora node_modules de back y front
+back/node_modules/
+front/node_modules/
+
+# Ignora archivos .env de back y front
+back/.env
+front/.env
+
+# Ignora logs
+*.log
+
+# Ignora sistema operativo
+.DS_Store
+
+# Otros: lockfiles opcionales si no los quieres subir
+# back/package-lock.json
+# front/package-lock.json
