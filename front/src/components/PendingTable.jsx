@@ -84,16 +84,28 @@ export default function PendingTable() {
 }, [rows]);
 
   /* ─── helpers: maps ───────────────────────────────────── */
-  const nameById = useMemo(() => {
-    const map = Object.create(null);
-    menu.forEach((p) => { map[p.id] = p.nombre || p.name; });
-    return map;
-  }, [menu]);
-  const storeById = useMemo(() => {
-    const map = Object.create(null);
-    stores.forEach((s) => { map[s.id] = s.storeName ?? s.name; });
-    return map;
-  }, [stores]);
+const nameById = useMemo(() => {
+  const map = Object.create(null);
+
+  (Array.isArray(menu) ? menu : []).forEach((p) => {
+    if (!p) return;                 // null/undefined safety
+    map[p.id] = p.nombre ?? p.name ?? "";
+  });
+
+  return map;
+}, [menu]);
+
+/** Mapea id-de-store → nombre-de-store */
+const storeById = useMemo(() => {
+  const map = Object.create(null);
+
+  (Array.isArray(stores) ? stores : []).forEach((s) => {
+    if (!s) return;
+    map[s.id] = s.storeName ?? s.name ?? "";
+  });
+
+  return map;
+}, [stores]);
 
   const fmtProducts = (sale) => {
     try {
