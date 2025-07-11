@@ -3,20 +3,20 @@
 // Lista de pedidos pendientes  +  botón Ready  +  Ticket modal
 // ─────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios  from "axios";
 import moment from "moment";
-import 'moment/dist/locale/es';
+import "moment/dist/locale/es";
 import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 
-const REFRESH_MS = 60_000; // 1 minuto
+const REFRESH_MS = 60_000; // 1 minuto
 
 export default function PendingTable() {
   /* ─── estados ────────────────────────────────────────── */
-  const [rows, setRows] = useState([]);
-  const [menu, setMenu] = useState([]);
+  const [rows,   setRows]   = useState([]);
+  const [menu,   setMenu]   = useState([]);
   const [stores, setStores] = useState([]);
-  const [view, setView] = useState(null);
+  const [view,   setView]   = useState(null);
 
   /* sello y countdown */
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -28,7 +28,7 @@ export default function PendingTable() {
     setLoading(true);
     try {
       const { data } = await axios.get("/api/sales/pending");
-      setRows(data);
+      setRows(Array.isArray(data) ? data : []);
       setLastUpdate(new Date());
       setSecondsLeft(Math.floor(REFRESH_MS / 1000));
     } catch (e) {
@@ -42,28 +42,26 @@ export default function PendingTable() {
   const loadMenu = async () => {
     try {
       const { data } = await axios.get("/api/pizzas");
-      setMenu(data);
+      setMenu(Array.isArray(data) ? data : []);
     } catch (e) { console.error("load pizzas", e); }
   };
   const loadStores = async () => {
     try {
       const { data } = await axios.get("/api/stores");
-      setStores(data);
+      setStores(Array.isArray(data) ? data : []);
     } catch (e) { console.error("load stores", e); }
   };
 
   /* ─── efecto inicial + cronómetro ────────────────────── */
   useEffect(() => {
-    loadPending();
-    loadMenu();
-    loadStores();
+    loadPending();       // pedidos (y refresco cada minuto)
+    loadMenu();          // menú
+    loadStores();        // tiendas
 
-    // reloj que baja cada segundo
     const secId = setInterval(() => {
       setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : s));
     }, 1000);
 
-    // refresco cada minuto
     const refId = setInterval(loadPending, REFRESH_MS);
 
     return () => {
@@ -72,46 +70,50 @@ export default function PendingTable() {
     };
   }, []);
 
+  /* pestaña parpadeante cuando hay pendientes ------------ */
   useEffect(() => {
-  const btn = document.getElementById("pending-tab");
-  if (!btn) return;               // aún no montado
+    const btn = document.getElementById("pending-tab");
+    if (!btn) return;
+    if (rows.length > 0) btn.classList.add("blink");
+    else                 btn.classList.remove("blink");
+  }, [rows]);
 
-  if (rows.length > 0) {
-    btn.classList.add("blink");
-  } else {
-    btn.classList.remove("blink");
-  }
-}, [rows]);
+  /* ─── helpers: maps ──────────────────────────────────── */
+  /** id-pizza → nombre */
+  const nameById = useMemo(() => {
+    const map = Object.create(null);
+    (Array.isArray(menu) ? menu : []).forEach((p) => {
+      if (!p) return;
+      map[p.id] = p.nombre ?? p.name ?? "";
+    });
+    return map;
+  }, [menu]);
 
-  /* ─── helpers: maps ───────────────────────────────────── */
-const nameById = useMemo(() => {
-  const map = Object.create(null);
+  /** id-store → nombre */
+  const storeById = useMemo(() => {
+    const map = Object.create(null);
+    (Array.isArray(stores) ? stores : []).forEach((s) => {
+      if (!s) return;
+      map[s.id] = s.storeName ?? s.name ?? "";
+    });
+    return map;
+  }, [stores]);
 
-  (Array.isArray(menu) ? menu : []).forEach((p) => {
-    if (!p) return;                 // null/undefined safety
-    map[p.id] = p.nombre ?? p.name ?? "";
-  });
-
-  return map;
-}, [menu]);
-
-/** Mapea id-de-store → nombre-de-store */
-const storeById = useMemo(() => {
-  const map = Object.create(null);
-
-  (Array.isArray(stores) ? stores : []).forEach((s) => {
-    if (!s) return;
-    map[s.id] = s.storeName ?? s.name ?? "";
-  });
-
-  return map;
-}, [stores]);
-
+  /** Formatea la lista de productos de un pedido */
   const fmtProducts = (sale) => {
+    let list = [];
     try {
-      const list = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products ?? "[]");
-      return list.map((p) => `${nameById[p.pizzaId] || `#${p.pizzaId}`} ${p.size}×${p.qty ?? p.cantidad ?? 1}`).join(", ");
-    } catch { return "--"; }
+      const raw = sale.products ?? "[]";
+      list = Array.isArray(raw) ? raw : JSON.parse(raw);
+    } catch { /* list seguirá [] */ }
+
+    if (!Array.isArray(list)) list = [];
+
+    return list
+      .map((p) =>
+        `${nameById[p.pizzaId] || `#${p.pizzaId}`} ${p.size}×${p.qty ?? p.cantidad ?? 1}`
+      )
+      .join(", ");
   };
 
   const markReady = async (id) => {
@@ -129,7 +131,7 @@ const storeById = useMemo(() => {
     w.document.close(); w.focus(); w.print(); w.close();
   };
 
-  /* ─── badge text ─────────────────────────────────────── */
+  /* badge texto ----------------------------------------- */
   const badgeText = loading
     ? "Updating…"
     : secondsLeft != null
@@ -139,11 +141,13 @@ const storeById = useMemo(() => {
   /* ─── UI ─────────────────────────────────────────────── */
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <h3 style={{ margin: 0 }}>Pending orders</h3>
+      {/* cabecera */}
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <h3 style={{ margin:0 }}>Pending orders</h3>
         {badgeText && <span className="badge">{badgeText}</span>}
       </div>
 
+      {/* contenido */}
       {rows.length === 0 ? (
         <div className="no-orders">
           <span className="emoji">🐒</span>
@@ -159,14 +163,14 @@ const storeById = useMemo(() => {
             </tr>
           </thead>
           <tbody>
-            {rows.map((s) => (
+            {(Array.isArray(rows) ? rows : []).map((s) => (
               <tr key={s.id}>
                 <td>{s.code}</td>
                 <td>{moment(s.date).format("DD/MM/YY HH:mm")}</td>
                 <td>{s.type}</td>
                 <td>{storeById[s.storeId] || s.storeName || "-"}</td>
                 <td>{fmtProducts(s)}</td>
-                <td>{s.customerData?.name ?? "-"}</td>
+                <td>{s.customerData?.name  ?? "-"}</td>
                 <td>{s.customerData?.phone ?? "-"}</td>
                 <td><button onClick={() => markReady(s.id)}>Ready</button></td>
                 <td><button onClick={() => setView(s)}>Ver</button></td>
@@ -176,9 +180,14 @@ const storeById = useMemo(() => {
         </table>
       )}
 
+      {/* modal */}
       {view && (
         <div className="pt-modal-back" onClick={() => setView(null)}>
-          <div className="pt-modal-card" style={{ width: "62mm" }} onClick={(e) => e.stopPropagation()}>
+          <div
+            className="pt-modal-card"
+            style={{ width:"62mm" }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div id="ticket-content"><Ticket order={view} /></div>
             <div className="pt-buttons">
               <button onClick={printTicket}>Print</button>
@@ -188,6 +197,7 @@ const storeById = useMemo(() => {
         </div>
       )}
 
+      {/* estilos in-file */}
       <style>{`
         .orders{ width:100%; border-collapse:collapse; font-size:.85rem }
         .orders th,.orders td{ border:1px solid #ccc; padding:.35rem }
