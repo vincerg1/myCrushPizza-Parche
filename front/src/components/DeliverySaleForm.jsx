@@ -43,7 +43,7 @@ export default function DeliverySaleForm() {
 
       /* lookup cliente POR DIRECCIÓN COMPLETA */
       try {
-        const { data } = await axios.get("/api/customers/search", {
+        const { data } = await api.get("/api/customers/search", {
           params: { q: fullAddr },
         });
         setCustomer(data?.[0] ?? null);
@@ -51,7 +51,7 @@ export default function DeliverySaleForm() {
 
       /* tienda más cercana */
       try {
-        const { data } = await axios.get("/api/stores/nearest", {
+        const { data } = await api.get("/api/stores/nearest", {
           params: { lat, lng },
         });
         setNearest(data);

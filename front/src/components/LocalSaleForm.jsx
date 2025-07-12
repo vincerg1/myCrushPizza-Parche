@@ -29,7 +29,7 @@ export default function LocalSaleForm({
   /* ① tiendas para admin (si no está forzado) */
   useEffect(() => {
     if (forcedStoreId) return;
-    if (isAdmin) axios.get("/api/stores").then(r=>setStores(r.data));
+    if (isAdmin) api.get("/api/stores").then(r=>setStores(r.data));
     else         setStoreId(auth.storeId);
   }, [isAdmin, auth.storeId, forcedStoreId]);
 

@@ -27,7 +27,7 @@ export default function PendingTable() {
   const loadPending = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get("/api/sales/pending");
+      const { data } = await api.get("/api/sales/pending");
       setRows(Array.isArray(data) ? data : []);
       setLastUpdate(new Date());
       setSecondsLeft(Math.floor(REFRESH_MS / 1000));
@@ -41,13 +41,13 @@ export default function PendingTable() {
   /* ─── carga fija: menú y tiendas ─────────────────────── */
   const loadMenu = async () => {
     try {
-      const { data } = await axios.get("/api/pizzas");
+      const { data } = await api.get("/api/pizzas");
       setMenu(Array.isArray(data) ? data : []);
     } catch (e) { console.error("load pizzas", e); }
   };
   const loadStores = async () => {
     try {
-      const { data } = await axios.get("/api/stores");
+      const { data } = await api.get("/api/stores");
       setStores(Array.isArray(data) ? data : []);
     } catch (e) { console.error("load stores", e); }
   };
@@ -118,7 +118,7 @@ export default function PendingTable() {
 
   const markReady = async (id) => {
     try {
-      await axios.patch(`/api/sales/${id}/ready`);
+      await api.patch(`/api/sales/${id}/ready`);
       setRows((r) => r.filter((s) => s.id !== id));
     } catch (e) { console.error(e); alert("Error marcando Ready"); }
   };

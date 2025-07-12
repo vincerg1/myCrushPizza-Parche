@@ -32,13 +32,13 @@ function StockModal({ store, onClose }) {
   const [qty,  setQty ] = useState("");
 
   const load = async () => {
-    const { data } = await axios.get(`/api/stock/${store.id}`);
+    const { data } = await api.get(`/api/stock/${store.id}`);
     setRows(data);
   };
   useEffect(load, [store.id]);
 
   const saveQty = async () => {
-    await axios.patch(`/api/stock/${store.id}/${edit}`, { set: Number(qty) });
+    await api.patch(`/api/stock/${store.id}/${edit}`, { set: Number(qty) });
     setQty(""); setEdit(null); load();
   };
 
@@ -92,8 +92,8 @@ export default function StoreCreator() {
 
   /* ---------- fetch inicial ---------- */
   useEffect(() => {
-    axios.get("/api/stores")   .then(r => setStores(r.data));
-    axios.get("/api/customers").then(r => setCustomers(r.data));
+    api.get("/api/stores")   .then(r => setStores(r.data));
+    api.get("/api/customers").then(r => setCustomers(r.data));
   }, []);
 
   /* ---------- CRUD tiendas ---------- */
@@ -103,12 +103,12 @@ export default function StoreCreator() {
     e.preventDefault();
     await api.post("/api/stores", form);
     setForm(empty);
-    const { data } = await axios.get("/api/stores");
+    const { data } = await api.get("/api/stores");
     setStores(data);
   };
 
   const toggleActive = async (id, next) => {
-    await axios.patch(`/api/stores/${id}/active`, { active: next });
+    await api.patch(`/api/stores/${id}/active`, { active: next });
     setStores(s => s.map(t => t.id === id ? { ...t, active: next } : t));
   };
 

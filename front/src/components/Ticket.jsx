@@ -15,9 +15,9 @@ export default function Ticket({ order }) {
   const [menu , setMenu ] = useState([]);
   const [store, setStore] = useState(null);
 
-  useEffect(() => { axios.get("/api/pizzas").then(r => setMenu(r.data)); }, []);
+  useEffect(() => { api.get("/api/pizzas").then(r => setMenu(r.data)); }, []);
   useEffect(() => {
-    if (order.storeId) axios.get(`/api/stores/${order.storeId}`).then(r => setStore(r.data));
+    if (order.storeId) api.get(`/api/stores/${order.storeId}`).then(r => setStore(r.data));
   }, [order.storeId]);
 
   /* ───────── helpers ───────── */
