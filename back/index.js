@@ -18,7 +18,7 @@ const customersRouter = require('./routes/customers')(prisma);
 const salesRouter     = require('./routes/sales')(prisma);
 const menuDisponibleRouter = require('./routes/menuDisponible')(prisma);
 const googleRouter = require('./routes/googleProxy');
-
+const publicRoutes = require('./routes/public')(prisma);
 
 app.use(cors());
 app.use(express.json());
@@ -33,6 +33,8 @@ app.use('/api/sales',     salesRouter);
 app.use('/api/menuDisponible', menuDisponibleRouter);  
 app.use('/api/google', googleRouter);
 app.use("/api/public", require("./routes/public")(prisma));
+app.use('/', publicRoutes);
+
 
 // Ruta base
 app.get('/', (_, res) => {

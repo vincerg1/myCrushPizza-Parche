@@ -35,15 +35,19 @@ export default function LocalSaleForm({
 
   /* ② menú disponible para la tienda elegida */
   useEffect(() => {
-    if (!storeId) return;
+    if (!storeId) return;              // sin tienda ⇒ nada que cargar
+
     api
       .get(`/api/menuDisponible/${storeId}`, { params: { category: cat } })
-      .then(r => setStock(Array.isArray(r.data) ? r.data : []))   // ← fallback
+      .then(r => {
+        // asegura array para evitar .filter undefined
+        setStock(Array.isArray(r.data) ? r.data : []);
+      })
       .catch(err => {
         console.error(err);
-        setStock([]);                                            // ← evita .filter crash
+        setStock([]);                  // fallback seguro
       });
-  }, [storeId, cat]);
+  }, [storeId, cat]);   
 
   /* ─────────────── helpers ─────────────── */
   const itemsAvail = useMemo(

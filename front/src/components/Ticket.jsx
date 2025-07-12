@@ -61,7 +61,7 @@ export default function Ticket({ order }) {
    ?? (order.customerId ? `CUS-${order.customerId}` : "N/A");
 
   const orderCode = order.code ?? `ORD-${order.id}`;
-  const qrURL     = `${window.location.origin}/customer/${orderCode}`;
+  const qrURL = `${window.location.origin}/api/public/customer/${orderCode}`;
 
   /* ─────────────── render ─────────────── */
   const storeName = store?.storeName
