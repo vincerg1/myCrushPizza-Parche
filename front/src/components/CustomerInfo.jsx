@@ -1,17 +1,18 @@
 /* ───────────────────── src/components/CustomerInfo.jsx ───────────────────── */
 import React, { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams }   from "react-router-dom";
+import api              from "../setupAxios";          // ← usa baseURL del back
 
 /**
  * Vista del repartidor al escanear el QR
- *   • Tarjeta con datos de la orden (incluye dirección clickable)
- *   • Cronómetro “Elapsed time” desde la fecha de venta (estilo reloj digital)
- *   • Botón «Delivered ✓»  →  PATCH público (pasa a «Finalized 👍» cuando se marca)
- *   • Botón «◀ Back» (history.back)
- *   • Logo MCP anclado al pie
+ *  • Tarjeta con datos de la orden (incluye dirección clickable)
+ *  • Cronómetro “Elapsed time” desde la fecha de venta
+ *  • Botón «Delivered ✓»  →  PATCH público (pasa a «Finalized 👍»)
+ *  • Botón «◀ Back»  (history.back)
+ *  • Logo MCP al pie
  */
 export default function CustomerInfo() {
-  const { code } = useParams();           // ej. ORD‑48063
+  const { code } = useParams();           // ej. ORD-48063
 
   const [data,    setData]    = useState(null);
   const [err,     setErr]     = useState("");
@@ -41,10 +42,9 @@ export default function CustomerInfo() {
 
   /* ───────── 1) fetch orden ───────── */
   useEffect(() => {
-    fetch(`/api/public/customer/${code}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(setData)
-      .catch(() => setErr("⛔ Pedido no encontrado"));
+    api.get(`/api/public/customer/${code}`)
+       .then(r  => setData(r.data))
+       .catch(() => setErr("⛔ Pedido no encontrado"));
   }, [code]);
 
   /* ───────── 2) cronómetro ───────── */
@@ -69,12 +69,12 @@ export default function CustomerInfo() {
   /* ───────── 3) PATCH delivered ───────── */
   const markDelivered = async () => {
     try {
-      const r = await fetch(`/api/public/customer/${code}/delivered`, { method:"PATCH" })
-      if (!r.ok) throw new Error();
-      const { deliveredAt } = await r.json();
+      const { data: res } = await api.patch(`/api/public/customer/${code}/delivered`);
       clearInterval(timerRef.current);
-      setData(d => ({ ...d, deliveredAt }));
-    } catch { alert("❌ No se pudo marcar como entregado."); }
+      setData(d => ({ ...d, deliveredAt: res.deliveredAt }));
+    } catch {
+      alert("❌ No se pudo marcar como entregado.");
+    }
   };
 
   /* ───────── render ───────── */
