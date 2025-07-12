@@ -1,10 +1,12 @@
 // index.js
 require('dotenv').config();
 require("./cron/updateDaysOff");
+
+console.log("⚙️ DATABASE_URL =", process.env.DATABASE_URL);
+console.log("🔍 DATABASE_URL: ", JSON.stringify(process.env.DATABASE_URL));
 const express = require('express');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
-
 const app = express();
 const prisma = new PrismaClient();
 const pizzasRouter = require('./routes/pizzas')(prisma);

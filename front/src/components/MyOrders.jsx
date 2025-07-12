@@ -21,7 +21,7 @@ function LoginForm() {
     e.preventDefault();
     setErr("");
     try {
-      const { data } = await axios.post("/api/auth/login", { user, pass });
+      const { data } = await api.post("/api/auth/login", { user, pass });
       login(data);
     } catch {
       setErr("Credenciales inválidas");

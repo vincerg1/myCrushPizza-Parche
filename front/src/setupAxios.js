@@ -1,5 +1,5 @@
 // src/setupAxios.js
-import axios from "axios";
+import api   from "../setupAxios";
 
 const api = axios.create({
   // 1️⃣  Usa la variable en producción, o localhost en desarrollo

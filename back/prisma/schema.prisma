@@ -1,5 +1,5 @@
 datasource db {
-  provider = "mysql"          // <- CAMBIA sqlite → mysql
+  provider = "mysql"         
   url      = env("DATABASE_URL")
 }
 
@@ -64,7 +64,6 @@ model Store {
   stocks StorePizzaStock[]
   sales  Sale[]
 }
-
 
 /*** junction table Stock por tienda + pizza*/
 model StorePizzaStock {

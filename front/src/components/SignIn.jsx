@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api   from "../setupAxios";
 import { useAuth } from "./AuthContext";
 
 export default function SignIn() {
@@ -14,7 +14,7 @@ export default function SignIn() {
     setErr("");
     setLoading(true);
     try {
-      const { data } = await axios.post("/api/auth/login", { user, pass });
+      const { data } = await api.post("/api/auth/login", { user, pass });
       login(data);   // Guarda token + role
     } catch {
       setErr("❌ Usuario o contraseña inválidos");

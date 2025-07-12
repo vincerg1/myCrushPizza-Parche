@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import api   from "../setupAxios";
 import "../styles/PizzaCreator.css";
 
 /* ---------------------- constantes ---------------------- */
@@ -132,7 +132,7 @@ export default function PizzaCreator() {
     if (form.imageFile) fd.append("image", form.imageFile);
 
     try {
-      await axios.post("http://localhost:8080/api/pizzas", fd);
+      await api.post("http://localhost:8080/api/pizzas", fd);
       alert("Pizza saved!");
       setForm({
         name: "",

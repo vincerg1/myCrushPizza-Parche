@@ -1,6 +1,6 @@
 /* ───────────────────── src/components/StoreCreator.jsx ───────────────────── */
 import React, { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import api   from "../setupAxios";
 import "../styles/StoreCreator.css";
 import { GoogleMap, Marker, LoadScriptNext } from "@react-google-maps/api";
 
@@ -101,7 +101,7 @@ export default function StoreCreator() {
 
   const onSubmit = async e => {
     e.preventDefault();
-    await axios.post("/api/stores", form);
+    await api.post("/api/stores", form);
     setForm(empty);
     const { data } = await axios.get("/api/stores");
     setStores(data);

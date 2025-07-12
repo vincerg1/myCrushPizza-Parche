@@ -1,6 +1,6 @@
 // DeliverySaleForm – locate ▸ order ▸ review
 import React, { useState, useRef, useCallback } from "react";
-import axios from "axios";
+import api   from "../setupAxios";
 import { debounce } from "lodash";
 import {
   GoogleMap, Marker, Autocomplete, LoadScriptNext,
@@ -181,7 +181,7 @@ export default function DeliverySaleForm() {
           onDelete={handleDeleteCustomer}
           onSave={async (data) => {
             try {
-              const { data: saved } = await axios.post("/api/customers", data);
+              const { data: saved } = await api.post("/api/customers", data);
               setCustomer(saved);
             } catch (e) { console.error(e); }
             setShowCus(false);

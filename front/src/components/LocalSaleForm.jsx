@@ -184,7 +184,7 @@ export default function LocalSaleForm({
                 payload.customer = customer;
               }
 
-              await axios.post("/api/sales", payload);
+              await api.post("/api/sales", payload);
 
               alert("Sale saved!");
               setCart([]);
