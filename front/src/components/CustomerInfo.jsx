@@ -41,7 +41,7 @@ export default function CustomerInfo() {
 
   /* ───────── 1) fetch orden ───────── */
   useEffect(() => {
-    fetch(`/api/sales/public/order/${code}`)
+    fetch(`/api/public/customer/${code}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setData)
       .catch(() => setErr("⛔ Pedido no encontrado"));
@@ -69,8 +69,7 @@ export default function CustomerInfo() {
   /* ───────── 3) PATCH delivered ───────── */
   const markDelivered = async () => {
     try {
-      const r = await fetch(`/api/sales/public/order/${code}/delivered`,
-                            { method:"PATCH" });
+      const r = await fetch(`/api/public/customer/${code}/delivered`, { method:"PATCH" })
       if (!r.ok) throw new Error();
       const { deliveredAt } = await r.json();
       clearInterval(timerRef.current);
