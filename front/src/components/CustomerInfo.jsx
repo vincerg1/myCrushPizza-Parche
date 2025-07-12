@@ -43,8 +43,11 @@ export default function CustomerInfo() {
   /* ───────── 1) fetch orden ───────── */
   useEffect(() => {
     api.get(`/api/public/customer/${code}`)
-       .then(r  => setData(r.data))
-       .catch(() => setErr("⛔ Pedido no encontrado"));
+      .then(r => {
+        console.log("PUBLIC DATA →", r.data);   // ← inspección rápida
+        setData(r.data);
+      })
+      .catch(() => setErr("⛔ Pedido no encontrado"));
   }, [code]);
 
   /* ───────── 2) cronómetro ───────── */
