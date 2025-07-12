@@ -1,68 +1,85 @@
 // ─────────────────────────────────────────────────────────
-// src/components/Ticket.jsx
-//  • QR principal → /customer/ORD-xxxxx (página resumen)
+// Ticket.jsx
+//  • QR principal → /customer/ORD-xxxxx  (página resumen)
 //  • Encabezado incluye Customer ID y Order ID
-//  • Sin mini-QR
 // ─────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from "react";
-import QRCode   from "react-qr-code";
-import axios    from "axios";
-import moment   from "moment";
-import 'moment/dist/locale/es';
-import api from "../setupAxios";
+import QRCode    from "react-qr-code";
+import moment    from "moment";
+import "moment/dist/locale/es";
+import api       from "../setupAxios";
 
 export default function Ticket({ order }) {
-  /* ───────── catálogo y tienda ───────── */
+  /* ───── catálogo y tienda ───── */
   const [menu , setMenu ] = useState([]);
   const [store, setStore] = useState(null);
 
-  useEffect(() => { api.get("/api/pizzas").then(r => setMenu(r.data)); }, []);
+  /* catálogo completo de pizzas */
   useEffect(() => {
-    if (order.storeId) api.get(`/api/stores/${order.storeId}`).then(r => setStore(r.data));
+    api.get("/api/pizzas")
+       .then(r => setMenu(Array.isArray(r.data) ? r.data : []))
+       .catch(err => {
+         console.error(err);
+         setMenu([]);
+       });
+  }, []);
+
+  /* datos tienda */
+  useEffect(() => {
+    if (order.storeId)
+      api.get(`/api/stores/${order.storeId}`)
+         .then(r => setStore(r.data))
+         .catch(console.error);
   }, [order.storeId]);
 
-  /* ───────── helpers ───────── */
+  /* helpers */
   const nameById = useMemo(() => {
     const map = Object.create(null);
-    menu.forEach(p => { map[p.id] = p.nombre || p.name; });
+    menu.forEach(p => { map[p.id] = p.name ?? p.nombre; });
     return map;
   }, [menu]);
 
   const products = useMemo(() => {
-    try { return Array.isArray(order.products) ? order.products : JSON.parse(order.products || "[]"); }
-    catch { return []; }
+    try {
+      return Array.isArray(order.products)
+        ? order.products
+        : JSON.parse(order.products || "[]");
+    } catch {
+      return [];
+    }
   }, [order.products]);
 
-  /* ───────── fecha ───────── */
-  const f      = moment(order.date).locale("es");
-  const fecha  = f.format("DD/MM/YY");
-  const hora   = f.format("HH:mm");
+  /* fecha formateada */
+  const f     = moment(order.date).locale("es");
+  const fecha = f.format("DD/MM/YY");
+  const hora  = f.format("HH:mm");
 
-  /* ───────── IDs y URL QR ───────── */
-const customerCode =
-  order.customerCode            // si tu backend ya lo incluye directo
-  ?? order.customer?.code       // si viene anidado en order.customer
-  ?? (order.customerId ? `CUS-${order.customerId}` : "N/A"); // último recurso
+  /* IDs y URL del QR */
+  const customerCode =
+      order.customerCode
+   ?? order.customer?.code
+   ?? (order.customerId ? `CUS-${order.customerId}` : "N/A");
 
-const orderCode = order.code ?? `ORD-${order.id}`;
-const qrURL     = `${window.location.origin}/customer/${orderCode}`;
+  const orderCode = order.code ?? `ORD-${order.id}`;
+  const qrURL     = `${window.location.origin}/customer/${orderCode}`;
 
-  /* ───────── render ───────── */
-  const storeName = store?.storeName ? `Pizzería ${store.storeName}` : "Pizzería";
+  /* ─────────────── render ─────────────── */
+  const storeName = store?.storeName
+    ? `Pizzería ${store.storeName}`
+    : "Pizzería";
 
   return (
     <div className="tkt">
-
       {/* ── Encabezado ── */}
-<div className="tkt-head">
-  <strong>{storeName}</strong><br/>
-  {fecha}  {hora}<br/>
-  {customerCode}<br/>{orderCode}
-</div>
+      <div className="tkt-head">
+        <strong>{storeName}</strong><br />
+        {fecha} {hora}<br />
+        {customerCode}<br />{orderCode}
+      </div>
 
       {/* ── Productos ── */}
       <table className="tkt-items"><tbody>
-        {products.map((p,i)=>(
+        {products.map((p, i) => (
           <tr key={i}>
             <td>{nameById[p.pizzaId] || `#${p.pizzaId}`}</td>
             <td className="amt">{p.size} ×{p.qty}</td>
@@ -71,7 +88,9 @@ const qrURL     = `${window.location.origin}/customer/${orderCode}`;
       </tbody></table>
 
       {/* ── Total ── */}
-      <div className="tkt-total">Total:&nbsp;{Number(order.total).toFixed(2)} €</div>
+      <div className="tkt-total">
+        Total:&nbsp;{Number(order.total).toFixed(2)}&nbsp;€
+      </div>
       <div className="tkt-sep" />
 
       {/* ── Tipo ── */}
@@ -79,12 +98,18 @@ const qrURL     = `${window.location.origin}/customer/${orderCode}`;
 
       {/* ── QR principal ── */}
       <div className="tkt-qr">
-        <QRCode value={qrURL} size={120} style={{ background:"#fff", padding:4 }} />
+        <QRCode
+          value={qrURL}
+          size={120}
+          style={{ background: "#fff", padding: 4 }}
+        />
       </div>
 
       {/* Observaciones opcionales */}
       {order.notes && (
-        <div className="tkt-notes"><strong>Obs.:</strong> {order.notes}</div>
+        <div className="tkt-notes">
+          <strong>Obs.:</strong> {order.notes}
+        </div>
       )}
 
       {/* ── Pie ── */}
@@ -93,12 +118,12 @@ const qrURL     = `${window.location.origin}/customer/${orderCode}`;
         <div className="tkt-sep" />
         {store ? (
           <div className="tkt-contact">
-            Tel: {store.tlf || "-"}<br/>{store.address}
+            Tel: {store.tlf || "-"}<br />{store.address}
           </div>
         ) : "Cargando…"}
       </div>
 
-      {/* ── Estilos ── */}
+      {/* ── Estilos in-line para el PDF/impresora ── */}
       <style>{`
         .tkt{font-family:monospace;width:100%;max-width:58mm;font-size:11px;text-align:center}
         .tkt-head{margin-bottom:4px}
