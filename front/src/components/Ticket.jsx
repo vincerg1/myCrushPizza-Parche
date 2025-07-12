@@ -9,6 +9,7 @@ import QRCode   from "react-qr-code";
 import axios    from "axios";
 import moment   from "moment";
 import 'moment/dist/locale/es';
+import api from "../setupAxios";
 
 export default function Ticket({ order }) {
   /* ───────── catálogo y tienda ───────── */

@@ -9,6 +9,7 @@ import LocalSaleForm       from "./LocalSaleForm";
 import DeliverySaleForm    from "./DeliverySaleForm";
 import PendingTable        from "./PendingTable";
 import { useAuth }         from "./AuthContext";
+import api from "../setupAxios";
 
 /* ───────────────── Login ───────────────── */
 function LoginForm() {

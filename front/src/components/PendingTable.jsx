@@ -8,6 +8,7 @@ import moment from "moment";
 import "moment/dist/locale/es";
 import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
+import api from "../setupAxios";
 
 const REFRESH_MS = 60_000; // 1 minuto
 

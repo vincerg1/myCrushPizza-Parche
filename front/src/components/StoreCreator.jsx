@@ -114,7 +114,7 @@ export default function StoreCreator() {
 
   const delStore = async (id) => {
     if (!window.confirm("Delete store?")) return;
-    await axios.delete(`/api/stores/${id}`);
+    await api.delete(`/api/stores/${id}`);
     setStores(s => s.filter(t => t.id !== id));
   };
 

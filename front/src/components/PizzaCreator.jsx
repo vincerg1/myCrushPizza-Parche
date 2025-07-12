@@ -42,7 +42,7 @@ export default function PizzaCreator() {
   /* ---------- inventory para dropdown ---------- */
   const [inventory, setInventory] = useState([]);
   useEffect(() => {
-    axios
+    api
       .get("http://localhost:8080/api/ingredients")
       .then((r) => setInventory(r.data))
       .catch(console.error);
@@ -51,7 +51,7 @@ export default function PizzaCreator() {
   /* ---------- lista de pizzas ---------- */
   const [pizzas, setPizzas] = useState([]);
   const fetchPizzas = () =>
-    axios
+    api
       .get("http://localhost:8080/api/pizzas")
       .then((r) => setPizzas(r.data))
       .catch(console.error);
@@ -154,7 +154,7 @@ export default function PizzaCreator() {
   const deletePizza = async (id) => {
     if (!window.confirm("Delete this pizza?")) return;
     try {
-      await axios.delete(`http://localhost:8080/api/pizzas/${id}`);
+      await api.delete(`http://localhost:8080/api/pizzas/${id}`);
       setPizzas((p) => p.filter((x) => x.id !== id));
     } catch (err) {
       console.error(err);

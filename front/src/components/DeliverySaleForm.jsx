@@ -151,7 +151,7 @@ export default function DeliverySaleForm() {
   );
 
   async function handleDeleteCustomer(id) {
-  const res = await axios.delete(`/api/customers/${id}`);
+  const res = await api.delete(`/api/customers/${id}`);
   if (res.status === 200) {
     alert("Customer deleted!");
     setShowCus(false); // ✅ nombre correcto

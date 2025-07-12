@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios      from "axios";
 import { useAuth } from "./AuthContext";
 import "../styles/LocalSaleForm.css";
+import api from "../setupAxios";
 
 const categories = ["Pizza", "Extras", "Sides", "Drinks", "Desserts"];
 const normalize  = c => (c || "Pizza").trim().toLowerCase();

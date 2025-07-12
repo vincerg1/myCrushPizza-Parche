@@ -27,11 +27,11 @@ export function AuthProvider({ children }) {
 
   /* inyecta el token en TODAS las peticiones */
   useEffect(() => {
-    const id = axios.interceptors.request.use(cfg => {
+    const id = api.interceptors.request.use(cfg => {
       if (auth?.token) cfg.headers.Authorization = `Bearer ${auth.token}`;
       return cfg;
     });
-    return () => axios.interceptors.request.eject(id);
+    return () => api.interceptors.request.eject(id);
   }, [auth]);
 
   return <Ctx.Provider value={{ auth, login, logout }}>{children}</Ctx.Provider>;
