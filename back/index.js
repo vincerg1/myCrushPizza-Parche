@@ -33,7 +33,7 @@ app.use('/api/sales',     salesRouter);
 app.use('/api/menuDisponible', menuDisponibleRouter);  
 app.use('/api/google', googleRouter);
 app.use("/api/public", require("./routes/public")(prisma));
-app.use('/', publicRoutes);
+app.use('/api/public', publicRoutes);
 
 
 // Ruta base
