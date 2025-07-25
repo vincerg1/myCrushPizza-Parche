@@ -44,7 +44,7 @@ export default function Backoffice() {
     <div className="backoffice-wrapper">
 
       {/* ───── LATERAL ───── */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
         {/* cabecera con logout ★ */}
         <div className="sidebar-head">
           <span className="small">

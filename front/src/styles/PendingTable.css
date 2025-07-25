@@ -9,3 +9,110 @@
 .blink {
   animation: blink 1s step-start infinite;
 }
+
+/* ——  Mobile cards  —— */
+@media (max-width: 768px) {
+  /* Oculta cabecera de la tabla */
+  .orders thead {
+    display: none;
+  }
+
+  /* Cada fila se vuelve una tarjeta */
+  .orders, .orders tr, .orders tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .orders tr {
+    background: #fafafa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+  }
+
+  /* Cada celda en línea con etiqueta previa */
+  .orders td {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: .9rem;
+  }
+
+  .orders td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    margin-right: 8px;
+    color: #555;
+  }
+
+  /* Botones llenan ancho */
+  .orders td button {
+    width: 100%;
+    margin-top: 4px;
+  }
+}
+
+/* ——  Estado vacío  —— */
+@media (max-width: 768px) {
+  .no-orders .emoji { font-size: 4rem; }
+  .no-orders .msg   { font-size: 1.1rem; }
+}
+/* ---------- Tarjetas deslizables en móvil ---------- */
+@media (max-width: 768px) {
+
+  :root { --card-gap: 12px; }     /* un solo sitio donde cambias el espacio */
+
+  /* Carril horizontal */
+  .orders-scroll {
+    display: flex;
+    gap: var(--card-gap);         /* separación entre tarjetas */
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--card-gap);  /* sujeta el snap en los bordes */
+  }
+
+  /* Cada tarjeta */
+  .order-card {
+    /* 100 % menos un gap ⇒ la suma exacta ocupará el viewport */
+    flex: 0 0 calc(100% - var(--card-gap));
+    width: calc(100% - var(--card-gap));
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px #0001;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.9rem;
+  }
+
+  .order-card .row {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #eee;
+    padding: 2px 0;
+  }
+  .order-card .row:last-of-type { border-bottom: none; }
+
+  .order-card button {
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px 0;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  /* Oculta la tabla clásica en móvil */
+  table.orders { display: none; }
+}
+
+/* ---------- Vista desktop ---------- */
+@media (min-width: 769px) {
+  .orders-scroll { display: none; }
+  table.orders   { margin-top: 12px; }
+}

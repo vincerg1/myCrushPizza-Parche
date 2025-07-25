@@ -64,3 +64,19 @@
   font-size:12px;
 }
 .logout-btn:hover{ background:#e14b4b; }
+/* Backoffice.css  ─ añadir al final */
+@media (max-width: 768px) {
+  .sidebar.non-admin {
+    display: none;
+  }
+  .sidebar.non-admin + .panel {
+    width: 100%;
+    padding: 0 16px;   /* margen lateral opcional */
+  }
+  html, body,
+.backoffice-wrapper,
+.panel,
+.orders-dashboard {
+  overflow-x: hidden;    /* impide scroll lateral de la página entera */
+}
+}

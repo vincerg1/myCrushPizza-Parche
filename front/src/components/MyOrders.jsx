@@ -10,6 +10,7 @@ import DeliverySaleForm    from "./DeliverySaleForm";
 import PendingTable        from "./PendingTable";
 import { useAuth }         from "./AuthContext";
 import api from "../setupAxios";
+import "../styles/MyOrders.css"
 
 /* ───────────────── Login ───────────────── */
 function LoginForm() {
@@ -43,26 +44,32 @@ function LoginForm() {
 /* ───────────────── Dash ───────────────── */
 function Dashboard() {
   const { auth, logout } = useAuth();
-
+  const isAdmin = auth.role === "admin";
   /* vista nivel‑1: "pending" | "newsale" */
   const [view, setView] = useState("pending");
   /* vista nivel‑2 (dentro de newsale) */
   const [sub , setSub ] = useState("local");
-
+   
   return (
     <div className="orders-dashboard">
       {/* cabecera */}
       <header className="dash-head">
         <span>
-          Logged as {auth.role === "admin" ? "Admin" : auth.storeName}
+          Logged as {isAdmin ? "Admin" : auth.storeName}
         </span>
-        <button onClick={logout}>Logout</button>
+        
+             {!isAdmin && (               
+          <button onClick={logout}>Logout</button>
+        )}
+       
+     
       </header>
 
       {/* botones de nivel‑1 */}
       <div style={{ marginBottom: 12 }}>
         <button
-          id="pending-tab"  /* ← para el parpadeo */
+          id="pending-tab"  
+          className="level1-btn"
           onClick={() => setView("pending")}
           disabled={view === "pending"}
         >
@@ -72,7 +79,7 @@ function Dashboard() {
         <button
           onClick={() => setView("newsale")}
           disabled={view === "newsale"}
-          style={{ marginLeft: 8 }}
+          className="level1-btn"
         >
           New sale
         </button>
