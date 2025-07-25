@@ -91,11 +91,24 @@
   .ing-table table {
     width: 720px;        /* anchura mínima para no romper columnas */
   }
-
+.ADDBTN{
+  background: #f92672;
+  color: #fff;
+   padding: 8px 0;
+  border-radius: 6px;
+}
   /* Botón confirmar a ancho completo */
   .btn-confirm {
     width: 100%;
   }
+  .btn-confirm {
+  padding: 8px 16px;
+  background: #f92672;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+}
 }
 
 
@@ -138,3 +151,13 @@
   100% { opacity:0; transform:translate(-50%,-170%) scale(.95); }
 }
 
+.error{
+  border:2px solid #e74c3c !important;
+  animation:shake .25s linear;
+}
+
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-3px)}
+  75%{transform:translateX(3px)}
+}

@@ -163,20 +163,20 @@ export default function PendingTable() {
       {/* tarjetas móvil */}
       {rows.length > 0 && (
         <div className="orders-scroll">
-          {rows.map(s => (
-            <article className="order-card" key={`card-${s.id}`}>
-              <div className="row"><strong>Code</strong><span>{s.code}</span></div>
-              <div className="row"><strong>Date</strong><span>{moment(s.date).format("DD/MM HH:mm")}</span></div>
-              <div className="row"><strong>Type</strong><span>{s.type}</span></div>
-              <div className="row"><strong>Store</strong><span>{storeById[s.storeId] || s.storeName || "-"}</span></div>
-              <div className="row"><strong>Items</strong><span>{fmtProducts(s)}</span></div>
-              <div className="row"><strong>Client</strong><span>{s.customerData?.name ?? "-"}</span></div>
-              <div className="row"><strong>Tlf</strong><span>{s.customerData?.phone ?? "-"}</span></div>
-              <button onClick={() => markReady(s.id)}>Ready</button>
-              <button onClick={() => setView(s)}>Ver</button>
-            </article>
-          ))}
-        </div>
+        {rows.map(s => (
+          <article className="order-card" key={`card-${s.id}`}>
+            <div className="row"><strong>Code</strong><span>{s.code}</span></div>
+            <div className="row"><strong>Date</strong><span>{moment(s.date).format("DD/MM HH:mm")}</span></div>
+            <div className="row"><strong>Type</strong><span>{s.type}</span></div>
+            <div className="row"><strong>Store</strong><span>{storeById[s.storeId] || s.storeName || "-"}</span></div>
+            <div className="row"><strong>Items</strong><span>{fmtProducts(s)}</span></div>
+            <div className="row"><strong>Client</strong><span>{s.customerData?.name ?? "-"}</span></div>
+            <div className="row"><strong>Tlf</strong><span>{s.customerData?.phone ?? "-"}</span></div>
+            <button onClick={() => markReady(s.id)}>Ready</button>
+            <button onClick={() => setView(s)}>Ver</button>
+          </article>
+        ))}
+      </div>
       )}
 
       {/* modal impresión */}

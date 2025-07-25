@@ -39,15 +39,14 @@ export default function LocalSaleForm({
   const [cart   , setCart   ] = useState([]);
   const [sel    , setSel    ] = useState({ pizzaId: "", size: "", qty: 1 });
   const [toast  , setToast  ] = useState(null);
+  const [errors, setErrors] = useState({ item:false, size:false });
 
-  /* ① tiendas */
+
   useEffect(() => {
     if (forcedStoreId) return;
     if (isAdmin) api.get("/api/stores").then(r => setStores(r.data));
     else         setStoreId(auth.storeId);
   }, [isAdmin, auth.storeId, forcedStoreId]);
-
-  /* ② menú disponible */
   useEffect(() => {
     if (!storeId) return;
     api
@@ -55,6 +54,12 @@ export default function LocalSaleForm({
       .then(r => setStock(Array.isArray(r.data) ? r.data : []))
       .catch(() => setStock([]));
   }, [storeId, cat]);
+  useEffect(() => {
+  if (sel.pizzaId) setErrors(e => ({ ...e, item:false }));
+  }, [sel.pizzaId]);
+  useEffect(() => {
+    if (sel.size) setErrors(e => ({ ...e, size:false }));
+  }, [sel.size]);
 
   /* helpers */
   const itemsAvail = useMemo(
@@ -64,7 +69,13 @@ export default function LocalSaleForm({
   const current = stock.find(s => s.pizzaId === Number(sel.pizzaId));
 
   const addLine = () => {
-    if (!current || !sel.size) return;
+     if (!current || !sel.size) {
+    setErrors({
+      item: !current,
+      size: !sel.size
+    });
+    return;
+  }
     const price = current.priceBySize[sel.size];
     if (price == null)            return alert("Price not set");
     if (current.stock < sel.qty)  return alert("Not enough stock");
@@ -116,6 +127,7 @@ export default function LocalSaleForm({
         {/* línea alta */}
         <div className="line">
           <select
+           className={errors.item ? "error" : ""}
             value={sel.pizzaId}
             onChange={e => setSel({ ...sel, pizzaId: e.target.value, size: "" })}
           >
@@ -128,6 +140,7 @@ export default function LocalSaleForm({
           </select>
 
           <select
+           className={errors.size ? "error" : ""}
             value={sel.size}
             disabled={!current}
             onChange={e => setSel({ ...sel, size: e.target.value })}
@@ -146,7 +159,9 @@ export default function LocalSaleForm({
             value={sel.qty}
             onChange={e => setSel({ ...sel, qty: Number(e.target.value) })}
           />
-          <button onClick={addLine}>Add</button>
+          <button 
+          className="ADDBTN"
+          onClick={addLine}>Add</button>
         </div>
 
         {/* tabla + total + confirmar */}
