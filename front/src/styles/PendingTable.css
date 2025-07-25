@@ -65,37 +65,42 @@
 
   /* Carril horizontal */
   .orders-scroll {
-    display: flex;
-    gap: var(--card-gap);         /* separación entre tarjetas */
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scroll-padding-inline: var(--card-gap);  /* sujeta el snap en los bordes */
+     display:flex; gap:12px; overflow-x:auto;
+    scroll-snap-type:x mandatory; scroll-padding-inline:12px;
   }
 
   /* Cada tarjeta */
   .order-card {
-    /* 100 % menos un gap ⇒ la suma exacta ocupará el viewport */
-    flex: 0 0 calc(100% - var(--card-gap));
-    width: calc(100% - var(--card-gap));
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    box-shadow: 0 2px 6px #0001;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.9rem;
+    flex:0 0 90%;            /* 100 % viewport */
+    scroll-snap-align:start;
+    background:#fff;
+    border:1px solid #ddd;
+    border-radius:10px;
+    box-shadow:0 2px 6px #0001;
+    padding:8px 10px;         /* ↓ era 10 px */
+    font-size:.85rem;         /* ↓ un pelín más pequeño */
+    display:flex;
+    flex-direction:column;
+    gap:2px;       
   }
 
   .order-card .row {
-    display: flex;
-    justify-content: space-between;
-    border-bottom: 1px solid #eee;
-    padding: 2px 0;
+     display:flex !important;          /* anula cualquier .row global */
+    flex-direction:row !important;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid #eee;
+    padding:2px 0;
+  }
+    .order-card .row strong{
+    color:#444;
+    font-weight:600;
+    flex:0 0 38%;             /* ancho fijo aprox. etiqueta */
+  }
+    .order-card .row span{
+    flex:1 1 62%;
+    text-align:right;
+    word-break:break-word;    /* por si Items es largo */
   }
   .order-card .row:last-of-type { border-bottom: none; }
 
@@ -117,4 +122,20 @@
 @media (min-width: 769px) {
   .orders-scroll { display: none; }
   table.orders   { margin-top: 12px; }
+}
+.pt-dots{
+  display:flex;
+  justify-content:center;
+  gap:6px;
+  margin:8px 0 4px;   /* encima de la tarjeta */
+}
+.pt-dot{
+  width:8px;height:8px;
+  border-radius:50%;
+  background:#ccc;
+  transition:background .25s, transform .25s;
+}
+.pt-dot.active{
+  background:#1a1a1b;
+  transform:scale(1.4);
 }
