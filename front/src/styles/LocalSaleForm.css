@@ -18,7 +18,7 @@
   padding: 8px 16px;
   background: #ff6933;
   border: none;
-  border-radius: 6px;
+  border-radius: 12px;
   color: #fff;
   cursor: pointer;
 }
@@ -32,7 +32,7 @@
   font-size:0.85rem;
   background:#f1f1f1;
   border:1px solid #ccc;
-  border-radius:4px;
+  border-radius:12px;
   padding:2px 6px;
   color:#333;
 }
@@ -44,7 +44,7 @@
   width:22px;
   height:22px;
   line-height:20px;
-  border-radius:4px;
+  border-radius:12px;
   cursor:pointer;
 }
 .del-row:hover{ background:#c0392b; }
@@ -92,11 +92,13 @@
     width: 720px;        /* anchura mínima para no romper columnas */
   }
 .ADDBTN{
-  background: #f92672;
+  background: #4285f4;
+  border: 4px solid #f92672;   /* ← ancho + estilo + color */
   color: #fff;
-   padding: 8px 0;
-  border-radius: 6px;
+  padding: 8px 0;
+  border-radius: 12px;
 }
+
   /* Botón confirmar a ancho completo */
   .btn-confirm {
     width: 100%;
@@ -105,7 +107,7 @@
   padding: 8px 16px;
   background: #f92672;
   border: none;
-  border-radius: 6px;
+  border-radius: 12px;
   color: #fff;
   cursor: pointer;
 }

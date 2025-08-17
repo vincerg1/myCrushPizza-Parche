@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 import "../styles/SignIn.css"; // <-- importamos nuevo CSS
-import logo from "../logo/LogoMyCrushPizza.png";
+import logo from "../logo/nuevoLogoMyCrushPizza.jpeg";
 
 export default function SignIn() {
   const { login } = useAuth();

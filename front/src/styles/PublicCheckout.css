@@ -1,0 +1,283 @@
+:root{
+  --brand-pink:#f92672;      /* fondo y acentos */
+  --brand-blue:#4285f4;      /* botones primarios */
+  --text-on-blue:#fff;
+  --card-bg:#fff;
+  --ink:#212121;
+  --muted:#6b6b6b;
+  --border:#e9e9ee;
+  --danger:#e74c3c;
+  --pc-card-pad: 12px;
+  --pc-radius: 18px;
+}
+
+/* Página */
+.pc-page{
+  min-height:100vh;
+  background:var(--brand-pink);
+}
+.pc-wrap{
+  max-width:980px;
+  margin:0 auto;
+  padding:14px;
+}
+
+/* Card / paso */
+.pc-card{
+  background:var(--card-bg);
+  border-radius:18px;
+  padding:16px;
+  box-shadow:0 10px 20px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.04);
+  margin:10px auto;
+}
+.pc-title{
+  margin:2px 0 14px;
+  font-size:1.25rem;
+  font-weight:800;
+  color:var(--brand-pink);
+}
+
+/* Botones */
+.pc-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:.5rem;
+  font-weight:700;
+  border-radius:12px;
+  border:0;
+  padding:12px 14px;
+  cursor:pointer;
+  transition:transform .06s ease, filter .12s ease;
+}
+.pc-btn:hover{ filter:brightness(.96); }
+.pc-btn:active{ transform:translateY(1px); }
+
+.pc-btn-primary{
+  background:var(--brand-blue);
+  color:var(--text-on-blue);
+}
+.pc-btn-ghost{
+  background:#fff;
+  color:var(--brand-blue);
+  border:2px solid var(--brand-blue);
+}
+.pc-btn-valid{
+  background:#2ecc71;
+  color:#fff;
+}
+
+/* Contenedor de acciones (fila) */
+.pc-actions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+.pc-actions .push{ margin-left:auto; }
+
+/* Elección inicial en columna */
+.pc-choice{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+/* Inputs / selects */
+/* Inputs / selects (evita desbordes del Autocomplete) */
+.pc-input,
+.pc-select,
+.pac-target-input {            /* clase que añade Google al input */
+  box-sizing: border-box !important;
+  width: 100% !important;      /* ignora anchos inline de Google */
+  max-width: 100%;
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  outline: none;
+  font-size: 15px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.pc-input:focus,
+.pc-select:focus,
+.pac-target-input:focus {
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(66,133,244,.15);
+}
+
+/* opcional: si quieres recortar el halo/box-shadow dentro del card */
+.pc-card { overflow: hidden; }
+
+
+/* Error + shake */
+.is-error{
+  border-color:var(--danger) !important;
+  animation:pc-shake .28s linear 1;
+}
+@keyframes pc-shake{
+  0%,100%{ transform:translateX(0) }
+  20%{ transform:translateX(-3px) }
+  40%{ transform:translateX(3px) }
+  60%{ transform:translateX(-2px) }
+  80%{ transform:translateX(2px) }
+}
+
+/* Mapa */
+.pc-map{
+  width:100%;
+  height:260px;
+  margin:12px 0;
+  border-radius:12px;
+  overflow:hidden;
+  border:1px solid var(--border);
+}
+
+/* Grid 2 columnas (se vuelve una en mobile de forma natural) */
+.pc-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:16px;
+}
+@media (min-width: 860px){
+  .pc-grid{ grid-template-columns: 2fr 1fr; }
+}
+
+/* Notas / alertas */
+.pc-note{ color:var(--muted); font-size:.95rem; }
+.pc-help-err{ color:var(--danger); margin-top:6px; }
+.pc-alert{
+  background:#fff0f3;
+  color:#b3123a;
+  border:1px solid #ffc2d0;
+  padding:10px 12px;
+  border-radius:12px;
+  font-weight:600;
+}
+.pc-badge{
+  display:inline-block;
+  padding:2px 8px;
+  border-radius:999px;
+  background:var(--brand-blue);
+  color:#fff;
+  font-size:.85rem;
+}
+
+/* Tabla carrito */
+.pc-table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:6px;
+}
+.pc-table th, .pc-table td{
+  padding:8px 6px;
+  border-bottom:1px solid var(--border);
+  text-align:center;
+}
+.pc-table th:first-child, .pc-table td:first-child{ text-align:left; }
+
+/* Totales */
+.pc-totals{ text-align:right; margin-top:8px; color:var(--ink); }
+.pc-total{ font-weight:800; margin-top:4px; }
+
+/* CTA pegajoso en móvil */
+.pc-sticky{
+  position:sticky;
+  bottom:8px;
+  background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 30%);
+  padding-top:8px;
+}
+
+
+/* Centrado y tamaño controlado del hero */
+.pc-card-hero{
+  display:flex;
+  flex-direction:column;
+  align-items:center;   
+  text-align:center;
+}
+
+/* El logo: centrado, con ancho limitado y responsivo */
+.pc-logo{
+  display: block;
+  width: min(400px, 100%);
+  height: auto;
+  margin: 0 auto 12px;
+  box-shadow: none !important;
+  border: 0;
+}
+.pc-card--hero .pc-logo--bleed{
+  width: calc(100% + var(--pc-card-pad) * 2);
+  max-width: none;
+  margin-left: calc(-1 * var(--pc-card-pad));
+  margin-right: calc(-1 * var(--pc-card-pad));
+  margin-top: calc(.25 * var(--pc-card-pad));
+  margin-bottom: 14px;
+  border-radius: var(--pc-radius);
+}
+
+/* Por si el dispositivo es muy estrecho */
+@media (max-width: 420px){
+  .pc-logo{ width: min(340px, 100%); }
+}
+
+/* ---- Bounce sutil del título ---- */
+@keyframes pc-title-bounce-kf {
+  0%   { transform: translateY(0) scale(1); }
+  25%  { transform: translateY(-6px) scale(1.02); }
+  50%  { transform: translateY(0); }
+  75%  { transform: translateY(-3px) scale(1.01); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Centrar el título */
+.pc-title-center{
+  text-align: center;
+}
+
+/* Pulse sutil y constante */
+@keyframes pc-title-pulse-kf {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.03); }  /* +3%: visible pero no molesta */
+  100% { transform: scale(1); }
+}
+
+.pc-title-pulse{
+  display: block;                 /* asegura que el scale no rompa el flujo */
+  transform-origin: center;
+  animation: pc-title-pulse-kf 2.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Respeto a accesibilidad: sin animaciones si el usuario lo pide */
+@media (prefers-reduced-motion: reduce){
+  .pc-title-pulse{ animation: none; }
+}
+.ReactModal__Content { max-width: 520px !important; margin: 0 12px !important; border-radius: 14px !important; }
+@media (max-width: 480px){
+  .ReactModal__Content { margin: 0 10px !important; }
+}
+
+/* Botón de atención (estado error) */
+.pc-btn-danger {
+  background: #fff;
+  color: #e53935;
+  border: 2px solid #e53935;
+}
+
+/* Sacudida corta */
+@keyframes pc-shake {
+  0%   { transform: translateX(0); }
+  20%  { transform: translateX(-4px); }
+  40%  { transform: translateX(4px); }
+  60%  { transform: translateX(-3px); }
+  80%  { transform: translateX(3px); }
+  100% { transform: translateX(0); }
+}
+.pc-shake {
+  animation: pc-shake 0.35s ease-in-out;
+}
