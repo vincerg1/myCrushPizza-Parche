@@ -1,5 +1,6 @@
+// prisma/schema.prisma
 datasource db {
-  provider = "mysql"         
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -8,41 +9,40 @@ generator client {
 }
 
 /**
- * ──────────────────────────── MENÚ ────────────────────────────
+ * ======================== MENÚ ========================
  */
 model MenuPizza {
   id            Int      @id @default(autoincrement())
   name          String
   category      String?
-  selectSize    Json // ["S","M","L"]
-  priceBySize   Json // {"S": 7.5, "M": 9}
-  ingredients   Json // [{IDI:1, qtyBySize:{"S":2}}]
+  selectSize    Json
+  priceBySize   Json
+  ingredients   Json
   cookingMethod String?
   image         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  /**
-   * ⇄ stock por tienda
-   */
   stocks StorePizzaStock[]
 }
 
 /**
- * ────────────────────────── INVENTARIO ─────────────────────────
+ * ====================== INVENTARIO =====================
  */
 model Ingredient {
   id        Int      @id @default(autoincrement())
   name      String
   category  String
-  stock     Int      @default(0) // unidades totales
-  unit      String? // g, ml, pcs …
+  stock     Int      @default(0)
+  unit      String?
   costPrice Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-/*** ───────────────────────────── TIENDA ──────────────────────────*/
+/**
+ * ======================== TIENDA =======================
+ */
 model Store {
   id        Int      @id @default(autoincrement())
   storeName String
@@ -53,19 +53,17 @@ model Store {
   zipCode   String?
   email     String?
   tlf       String?
-
-  /** NUEVO — estado de la tienda (true = visible) */
   active    Boolean  @default(true)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /* relaciones */
   stocks StorePizzaStock[]
   sales  Sale[]
 }
 
-/*** junction table Stock por tienda + pizza*/
+/**
+ * junction table: stock por tienda + pizza
+ */
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
@@ -80,60 +78,84 @@ model StorePizzaStock {
 }
 
 /**
- * ──────────────────────────── CLIENTE ─────────────────────────
+ * ======================== CLIENTE ======================
  */
 enum CustomerOrigin {
   PHONE
   WALKIN
   UBER
   GLOVO
-  QR // minijuego / código QR
+  QR
 }
 
 model Customer {
-  id    Int    @id @default(autoincrement())
-  code  String @unique 
-  name      String?
-  phone     String?  @unique
-  address_1 String   @unique
-  portal    String?
+  id           Int            @id @default(autoincrement())
+  code         String         @unique
+  name         String?
+  phone        String?        @unique
+  address_1    String         @unique
+  portal       String?
   observations String?
-  lat       Float?
-  lng       Float?
-  origin    CustomerOrigin @default(PHONE)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  daysOff      Int? 
+  lat          Float?
+  lng          Float?
+  origin       CustomerOrigin @default(PHONE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  daysOff      Int?
+
   sales Sale[] @relation("CustomerSales")
-  
 }
 
-/*** ───────────────────────────── VENTA ───────────────────────────*/
+/**
+ * ========================= VENTA =======================
+ */
 enum DeliveryMethod {
-  PICKUP // el cliente retira
-  COURIER // repartidor propio
+  PICKUP
+  COURIER
   UBER
   GLOVO
 }
 
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  CANCELED
+}
+
+enum Channel {
+  WHATSAPP
+  PHONE
+  WEB
+}
+
 model Sale {
-  id            Int             @id @default(autoincrement())
-  code          String          @unique
-  date          DateTime        @default(now())
-  deliveredAt   DateTime?       // ← NUEVO
+  id            Int            @id @default(autoincrement())
+  code          String         @unique
+  date          DateTime       @default(now())
+  deliveredAt   DateTime?
   storeId       Int
   customerId    Int?
   type          String
   delivery      DeliveryMethod
   customerData  Json?
   products      Json
-  extras        Json            @default("[]")
+  extras        Json           @default("[]")
   totalProducts Float
-  discounts     Float           @default(0)
+  discounts     Float          @default(0)
   total         Float
-  processed     Boolean         @default(false)
+  processed     Boolean        @default(false)
   notes         String?
-  createdAt     DateTime        @default(now())
+  createdAt     DateTime       @default(now())
+
+  status                  OrderStatus @default(PENDING)
+  channel                 Channel     @default(WHATSAPP)
+  currency                String      @default("EUR")
+  address_1               String?
+  lat                     Float?
+  lng                     Float?
+  stripePaymentIntentId   String?     @unique @db.VarChar(191)
+  stripeCheckoutSessionId String?     @unique @db.VarChar(191)
 
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
