@@ -698,19 +698,20 @@ export default function PublicCheckout() {
 
   // ========== RENDER ==========
   return (
-    <div className="pc-page">
-      <div className="pc-wrap">
-        {mode === "choose" && chooseMode}
-        {mode === "deliveryLocate" && step === "locate" && deliveryLocateView}
-        {mode === "pickupLocate" && step === "locate" && pickupLocateView}
-        {step === "order" && orderView}
-        {step === "review" && reviewView}
+  <div className="pc-page">
+    <div className="pc-wrap">
+      {mode === "choose" && chooseMode}
 
-        {/* Caja de cupón fija bajo el contenido principal */}
-        {CouponCard}
-      </div>
+      {/* 👇 Solo en la primera pantalla */}
+      {mode === "choose" && CouponCard}
 
-      <PublicFooter />
+      {mode === "deliveryLocate" && step === "locate" && deliveryLocateView}
+      {mode === "pickupLocate"   && step === "locate" && pickupLocateView}
+      {step === "order"  && orderView}
+      {step === "review" && reviewView}
     </div>
+
+    <PublicFooter />
+  </div>
   );
 }
