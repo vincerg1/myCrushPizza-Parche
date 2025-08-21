@@ -24,6 +24,7 @@ const menuDisponibleRouter  = require('./routes/menuDisponible')(prisma);
 const googleRouter          = require('./routes/googleProxy');
 const publicRoutes          = require('./routes/public')(prisma);
 const venta                 = require('./routes/venta')(prisma);
+const couponsRouter         = require('./routes/coupons')(prisma);
 
 /* ───────── Middlewares en el orden correcto ───────── */
 app.use(cors());
@@ -48,7 +49,7 @@ app.use('/api/menuDisponible',  menuDisponibleRouter);
 app.use('/api/google',          googleRouter);
 app.use('/api/public',          publicRoutes);   // ⬅️ montado una sola vez
 app.use('/api/venta',           venta);
-
+app.use('/api/coupons', couponsRouter);
 /* Ruta base */
 app.get('/', (_, res) => {
   res.send('🚀 API de myCrushPizza funcionando correctamente');
