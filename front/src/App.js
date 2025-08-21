@@ -6,6 +6,7 @@ import SignIn from "./components/SignIn";
 import CustomerInfo from "./components/CustomerInfo";
 import PublicCheckout from "./components/PublicCheckout"; // ⬅️ nuevo
 import { useAuth } from "./components/AuthContext";
+import PaymentResult from "./components/PaymentResult";
 
 export default function App() {
   const { auth } = useAuth();
@@ -20,6 +21,8 @@ export default function App() {
 
       {/* resto de la app (protegido tras login) */}
       <Route path="/*" element={auth ? <Backoffice /> : <SignIn />} />
+      
+      <Route path="/venta/result" element={<PaymentResult />} />
     </Routes>
   );
 }
