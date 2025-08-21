@@ -5,7 +5,12 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npx prisma migrate deploy && node index.js"
+    "start": "npx prisma migrate deploy && node index.js",
+    "dev": "node index.js",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate deploy",
+    "seed:coupons": "node scripts/seed-coupons.js",
+    "seed:coupons:n": "node scripts/seed-coupons.js"
   },
   "keywords": [],
   "author": "",
