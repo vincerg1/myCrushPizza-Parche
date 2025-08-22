@@ -17,8 +17,6 @@ const GOOGLE_KEY =
 const COUNTRY = "ES";
 const DELIVERY_FEE = 2.5;
 const DELIVERY_BLOCK = 5;
-
-// CRA expone REACT_APP_*; si no hay, usa DELIVERY_MAX_KM o 7.
 const DELIVERY_MAX_KM = Number(
   process.env.REACT_APP_DELIVERY_MAX_KM || process.env.DELIVERY_MAX_KM || 7
 );
@@ -27,6 +25,7 @@ const DELIVERY_MAX_KM = Number(
 const phoneDigits = (s) => (s || "").replace(/\D/g, "");
 const hasBaseCustomer = (c) => !!(c?.name?.trim() && phoneDigits(c?.phone).length >= 7);
 
+// Reverse geocode
 async function reverseGeocode({ lat, lng }) {
   return new Promise((resolve) => {
     if (!window.google?.maps) return resolve(null);
@@ -39,11 +38,11 @@ async function reverseGeocode({ lat, lng }) {
 }
 
 export default function PublicCheckout() {
-  // choose → deliveryLocate / pickupLocate → order → review
+  // Flow: choose → deliveryLocate/pickupLocate (locate) → order → review
   const [mode, setMode] = useState("choose");
+  const [step, setStep] = useState("locate");
 
   // comunes / delivery
-  const [step, setStep] = useState("locate");
   const [query, setQuery] = useState("");
   const [coords, setCoords] = useState(null);
   const [nearest, setNearest] = useState(null);
@@ -55,15 +54,45 @@ export default function PublicCheckout() {
   const [mapCenter, setMapCenter] = useState({ lat: 40.4168, lng: -3.7038 }); // Madrid fallback
   const [mapZoom, setMapZoom] = useState(12);
 
-  // cliente / carrito / pedido
+  // cliente / carrito
   const [customer, setCustomer] = useState(null);
   const [showCus, setShowCus] = useState(false);
   const [pending, setPending] = useState(null);
-  const [order, setOrder] = useState(null);
   const [flashCus, setFlashCus] = useState(false);
 
-  // feedback para validación visual
+  // validación visual + cache dirección tienda
   const [triedNext, setTriedNext] = useState(false);
+  const [storeAddrById, setStoreAddrById] = useState({});
+
+  // pagar
+  const [isPaying, setIsPaying] = useState(false);
+
+  // ===== helpers tienda =====
+  const getStoreById = useCallback(
+    (id) => stores.find((s) => Number(s.id) === Number(id)),
+    [stores]
+  );
+
+  const ensureStoreAddress = useCallback(
+    async (id) => {
+      const s = getStoreById(id);
+      if (!s) return null;
+
+      const inline = s.address_1 || s.address || s.street || s.fullAddress || null;
+      if (inline) {
+        setStoreAddrById((m) => ({ ...m, [id]: inline }));
+        return inline;
+      }
+
+      if (typeof s.latitude === "number" && typeof s.longitude === "number") {
+        const addr = await reverseGeocode({ lat: s.latitude, lng: s.longitude });
+        if (addr) setStoreAddrById((m) => ({ ...m, [id]: addr }));
+        return addr;
+      }
+      return null;
+    },
+    [getStoreById]
+  );
 
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
@@ -98,13 +127,18 @@ export default function PublicCheckout() {
 
   // ===== CUPÓN =====
   const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null);   // { code, percent }
-  const [couponMsg, setCouponMsg] = useState(""); // feedback usuario
+  const [coupon, setCoupon] = useState(null); // { code, percent }
+  const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
 
   const checkCoupon = useCallback(async () => {
     const code = (couponCode || "").trim().toUpperCase();
-    if (!code) { setCoupon(null); setCouponOk(false); setCouponMsg("Introduce un cupón."); return; }
+    if (!code) {
+      setCoupon(null);
+      setCouponOk(false);
+      setCouponMsg("Introduce un cupón.");
+      return;
+    }
     try {
       const { data } = await api.get("/api/coupons/validate", { params: { code } });
       if (data?.valid) {
@@ -124,14 +158,15 @@ export default function PublicCheckout() {
     }
   }, [couponCode]);
 
-  // ===== PICKUP: cargar SOLO tiendas activas con coordenadas =====
+  // ===== PICKUP: cargar tiendas activas con coordenadas =====
   useEffect(() => {
     if (mode !== "pickupLocate") return;
     (async () => {
       try {
         const { data } = await api.get("/api/stores");
-        const actives = (Array.isArray(data) ? data : [])
-          .filter((s) => s?.active && typeof s.latitude === "number" && typeof s.longitude === "number");
+        const actives = (Array.isArray(data) ? data : []).filter(
+          (s) => s?.active && typeof s.latitude === "number" && typeof s.longitude === "number"
+        );
         setStores(actives);
         if (actives.length) {
           setMapCenter({ lat: actives[0].latitude, lng: actives[0].longitude });
@@ -154,18 +189,86 @@ export default function PublicCheckout() {
     if (mode === "deliveryLocate") {
       if (!baseOk) {
         flashCustomerBtn();
-        return false;
       }
-      if (!addrOk) return false;
-      return true;
+      return baseOk && addrOk;
     } else {
       if (!baseOk) {
         flashCustomerBtn();
-        return false;
       }
-      if (!selectedStoreId) return false;
-      return true;
+      return baseOk && !!selectedStoreId;
     }
+  };
+
+  // =================== SWIPE NAV ===================
+  const tStart = useRef({ x: 0, y: 0, at: 0, target: null });
+  const SWIPE_X = 70; // px
+  const SWIPE_Y_MAX = 40; // px vertical máximo
+
+  const isInteractive = (el) => {
+    if (!el) return false;
+    const tag = el.tagName;
+    if (!tag) return false;
+    const t = tag.toUpperCase();
+    if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(t)) return true;
+    return el.closest?.("[data-noswipe]") ? true : false;
+  };
+
+  const goBack = () => {
+    if (mode === "deliveryLocate" || mode === "pickupLocate") {
+      setMode("choose");
+      setStep("locate");
+      return;
+    }
+    if (step === "review") {
+      setStep("order");
+      return;
+    }
+    if (step === "order") {
+      setStep("locate");
+      return;
+    }
+  };
+
+  const goForward = () => {
+    if (step === "locate") {
+      if (nextGuard()) setStep("order");
+      return;
+    }
+    if (step === "order") {
+      if (pending) setStep("review");
+      return;
+    }
+  };
+
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    tStart.current = { x: t.clientX, y: t.clientY, at: Date.now(), target: e.target };
+  };
+
+  const onTouchMove = (e) => {
+    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+    const t = e.touches[0];
+    const dx = t.clientX - tStart.current.x;
+    const dy = Math.abs(t.clientY - tStart.current.y);
+    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
+  };
+
+  const onTouchEnd = (e) => {
+    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+    const changed = e.changedTouches?.[0];
+    if (!changed) return;
+    const dx = changed.clientX - tStart.current.x;
+    const dy = Math.abs(changed.clientY - tStart.current.y);
+    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
+      if (dx < 0) goForward();
+      else goBack();
+    }
+  };
+
+  // soporte teclado (desktop)
+  const onKeyDown = (e) => {
+    if (e.key === "ArrowLeft") goBack();
+    if (e.key === "ArrowRight") goForward();
   };
 
   // =================== VISTAS ===================
@@ -178,12 +281,12 @@ export default function PublicCheckout() {
   const chooseMode = (
     <div className="pc-card pc-card--hero">
       <img src={logo} alt="MyCrushPizza" className="pc-logo pc-logo--bleed" />
-
       <h2 className="pc-title pc-title-center pc-title-pulse">¿Cómo quieres tu pedido?</h2>
 
       <div className="pc-choice">
         <button
           className="pc-btn pc-btn-primary"
+          style={{ fontSize: "18px" }}
           onClick={() => {
             setMode("pickupLocate");
             setStep("locate");
@@ -195,6 +298,7 @@ export default function PublicCheckout() {
 
         <button
           className="pc-btn pc-btn-primary"
+          style={{ fontSize: "18px" }}
           onClick={() => {
             setMode("deliveryLocate");
             setStep("locate");
@@ -209,7 +313,6 @@ export default function PublicCheckout() {
 
   const deliveryLocateView = (
     <div className="pc-card">
-      {/* switch de método */}
       <div className="pc-actions" style={{ marginBottom: 8 }}>
         <button
           className="pc-btn pc-btn-ghost push"
@@ -247,7 +350,7 @@ export default function PublicCheckout() {
 
       {coords && (
         <LoadScriptNext googleMapsApiKey={GOOGLE_KEY}>
-          <div className="pc-map">
+          <div className="pc-map" data-noswipe>
             <GoogleMap
               center={coords}
               zoom={15}
@@ -280,7 +383,6 @@ export default function PublicCheckout() {
         </LoadScriptNext>
       )}
 
-      {/* Info / aviso de cobertura */}
       {nearest && !nearest.error && !outOfRange && (
         <p className="pc-note">
           🧭 Tienda más cercana: <b>#{nearest.storeId}</b> (~{Number(nearest.distanciaKm).toFixed(2)} km)
@@ -289,19 +391,16 @@ export default function PublicCheckout() {
       {nearest && !nearest.error && outOfRange && (
         <div className="pc-alert">
           Estás fuera del rango de servicio (<span className="pc-badge">{DELIVERY_MAX_KM} km</span>).
-          Distancia estimada: ~{Number(nearest.distanciaKm).toFixed(2)} km. Prueba con otra dirección o selecciona{" "}
-          <b>Recoger en tienda</b>.
+          Distancia estimada: ~{Number(nearest.distanciaKm).toFixed(2)} km. Prueba con otra dirección o selecciona <b>Recoger en tienda</b>.
         </div>
       )}
 
-      {/* Falta de datos de cliente */}
       {!baseOk && triedNext && (
         <div className="pc-alert" role="alert" aria-live="polite" style={{ marginTop: 8 }}>
           Faltan <b>Nombre</b> y <b>Teléfono</b> del cliente. Toca “Datos del cliente” para completar.
         </div>
       )}
 
-      {/* Dirección fuera de rango / incompleta */}
       {triedNext && !addrOk && (
         <div className="pc-alert" style={{ marginTop: 8 }}>
           La dirección debe estar dentro del área de servicio (máx {DELIVERY_MAX_KM} km).
@@ -344,7 +443,6 @@ export default function PublicCheckout() {
 
   const pickupLocateView = (
     <div className="pc-card">
-      {/* switch de método */}
       <div className="pc-actions" style={{ marginBottom: 8 }}>
         <button
           className="pc-btn pc-btn-ghost push"
@@ -364,7 +462,7 @@ export default function PublicCheckout() {
         <div>
           {/* 1) MAPA */}
           <LoadScriptNext googleMapsApiKey={GOOGLE_KEY}>
-            <div className="pc-map">
+            <div className="pc-map" data-noswipe>
               <GoogleMap
                 center={mapCenter}
                 zoom={mapZoom}
@@ -380,6 +478,7 @@ export default function PublicCheckout() {
                       setSelectedStoreId(Number(s.id));
                       setMapCenter({ lat: s.latitude, lng: s.longitude });
                       setMapZoom(15);
+                      ensureStoreAddress(s.id);
                     }}
                   />
                 ))}
@@ -402,6 +501,7 @@ export default function PublicCheckout() {
                 setMapCenter({ lat: s.latitude, lng: s.longitude });
                 setMapZoom(15);
               }
+              ensureStoreAddress(id);
             }}
           >
             <option value="">– selecciona tienda –</option>
@@ -412,7 +512,14 @@ export default function PublicCheckout() {
             ))}
           </select>
 
-          {/* Mensajes de error */}
+          {/* Dirección textual */}
+          {selectedStoreId && (
+            <p className="pc-note" style={{ marginTop: 8 }}>
+              <b>Dirección de la tienda:</b> {storeAddrById[selectedStoreId] || "obteniendo dirección…"}
+            </p>
+          )}
+
+          {/* Errores */}
           {!baseOk && triedNext && (
             <div className="pc-alert" role="alert" aria-live="polite" style={{ marginTop: 8 }}>
               Faltan <b>Nombre</b> y <b>Teléfono</b> del cliente. Toca “Datos del cliente” para completar.
@@ -463,7 +570,6 @@ export default function PublicCheckout() {
   // Paso 2: carrito
   const orderView = (
     <div className="pc-card">
-      {/* acción superior (derecha) */}
       <div className="pc-actions" style={{ marginBottom: 8 }}>
         <button className="pc-btn pc-btn-ghost push" onClick={() => setStep("locate")} aria-label="Volver a seleccionar tienda/dirección">
           ← volver
@@ -475,7 +581,17 @@ export default function PublicCheckout() {
         compact
         customer={customer}
         onConfirmCart={(data) => {
-          setPending({ ...data, customer });
+          const sid = mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId);
+          const sel = sid ? getStoreById(sid) : null;
+          const addr = sid ? storeAddrById[sid] : undefined;
+
+          setPending({
+            ...data,
+            customer,
+            storeId: sid ?? data.storeId,
+            storeName: sel?.storeName || sel?.name || "",
+            storeAddress: addr,
+          });
           setStep("review");
         }}
         onDone={() => {}}
@@ -490,7 +606,7 @@ export default function PublicCheckout() {
         const id = Number(x.pizzaId ?? x.id);
         const name = String(x.name ?? x.pizzaName ?? "").trim();
         if (Number.isFinite(id) && id > 0) return { pizzaId: id, size: x.size, qty: x.qty };
-        if (name) return { name, size: x.size, qty: x.qty }; // backend lo convierte name→id
+        if (name) return { name, size: x.size, qty: x.qty };
         return null;
       })
       .filter(Boolean);
@@ -506,6 +622,78 @@ export default function PublicCheckout() {
   const reviewNetProducts = pending ? Number(pending.total || 0) - couponDiscount : 0;
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 
+  const startPayment = useCallback(async () => {
+    if (!pending || isPaying) return;
+    setIsPaying(true);
+    try {
+      const payload = {
+        storeId: pending.storeId,
+        type: isDelivery ? "DELIVERY" : "LOCAL",
+        delivery: isDelivery ? "COURIER" : "PICKUP",
+        channel: "WHATSAPP",
+        customer: isDelivery
+          ? {
+              phone: customer?.phone,
+              name: customer?.name,
+              address_1: customer?.address_1 || query,
+              lat: coords?.lat,
+              lng: coords?.lng,
+            }
+          : { phone: customer?.phone, name: customer?.name },
+        items: buildItemsForApi(pending.items),
+        extras: isDelivery
+          ? [
+              {
+                code: "DELIVERY_FEE",
+                label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+                amount: deliveryFeeTotal,
+              },
+            ]
+          : [],
+        // Solo enviamos cupón si es válido
+        ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
+        notes: "",
+      };
+
+      // 1) Crear venta (AWAITING_PAYMENT)
+      const { data: created } = await api.post("/api/venta/pedido", payload);
+
+      // 2) Crear sesión de pago (pasamos id y code por robustez)
+      const { data: pay } = await api.post("/api/venta/checkout-session", {
+        orderId: created?.id,
+        code: created?.code,
+      });
+
+      if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
+      window.location.href = pay.url;
+    } catch (e) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.message ||
+        "No se pudo iniciar el pago";
+      // Mensajes específicos útiles
+      if (/Stripe no configurado/i.test(msg)) {
+        alert("Pago no disponible (Stripe no configurado).");
+      } else if (/fuera.*zona|servicio/i.test(msg)) {
+        alert("La dirección está fuera del área de servicio.");
+      } else {
+        alert(msg);
+      }
+      setIsPaying(false);
+    }
+  }, [
+    pending,
+    isPaying,
+    isDelivery,
+    customer,
+    query,
+    coords,
+    deliveryBlocks,
+    deliveryFeeTotal,
+    couponOk,
+    coupon,
+  ]);
+
   const reviewView = (
     <div className="pc-card">
       <h2 className="pc-title">Revisión del pedido</h2>
@@ -513,7 +701,13 @@ export default function PublicCheckout() {
         <>
           <p>
             <b>Tienda:</b> #{pending.storeId}
+            {pending.storeName ? ` — ${pending.storeName}` : ""}
           </p>
+          {!isDelivery && pending.storeAddress && (
+            <p>
+              <b>Dirección de recogida:</b> {pending.storeAddress}
+            </p>
+          )}
           {customer?.name && (
             <p>
               <b>Cliente:</b> {customer.name} ({customer.phone || "-"})
@@ -542,19 +736,14 @@ export default function PublicCheckout() {
                   0
                 );
                 const lineTotal = (unitBase + unitExtras) * Number(it.qty || 0);
-
                 const label = it.name && String(it.name).trim() ? it.name : `#${it.pizzaId}`;
-
                 return (
                   <tr key={i}>
                     <td>
                       {label}
                       {Array.isArray(it.extras) && it.extras.length > 0 && (
                         <div className="pc-note">
-                          +{" "}
-                          {it.extras
-                            .map((e) => `${e.name} (+€${Number(e.price || 0).toFixed(2)})`)
-                            .join(", ")}
+                          + {it.extras.map((e) => `${e.name} (+€${Number(e.price || 0).toFixed(2)})`).join(", ")}
                         </div>
                       )}
                     </td>
@@ -576,8 +765,7 @@ export default function PublicCheckout() {
             )}
             {isDelivery && (
               <div>
-                Gastos de envío ({deliveryBlocks} envío{deliveryBlocks > 1 ? "s" : ""} ·{" "}
-                {DELIVERY_FEE.toFixed(2)} € cada {DELIVERY_BLOCK} pizzas): €{deliveryFeeTotal.toFixed(2)}
+                Gastos de envío ({deliveryBlocks} envío{deliveryBlocks > 1 ? "s" : ""} · {DELIVERY_FEE.toFixed(2)} € cada {DELIVERY_BLOCK} pizzas): €{deliveryFeeTotal.toFixed(2)}
               </div>
             )}
             <div className="pc-total">Total: €{reviewTotal.toFixed(2)}</div>
@@ -596,48 +784,10 @@ export default function PublicCheckout() {
             </button>
             <button
               className="pc-btn pc-btn-primary push"
-              onClick={async () => {
-                try {
-                  const payload = {
-                    storeId: pending.storeId,
-                    type: isDelivery ? "DELIVERY" : "LOCAL",
-                    delivery: isDelivery ? "COURIER" : "PICKUP",
-                    channel: "WHATSAPP",
-                    customer: isDelivery
-                      ? {
-                          phone: customer?.phone,
-                          name: customer?.name,
-                          address_1: customer?.address_1 || query,
-                          lat: coords?.lat,
-                          lng: coords?.lng,
-                        }
-                      : { phone: customer?.phone, name: customer?.name },
-                    items: buildItemsForApi(pending.items),
-                    // Enviamos extras (envío) y cupón
-                    extras: isDelivery
-                      ? [
-                          {
-                            code: "DELIVERY_FEE",
-                            label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-                            amount: deliveryFeeTotal,
-                          },
-                        ]
-                      : [],
-                    coupon: coupon?.code || undefined,
-                    notes: "",
-                  };
-
-                  const { data: created } = await api.post("/api/venta/pedido", payload);
-                  setOrder(created);
-
-                  const { data } = await api.post("/api/venta/checkout-session", { orderId: created.id });
-                  window.location.href = data.url;
-                } catch (e) {
-                  alert(e.response?.data?.error || "No se pudo iniciar el pago");
-                }
-              }}
+              onClick={startPayment}
+              disabled={isPaying}
             >
-              Pagar ahora
+              {isPaying ? "Redirigiendo…" : "Pagar ahora"}
             </button>
           </div>
         </>
@@ -652,7 +802,6 @@ export default function PublicCheckout() {
       <footer className="footer">
         <div className="footer__inner">
           <p className="info-text">¡Más información aquí!</p>
-
           <div className="social-icons">
             <a href="https://wa.me/34694301433" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp Chat">
               <FontAwesomeIcon icon={faWhatsapp} className="icon" />
@@ -664,7 +813,6 @@ export default function PublicCheckout() {
               <FontAwesomeIcon icon={faMobileScreenButton} className="icon" />
             </a>
           </div>
-
           <p className="footer__legal">
             © {new Date().getFullYear()} MyCrushPizza SL.<br />
             Todos los derechos reservados.
@@ -674,7 +822,7 @@ export default function PublicCheckout() {
     );
   }
 
-  // === Caja de Cupón (sustituye PublicSpot) ===
+  // === Caja de Cupón (solo portada) ===
   const CouponCard = (
     <div className="pc-card" aria-label="Cupón de descuento">
       <h3 className="pc-title pc-title-center">¿Tienes un cupón?</h3>
@@ -684,34 +832,33 @@ export default function PublicCheckout() {
           placeholder="Escribe tu código (p. ej. MCRUSH10)"
           value={couponCode}
           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-          onKeyDown={(e) => { if (e.key === "Enter") checkCoupon(); }}
+          onKeyDown={(e) => e.key === "Enter" && checkCoupon()}
           aria-label="Código de cupón"
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
         {coupon && couponOk && <span className="pc-badge" aria-live="polite">{couponMsg}</span>}
       </div>
-      {!couponOk && couponMsg && (
-        <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>
-      )}
+      {!couponOk && couponMsg && <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>}
     </div>
   );
 
   // ========== RENDER ==========
   return (
-  <div className="pc-page">
-    <div className="pc-wrap">
-      {mode === "choose" && chooseMode}
-
-      {/* 👇 Solo en la primera pantalla */}
-      {mode === "choose" && CouponCard}
-
-      {mode === "deliveryLocate" && step === "locate" && deliveryLocateView}
-      {mode === "pickupLocate"   && step === "locate" && pickupLocateView}
-      {step === "order"  && orderView}
-      {step === "review" && reviewView}
+    <div className="pc-page" onKeyDown={onKeyDown}>
+      <div
+        className="pc-wrap"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {mode === "choose" && chooseMode}
+        {mode === "choose" && CouponCard}
+        {mode === "deliveryLocate" && step === "locate" && deliveryLocateView}
+        {mode === "pickupLocate" && step === "locate" && pickupLocateView}
+        {step === "order" && orderView}
+        {step === "review" && reviewView}
+      </div>
+      <PublicFooter />
     </div>
-
-    <PublicFooter />
-  </div>
   );
 }

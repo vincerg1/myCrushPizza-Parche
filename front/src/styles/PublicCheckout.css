@@ -71,6 +71,7 @@
 .pc-btn-primary{
   background:var(--brand-blue);
   color:var(--text-on-blue);
+  font-size: 14px;
 }
 .pc-btn-ghost{
   background:#fff;
