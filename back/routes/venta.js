@@ -30,7 +30,7 @@ const clean = v => (v === undefined || v === '' ? null : v);
 const upper = s => String(s || '').trim().toUpperCase();
 const toPrice = v => { if (v==null||v==='') return NaN; const n=Number(String(v).replace(',','.')); return Number.isFinite(n)?n:NaN; };
 const parseMaybe = (v, fb = {}) => { try { return v==null?fb : (typeof v==='string' ? JSON.parse(v) : v); } catch { return fb; } };
-const round2 = n => Math.round(Number(n) * 100) / 100; // ← redondeo a 2 decimales
+const round2 = n => Math.round(Number(n) * 100) / 100;
 
 const DELIVERY_MAX_KM = Number(process.env.DELIVERY_MAX_KM ?? 7);
 function haversineKm(lat1, lon1, lat2, lon2){
@@ -55,17 +55,19 @@ async function normalizeItems(db, items){
 
   for (const i of src){
     const raw = i.pizzaId ?? i.id ?? i.name ?? i.pizzaName;
-    const key = String(raw ?? '').trim();
-    const size = upper(i.size || 'M');
-    const qty  = Math.max(1, Number(i.qty || 1));
-    if (!key) throw new Error('Ítem inválido: id/nombre vacío');
+    theKey: {
+      const key = String(raw ?? '').trim();
+      const size = upper(i.size || 'M');
+      const qty  = Math.max(1, Number(i.qty || 1));
+      if (!key) throw new Error('Ítem inválido: id/nombre vacío');
 
-    if (/^\d+$/.test(key)){
-      direct.push({ pizzaId: Number(key), size, qty });
-      originalKinds.push({ kind:'id', key, size, qty });
-    } else {
-      namesNeeded.add(key);
-      originalKinds.push({ kind:'name', key, size, qty });
+      if (/^\d+$/.test(key)){
+        direct.push({ pizzaId: Number(key), size, qty });
+        originalKinds.push({ kind:'id', key, size, qty });
+      } else {
+        namesNeeded.add(key);
+        originalKinds.push({ kind:'name', key, size, qty });
+      }
     }
   }
 
@@ -125,7 +127,9 @@ async function recalcTotals(tx, storeId, items){
 /* ───────────────────────────────────────────────────────────── */
 module.exports = (prisma) => {
 
-  // POST /api/venta/pedido
+  /* ============================================================
+   *  A) CREA LA VENTA (AWAITING_PAYMENT)  →  Checkout
+   * ============================================================ */
   router.post('/pedido', async (req, res) => {
     const {
       storeId,
@@ -133,11 +137,11 @@ module.exports = (prisma) => {
       delivery = 'COURIER',
       customer,
       items = [],
-      extras = [],                       // ← [COUPON] ahora aceptamos extras (p.ej. DELIVERY_FEE)
+      extras = [],
       notes = '',
       channel = 'WHATSAPP',
-      coupon: rawCoupon,                 // ← [COUPON] también aceptamos 'coupon'
-      couponCode: rawCouponCode          // ← [COUPON] o 'couponCode'
+      coupon: rawCoupon,
+      couponCode: rawCouponCode
     } = req.body || {};
     logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
 
@@ -220,7 +224,7 @@ module.exports = (prisma) => {
         await assertStock(tx, Number(storeId), normItems);
         const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-        // [COUPON] preparar extras (clonados) y aplicar cupón si procede
+        // [COUPON] Extras + cupón (marca como usado YA; si prefieres tras pago, muévelo al webhook)
         const extrasFinal = Array.isArray(extras) ? [...extras] : [];
         let discounts = 0;
 
@@ -235,19 +239,8 @@ module.exports = (prisma) => {
           if (percent > 0) {
             const discountAmount = round2(totalProducts * (percent/100));
             discounts = discountAmount;
-
-            // Añadimos un extra negativo para rastrear el cupón en la venta
-            extrasFinal.push({
-              code: 'COUPON',
-              label: `Cupón ${couponCode} (-${percent}%)`,
-              amount: -discounts
-            });
-
-            // Marcar cupón como usado YA (si prefieres tras pago, mueve esto al webhook)
-            await tx.coupon.update({
-              where: { id: coup.id },
-              data : { used: true, usedAt: new Date() }
-            });
+            extrasFinal.push({ code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts });
+            await tx.coupon.update({ where: { id: coup.id }, data : { used: true, usedAt: new Date() } });
           }
         }
 
@@ -261,9 +254,9 @@ module.exports = (prisma) => {
             customerData: snapshot,
             products: lineItems,
             totalProducts,
-            discounts,                         // [COUPON] monto de descuento aplicado sobre productos
-            total: round2(totalProducts - discounts), // [COUPON] total neto de productos (sin envío)
-            extras: extrasFinal,               // [COUPON] guardamos extras (incluye fee y cupón)
+            discounts,
+            total: round2(totalProducts - discounts),
+            extras: extrasFinal,
             notes,
             channel,
             status: 'AWAITING_PAYMENT',
@@ -284,7 +277,11 @@ module.exports = (prisma) => {
     }
   });
 
-  // POST /api/venta/checkout-session
+  /* ============================================================
+   *  B) CHECKOUT SESSION
+   *     - Con venta previa (orderId/code)  → flujo clásico
+   *     - O con carrito "cart"             → pagar primero
+   * ============================================================ */
   router.post('/checkout-session', async (req, res) => {
     if (!stripeReady){
       logW('checkout-session llamado sin Stripe listo');
@@ -292,124 +289,166 @@ module.exports = (prisma) => {
     }
 
     try{
-      const { orderId, code } = req.body || {};
-      const where = orderId ? { id:Number(orderId) } : { code:String(code) };
+      const { orderId, code, cart } = req.body || {};
 
-      const sale = await prisma.sale.findUnique({ where });
-      if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
-      if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
+      /* ---------- B1) Venta previa ---------- */
+      if (orderId || code){
+        const where = orderId ? { id:Number(orderId) } : { code:String(code) };
+        const sale = await prisma.sale.findUnique({ where });
+        if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
+        if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
 
-      const productsJson = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
-      const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : JSON.parse(sale.extras   || '[]');
+        const productsJson = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
+        const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : JSON.parse(sale.extras   || '[]');
 
-      await prisma.$transaction(async (tx) => {
-        await assertStock(tx, sale.storeId, productsJson);
-        const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
+        await prisma.$transaction(async (tx) => {
+          await assertStock(tx, sale.storeId, productsJson);
+          const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
 
-        // resolver nombres por id
-        const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
-        let nameById = new Map();
-        if (ids.length){
-          const pizzas = await tx.menuPizza.findMany({ where:{ id:{ in: ids } }, select:{ id:true, name:true } });
-          nameById = new Map(pizzas.map(p => [p.id, p.name]));
-        }
-
-        const currency = String(sale.currency || 'EUR').toLowerCase();
-
-        // [COUPON] aplicamos descuento prorrateando unit_amount
-        const totalProductsOriginal = Number(total);
-        const discountAmount = Number(sale.discounts || 0);
-        const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
-          ? (discountAmount / totalProductsOriginal)
-          : 0;
-
-        const productLines = lineItems.map(li => {
-          const qty = Number(li.qty || 1);
-          const baseName = `${(li.name || nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
-          const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
-
-          const unitCents = Math.round(Number(li.price) * 100);
-          const discountedCents = discountFraction > 0
-            ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
-            : unitCents;
-
-          return {
-            quantity: qty,
-            price_data: {
-              currency,
-              unit_amount: discountedCents,
-              product_data: {
-                name: displayName,
-                metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
-              }
-            }
-          };
-        });
-
-        // [COUPON] shipping solo desde extras con code==='DELIVERY_FEE'
-        let shippingAmountCents = 0;
-        if (sale.delivery === 'COURIER'){
-          const shippingExtras = (Array.isArray(extrasJson)?extrasJson:[])
-            .filter(ex => ex && ex.code === 'DELIVERY_FEE' && typeof ex.amount === 'number');
-
-          if (shippingExtras.length){
-            shippingAmountCents = Math.round(
-              shippingExtras.reduce((s,e)=>s+Number(e.amount||0),0) * 100
-            );
-          } else {
-            const totalQty = lineItems.reduce((s,li)=>s+Number(li.qty||0),0);
-            const blocks = Math.ceil(totalQty / 5);
-            shippingAmountCents = blocks * 250; // 2.50 €
+          // nombres por id
+          const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
+          let nameById = new Map();
+          if (ids.length){
+            const pizzas = await tx.menuPizza.findMany({ where:{ id:{ in: ids } }, select:{ id:true, name:true } });
+            nameById = new Map(pizzas.map(p => [p.id, p.name]));
           }
-        }
 
-        const pmTypes = ['card'];
-        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
-        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+          const currency = String(sale.currency || 'EUR').toLowerCase();
 
-        const shippingOptions =
-          sale.delivery === 'COURIER' && shippingAmountCents > 0
-            ? [{
-                shipping_rate_data:{
-                  display_name:'Gastos de envío',
-                  type:'fixed_amount',
-                  fixed_amount:{ amount:shippingAmountCents, currency }
+          // prorrateo de descuento
+          const totalProductsOriginal = Number(total);
+          const discountAmount = Number(sale.discounts || 0);
+          const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
+            ? (discountAmount / totalProductsOriginal)
+            : 0;
+
+          const productLines = lineItems.map(li => {
+            const qty = Number(li.qty || 1);
+            const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
+            const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
+            const unitCents = Math.round(Number(li.price) * 100);
+            const discountedCents = discountFraction > 0
+              ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
+              : unitCents;
+
+            return {
+              quantity: qty,
+              price_data: {
+                currency,
+                unit_amount: discountedCents,
+                product_data: {
+                  name: displayName,
+                  metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
                 }
-              }]
-            : undefined;
+              }
+            };
+          });
 
-        logI('Creando Stripe Checkout', { saleId:sale.id, lineItems:productLines.length, shippingCents:shippingAmountCents, currency, pmTypes });
+          // envío desde extras (DELIVERY_FEE) o cálculo blocks
+          let shippingAmountCents = 0;
+          if (sale.delivery === 'COURIER'){
+            const shippingExtras = (Array.isArray(extrasJson)?extrasJson:[])
+              .filter(ex => ex && ex.code === 'DELIVERY_FEE' && typeof ex.amount === 'number');
+            if (shippingExtras.length){
+              shippingAmountCents = Math.round(
+                shippingExtras.reduce((s,e)=>s+Number(e.amount||0),0) * 100
+              );
+            } else {
+              const totalQty = lineItems.reduce((s,li)=>s+Number(li.qty||0),0);
+              const blocks = Math.ceil(totalQty / 5);
+              shippingAmountCents = blocks * 250; // 2.50 €
+            }
+          }
 
-        const session = await stripe.checkout.sessions.create({
-          mode:'payment',
-          payment_method_types: pmTypes,
-          line_items: productLines,
-          shipping_address_collection: sale.delivery === 'COURIER' ? { allowed_countries:['ES'] } : undefined,
-          shipping_options: shippingOptions,
-          phone_number_collection: { enabled:true },
-          customer_email: sale.customerData?.email || undefined,
-          billing_address_collection: 'auto',
-          locale:'es',
+          const pmTypes = ['card'];
+          if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+          if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
 
-          // ⬇⬇⬇ UNIFICADO: siempre vuelve a /venta/result con status y order
-          success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}`,
-          cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}`,
+          const shippingOptions =
+            sale.delivery === 'COURIER' && shippingAmountCents > 0
+              ? [{
+                  shipping_rate_data:{
+                    display_name:'Gastos de envío',
+                    type:'fixed_amount',
+                    fixed_amount:{ amount:shippingAmountCents, currency }
+                  }
+                }]
+              : undefined;
 
-          metadata: { saleId:String(sale.id), saleCode:sale.code||'', type:sale.type, delivery:sale.delivery }
+          const session = await stripe.checkout.sessions.create({
+            mode:'payment',
+            payment_method_types: pmTypes,
+            line_items: productLines,
+            shipping_address_collection: sale.delivery === 'COURIER' ? { allowed_countries:['ES'] } : undefined,
+            shipping_options: shippingOptions,
+            phone_number_collection: { enabled:true },
+            customer_email: sale.customerData?.email || undefined,
+            billing_address_collection: 'auto',
+            locale:'es',
+            success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+            metadata: { saleId:String(sale.id), saleCode:sale.code||'', type:sale.type, delivery:sale.delivery }
+          });
+
+          // total final
+          const netProductsTotal = round2(totalProductsOriginal - discountAmount);
+          const totalWithShipping = netProductsTotal + (shippingAmountCents/100);
+
+          await tx.sale.update({
+            where:{ id:sale.id },
+            data : { total: totalWithShipping, stripeCheckoutSessionId: session.id, status:'AWAITING_PAYMENT' }
+          });
+
+          logI('→ Stripe session creada (venta previa)', { id:session.id, saleId:sale.id });
+          res.json({ url: session.url });
         });
 
-        // [COUPON] total final = productos con descuento + envío
-        const netProductsTotal = round2(totalProductsOriginal - discountAmount);
-        const totalWithShipping = netProductsTotal + (shippingAmountCents/100);
+        return;
+      }
 
-        await tx.sale.update({
-          where:{ id:sale.id },
-          data : { total: totalWithShipping, stripeCheckoutSessionId: session.id, status:'AWAITING_PAYMENT' }
-        });
+      /* ---------- B2) Modo carrito (pagar primero) ---------- */
+      if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
+      if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
+        return res.status(400).json({ error: 'cart inválido' });
+      }
 
-        logI('→ Stripe session creada', { id:session.id });
-        res.json({ url: session.url });
+      const totalCents = Math.round(Number(cart?.totals?.total) * 100);
+      if (!Number.isFinite(totalCents) || totalCents <= 0){
+        return res.status(400).json({ error: 'total inválido' });
+      }
+
+      // ⚠️ En producción, mejor guardar el carrito en BD y pasar un token.
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: "eur",
+            product_data: { name: "Pedido MyCrushPizza" },
+            unit_amount: totalCents
+          },
+          quantity: 1
+        }],
+        success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+        locale:'es',
+        metadata: {
+          cart: JSON.stringify({
+            storeId: cart.storeId,
+            type   : cart.type,
+            delivery: cart.delivery,
+            channel: cart.channel || 'WEB',
+            customer: cart.customer || null,
+            items: cart.items,            // [{pizzaId,size,qty}]
+            extras: cart.extras || [],    // p.ej. DELIVERY_FEE
+            coupon: cart.coupon || null,
+            totals: cart.totals || null
+          })
+        }
       });
+
+      logI('→ Stripe session creada (modo cart)', { id:session.id });
+      return res.json({ url: session.url });
 
     } catch (e) {
       logE('[POST /api/venta/checkout-session] error', e);
@@ -417,7 +456,199 @@ module.exports = (prisma) => {
     }
   });
 
-  // Webhook Stripe
+  /* ============================================================
+   *  B.1) Confirmación manual (doble seguro)
+   *       Verifica session y marca PAID / crea venta (modo cart)
+   * ============================================================ */
+  router.post('/checkout/confirm', async (req, res) => {
+    if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
+
+    try {
+      const { sessionId, orderCode } = req.body || {};
+      if (!sessionId && !orderCode) {
+        return res.status(400).json({ error: 'sessionId u orderCode requerido' });
+      }
+
+      // Recuperar sesión (si tenemos sessionId)
+      let session = null;
+      if (sessionId) {
+        session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+      }
+
+      // Intentar localizar la venta existente
+      let sale = null;
+      if (session?.metadata?.saleId) {
+        sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
+      }
+      if (!sale && session?.id) {
+        sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+      }
+      if (!sale && orderCode) {
+        sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
+      }
+
+      // ¿Está pagado?
+      const paidBySession = session?.payment_status === 'paid';
+      let pi = null;
+      if (session?.payment_intent) {
+        pi = typeof session.payment_intent === 'string'
+          ? await stripe.paymentIntents.retrieve(session.payment_intent)
+          : session.payment_intent;
+      }
+      const paidByPI = pi?.status === 'succeeded';
+      const isPaid = paidBySession || paidByPI;
+
+      // Modo carrito: no hay venta aún, pero existe cart en metadata → crear ahora
+      if (!sale && session?.metadata?.cart) {
+        let cart = null;
+        try { cart = JSON.parse(session.metadata.cart); } catch {}
+        if (!cart) return res.status(404).json({ error: 'No hay venta ni carrito asociado a la sesión' });
+        if (!isPaid) return res.json({ ok:true, paid:false, status:'AWAITING_PAYMENT' });
+
+        // Idempotencia por checkoutId
+        const already = await prisma.sale.findFirst({ where:{ stripeCheckoutSessionId: session.id } });
+        if (already) {
+          return res.json({ ok:true, paid: already.status === 'PAID', status: already.status });
+        }
+
+        await prisma.$transaction(async (tx) => {
+          const normItems = await normalizeItems(tx, cart.items || []);
+          await assertStock(tx, Number(cart.storeId), normItems);
+          const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
+
+          // Cliente
+          let customerId = null, snapshot = null;
+          const isDelivery =
+            String(cart.type).toUpperCase() === 'DELIVERY' ||
+            String(cart.delivery).toUpperCase() === 'COURIER';
+
+          if (cart?.customer?.phone?.trim()){
+            const phone = onlyDigits(cart.customer.phone);
+            const name  = (cart.customer.name || '').trim();
+            const createAddress = isDelivery ? (cart.customer.address_1 || 'SIN DIRECCIÓN') : `(PICKUP) ${phone}`;
+
+            const c = await tx.customer.upsert({
+              where: { phone },
+              update: {
+                phone, name,
+                ...(isDelivery && {
+                  address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                  lat: clean(cart.customer.lat),
+                  lng: clean(cart.customer.lng),
+                }),
+                portal: clean(cart.customer.portal),
+                observations: clean(cart.customer.observations),
+              },
+              create: {
+                code: await genCustomerCode(tx),
+                phone, name,
+                address_1: createAddress,
+                portal: clean(cart.customer.portal),
+                observations: clean(cart.customer.observations),
+                lat: isDelivery ? clean(cart.customer.lat) : null,
+                lng: isDelivery ? clean(cart.customer.lng) : null,
+              },
+            });
+            customerId = c.id;
+            snapshot = {
+              phone: c.phone, name: c.name,
+              address_1: c.address_1, portal: c.portal, observations: c.observations,
+              lat: c.lat, lng: c.lng
+            };
+          }
+
+          // Extras + cupón (marcar usado aquí)
+          const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+          let discounts = 0;
+
+          const couponCode = upper(cart.coupon || '');
+          if (couponCode){
+            const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+            const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+            if (coup && !coup.used && !expired){
+              const percent = Number(coup.percent) || 0;
+              if (percent > 0){
+                const discountAmount = round2(totalProducts * (percent/100));
+                discounts = discountAmount;
+                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                await tx.coupon.update({ where: { id:coup.id }, data : { used:true, usedAt:new Date() } });
+              }
+            }
+          }
+
+          const newSale = await tx.sale.create({
+            data: {
+              code: await genOrderCode(tx),
+              storeId: Number(cart.storeId),
+              customerId,
+              type: cart.type || 'LOCAL',
+              delivery: cart.delivery || 'PICKUP',
+              customerData: snapshot || cart.customer || {},
+              products: lineItems,
+              totalProducts,
+              discounts,
+              total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
+              extras: extrasFinal,
+              notes: cart.notes || '',
+              channel: cart.channel || 'WEB',
+              status: 'PAID',
+              stripeCheckoutSessionId: session.id,
+              stripePaymentIntentId: String(pi?.id || session.payment_intent || ''),
+              address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+              lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+              lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+            }
+          });
+
+          // Bajar stock
+          for (const p of lineItems){
+            await tx.storePizzaStock.update({
+              where:{ storeId_pizzaId:{ storeId:newSale.storeId, pizzaId:Number(p.pizzaId) } },
+              data :{ stock:{ decrement:Number(p.qty) } }
+            });
+          }
+        });
+
+        return res.json({ ok:true, paid:true, status:'PAID' });
+      }
+
+      // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
+      if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
+      if (!isPaid) return res.json({ ok:true, paid:false, status:sale.status });
+
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.sale.findUnique({ where:{ id:sale.id } });
+        if (fresh.status === 'PAID') return; // idempotente
+
+        const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
+        for (const p of items){
+          await tx.storePizzaStock.update({
+            where:{ storeId_pizzaId:{ storeId:fresh.storeId, pizzaId:Number(p.pizzaId) } },
+            data :{ stock:{ decrement:Number(p.qty) } }
+          });
+        }
+
+        await tx.sale.update({
+          where:{ id:fresh.id },
+          data :{
+            status:'PAID',
+            stripePaymentIntentId: String(pi?.id || session?.payment_intent || fresh.stripePaymentIntentId || ''),
+          }
+        });
+      });
+
+      res.json({ ok:true, paid:true, status:'PAID' });
+    } catch (e) {
+      logE('[POST /api/venta/checkout/confirm] error', e);
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  /* ============================================================
+   *  C) Webhook Stripe
+   *     - Si viene saleId: marcar pagada + bajar stock
+   *     - Si viene cart  : crear venta ahora, bajar stock, marcar cupón
+   * ============================================================ */
   router.post('/stripe/webhook', express.raw({ type:'application/json' }), async (req, res) => {
     if (!stripeReady) { logW('webhook recibido pero Stripe no está listo'); return res.status(503).send('Stripe not configured'); }
     let event;
@@ -437,6 +668,125 @@ module.exports = (prisma) => {
       const paymentIntent = session.payment_intent;
 
       try {
+        /* ---------- C1) Modo carrito: crear venta ahora ---------- */
+        if (session.metadata?.cart){
+          let cart = null;
+          try { cart = JSON.parse(session.metadata.cart); } catch {}
+          if (cart){
+            await prisma.$transaction(async (tx) => {
+              // Normalizar items y recalcular precios
+              const normItems = await normalizeItems(tx, cart.items || []);
+              await assertStock(tx, Number(cart.storeId), normItems);
+              const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
+
+              // Cliente (si hay teléfono)
+              let customerId = null, snapshot = null;
+              const isDelivery =
+                String(cart.type).toUpperCase() === 'DELIVERY' ||
+                String(cart.delivery).toUpperCase() === 'COURIER';
+
+              if (cart?.customer?.phone?.trim()){
+                const phone = onlyDigits(cart.customer.phone);
+                const name  = (cart.customer.name || '').trim();
+
+                const createAddress = isDelivery
+                  ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
+                  : `(PICKUP) ${phone}`;
+
+                const c = await tx.customer.upsert({
+                  where: { phone },
+                  update: {
+                    phone,
+                    name,
+                    ...(isDelivery && {
+                      address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                      lat: clean(cart.customer.lat),
+                      lng: clean(cart.customer.lng),
+                    }),
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                  },
+                  create: {
+                    code: await genCustomerCode(tx),
+                    phone,
+                    name,
+                    address_1: createAddress,
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                    lat: isDelivery ? clean(cart.customer.lat) : null,
+                    lng: isDelivery ? clean(cart.customer.lng) : null,
+                  },
+                });
+                customerId = c.id;
+                snapshot = {
+                  phone: c.phone, name: c.name,
+                  address_1: c.address_1, portal: c.portal, observations: c.observations,
+                  lat: c.lat, lng: c.lng
+                };
+              }
+
+              // Extras + cupón (marcar usado AHORA)
+              const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+              let discounts = 0;
+
+              const couponCode = upper(cart.coupon || '');
+              if (couponCode){
+                const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+                const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+                if (coup && !coup.used && !expired){
+                  const percent = Number(coup.percent) || 0;
+                  if (percent > 0){
+                    const discountAmount = round2(totalProducts * (percent/100));
+                    discounts = discountAmount;
+                    extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                    await tx.coupon.update({
+                      where: { id:coup.id },
+                      data : { used:true, usedAt:new Date() }
+                    });
+                  }
+                }
+              }
+
+              const sale = await tx.sale.create({
+                data: {
+                  code: await genOrderCode(tx),
+                  storeId: Number(cart.storeId),
+                  customerId,
+                  type: cart.type || 'LOCAL',
+                  delivery: cart.delivery || 'PICKUP',
+                  customerData: snapshot || cart.customer || {},
+                  products: lineItems,
+                  totalProducts,
+                  discounts,
+                  total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
+                  extras: extrasFinal,
+                  notes: cart.notes || '',
+                  channel: cart.channel || 'WEB',
+                  status: 'PAID',
+                  stripeCheckoutSessionId: checkoutId,
+                  stripePaymentIntentId: String(paymentIntent),
+                  address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+                  lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+                  lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+                }
+              });
+
+              // Bajar stock
+              for (const p of lineItems){
+                await tx.storePizzaStock.update({
+                  where:{ storeId_pizzaId:{ storeId:sale.storeId, pizzaId:Number(p.pizzaId) } },
+                  data :{ stock:{ decrement:Number(p.qty) } }
+                });
+              }
+
+              logI('Venta creada desde webhook (cart)', { saleId:sale.id, code:sale.code });
+            });
+
+            return res.json({ received:true });
+          }
+        }
+
+        /* ---------- C2) Venta previa: marcar pagada y bajar stock ---------- */
         await prisma.$transaction(async (tx) => {
           const sale = await tx.sale.findFirst({ where:{ stripeCheckoutSessionId: checkoutId } });
           if (!sale){ logW('Webhook session sin venta asociada', { checkoutId }); return; }
@@ -457,7 +807,10 @@ module.exports = (prisma) => {
 
           logI('Venta marcada como PAID', { saleId:sale.id });
         });
-      } catch (e) { logE('[webhook] error al actualizar venta', e); }
+
+      } catch (e) {
+        logE('[webhook] error al procesar session.completed', e);
+      }
     }
 
     res.json({ received:true });

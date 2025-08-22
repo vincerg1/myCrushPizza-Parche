@@ -125,25 +125,26 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ─────────────── GET /api/sales/pending ─────────────── */
-  r.get('/pending', auth(), async (_, res) => {
-    try {
-      const list = await prisma.sale.findMany({
-        where  : {
-        processed   : false,
-       
+/* ─────────────── GET /api/sales/pending ─────────────── */
+r.get('/pending', auth(), async (_, res) => {
+  try {
+    const list = await prisma.sale.findMany({
+      where: {
+        processed: false,
+        NOT: { status: 'AWAITING_PAYMENT' } // ← excluye impagadas; incluye PAID y también NULL
       },
-        orderBy: { date: 'asc' },
-        include: {                // 👈 añade esta línea
-          customer: { select: { code:true } }
-        }
-      });
-      res.json(list);
-    } catch (e) {
-      console.error('[GET /pending]', e);
-      res.status(500).json({ error: 'internal' });
-    }
-  });
+      orderBy: { date: 'asc' },
+      include: {
+        customer: { select: { code: true } }
+      }
+    });
+    res.json(list);
+  } catch (e) {
+    console.error('[GET /pending]', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 
   /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
   r.patch('/:id/ready', auth(), async (req, res) => {
