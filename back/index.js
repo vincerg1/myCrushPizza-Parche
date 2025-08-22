@@ -10,7 +10,7 @@ const app = express();
 const prisma = new PrismaClient();
 
 /* ========= Opciones de despliegue ========= */
-app.set('trust proxy', 1); // si hay proxy (Railway, Nginx, etc.)
+app.set('trust proxy', 1); // necesario si hay proxy (ngrok, render, fly, etc.)
 
 /* ========= CORS (dominios permitidos) ========= */
 const FRONT_BASE_URL = process.env.FRONT_BASE_URL || 'http://localhost:3000';
@@ -23,24 +23,18 @@ if (!ALLOWED.length) {
   ALLOWED.push(FRONT_BASE_URL, 'http://localhost:3000', 'http://127.0.0.1:3000');
 }
 
-const corsOpts = {
+app.use(cors({
   origin(origin, cb) {
-    // permitir llamadas server-to-server (sin Origin) y los orígenes whitelisted
-    if (!origin || ALLOWED.includes(origin)) return cb(null, true);
-    return cb(new Error(`Not allowed by CORS: ${origin}`));
+    // permitir llamadas server-to-server (sin origin)
+    if (!origin) return cb(null, true);
+    if (ALLOWED.includes(origin)) return cb(null, true);
+    return cb(null, false);
   },
-  credentials: true,
-  methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
-  optionsSuccessStatus: 204,
-};
-
-app.use(cors(corsOpts));
-// MUY IMPORTANTE: responder a los preflights globalmente
-app.options('*', cors(corsOpts));
+  credentials: true
+}));
 
 /* ========= Body parsing =========
- * ⚠️ NO parsear JSON del webhook de Stripe.
+ * ⚠️ MUY IMPORTANTE: NO parsear JSON del webhook de Stripe.
  * Este bypass debe ir ANTES de cualquier express.json()
  */
 app.use((req, res, next) => {
@@ -117,6 +111,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log('⚙️ DATABASE_URL =', process.env.DATABASE_URL);
-  console.log('🌐 CORS_ORIGINS =', ALLOWED.join(', '));
   console.log(`🚀 Servidor backend escuchando en http://localhost:${PORT}`);
 });
