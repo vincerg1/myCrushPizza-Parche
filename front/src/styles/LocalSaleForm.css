@@ -60,7 +60,8 @@
   border:1px solid var(--border,#e9e9ee);
   border-radius:12px;
   padding:8px 10px;
-  background:#fff;
+  background:#ffffff;
+  width: 100%;
 }
 .lsf-extras[open]{ box-shadow:0 2px 10px rgba(0,0,0,.05); }
 
