@@ -395,21 +395,22 @@
 }
 
 .pc-card[aria-label="Cupón de descuento"] .pc-actions .pc-badge{
-  flex: 0 0 100%;         /* baja a la siguiente línea sin romper la fila del input+botón */
-  width: 90%;
-  margin: 6px auto 0;     /* centrado dentro de la tarjeta */
+  flex: 0 0 100%;                /* baja a la siguiente línea */
+  width: calc(100% - 24px);      /* deja 12px de margen a cada lado */
+  margin: 6px auto 0;            /* centrado dentro de la tarjeta */
+  box-sizing: border-box;        /* que padding no rompa el ancho calculado */
   text-align: center;
-  border-radius: 14px;    /* un poco más alto/“pill” */
-  padding: 8px 12px;      /* más altura visual */
+  border-radius: 14px;
+  padding: 8px 12px;
 }
 
-/* Colores de marca para el badge del cupón */
+/* Colores de marca (como ya tenías) */
 .pc-badge--brand{
   background: linear-gradient(135deg,#ff2f92,#3a7dff);
-  color: #fff;
-  border: 0;
-  text-shadow: 0 1px 1px rgba(0,0,0,.22);
-  background-size: 200% 200%;
+  color:#fff;
+  border:0;
+  text-shadow:0 1px 1px rgba(0,0,0,.22);
+  background-size:200% 200%;
 }
 
 /* Parpadeo continuo + desplazamiento del degradado */
@@ -419,28 +420,10 @@
     pc-blink      1.4s ease-in-out infinite;
 }
 
-@keyframes pc-grad-shift{
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 100% 50%; }
-}
-@keyframes pc-blink{
-  0%,100% { opacity: 1; filter: saturate(1); }
-  50%     { opacity: .9; filter: saturate(1.15); }
-}
+/* Suavidad del blink */
+@keyframes pc-grad-shift{ 0%{background-position:0% 50%} 100%{background-position:100% 50%} }
+@keyframes pc-blink{ 0%,100%{opacity:1;filter:saturate(1)} 50%{opacity:.92;filter:saturate(1.15)} }
 
-/* Respeta “reducir movimiento” del sistema */
-@media (prefers-reduced-motion: reduce){
-  .pc-badge--blink{ animation: none !important; }
-}
-
-/* (Opcional) si usas el toast de cupón: mismo look/parpadeo */
-.pc-toast--brand{
-  background: linear-gradient(135deg,#ff2f92,#3a7dff);
-  color:#fff;
-  background-size:200% 200%;
-}
-.pc-toast--blink{
-  animation:
-    pc-grad-shift 2.4s ease-in-out infinite alternate,
-    pc-blink      1.4s ease-in-out infinite;
-}
+/* Un poco de “aire” al fondo y recorte por si acaso */
+.pc-card[aria-label="Cupón de descuento"] .pc-actions{ padding-bottom: 6px; }
+.pc-card[aria-label="Cupón de descuento"]{ overflow: hidden; }  /* por si algún glow se sale */
