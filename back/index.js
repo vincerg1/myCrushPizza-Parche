@@ -70,7 +70,7 @@ app.use('/api/sales',           salesRouter);
 app.use('/api/menuDisponible',  menuDisponibleRouter);
 app.use('/api/google',          googleRouter);
 app.use('/api/public',          publicRoutes);
-app.use('/api/venta',           ventaRouter);   // incluye /checkout-session y /stripe/webhook
+app.use('/api/venta',           ventaRouter);   
 app.use('/api/coupons',         couponsRouter);
 
 /* Ruta base */
