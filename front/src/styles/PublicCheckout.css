@@ -280,12 +280,15 @@
 }
 
 /* ====== CONFIRMAR CARRITO: robustez de layout ====== */
+.pc-card{ box-sizing:border-box; max-width:100%; }
+
 .pc-card form,
 .pc-card .pc-form,
 .pc-card .content{
   max-width:100%;
 }
 
+/* Botón confirmar 100% ancho */
 .pc-card .btn-confirm,
 .pc-card button[data-role="confirm"],
 .pc-card button.confirm,
@@ -296,13 +299,101 @@
   max-width:100%;
   margin:12px auto 0;
   border-radius:12px;
-  white-space:normal;     /* si el texto es largo, que rompa a 2 líneas */
+  white-space:normal;   /* si el texto es largo, que rompa */
 }
 
-/* Si el botón vive dentro de .pc-actions, mismo comportamiento responsive */
+/* Si el botón vive dentro de .pc-actions, mismo comportamiento */
 .pc-actions .btn-confirm,
 .pc-actions .btn-confirmar{
   flex:1 1 100%;
+}
+
+/* --- Carrito: evita desbordes de la tabla --- */
+.pc-card .pc-table,
+.pc-card table{
+  width:100%;
+  max-width:100%;
+  table-layout:fixed;        /* ignora “contenido manda” */
+  border-collapse:collapse;
+  display:block;             /* permite overflow-x */
+  overflow-x:auto;
+}
+
+.pc-card .pc-table th,
+.pc-card .pc-table td,
+.pc-card table th,
+.pc-card table td{
+  white-space:normal;        /* permitir saltos de línea */
+  word-break:break-word;
+  overflow-wrap:anywhere;
+}
+
+/* Columnas numéricas con ancho acotado */
+.pc-card .pc-table th:nth-child(2),
+.pc-card .pc-table td:nth-child(2){ width:64px; text-align:center; } /* Size */
+.pc-card .pc-table th:nth-child(3),
+.pc-card .pc-table td:nth-child(3){ width:60px; text-align:center; } /* Qty  */
+.pc-card .pc-table th:nth-child(4),
+.pc-card .pc-table td:nth-child(4){ width:72px; text-align:right;  } /* €    */
+
+.ing-table.mini{
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;                 /* respeta los % por columna */
+  font-variant-numeric: tabular-nums;
+}
+
+.ing-table.mini th,
+.ing-table.mini td{
+  padding: 8px 10px;
+  vertical-align: middle;
+  white-space: nowrap !important;      /* no cortar en 2 líneas */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 1) borrar (10%) */
+.ing-table.mini th:nth-child(1),
+.ing-table.mini td:nth-child(1){
+  width: 10%;
+  min-width: 36px;                     /* para que quepa el icono */
+  text-align: center;
+}
+
+/* 2) item (40%) → más espacio + elipsis si no cabe */
+.ing-table.mini th:nth-child(2),
+.ing-table.mini td:nth-child(2){
+  width: 40%;
+  max-width: 0;                        /* necesario para elipsis con table-layout:fixed */
+}
+
+/* 3) size (15%) */
+.ing-table.mini th:nth-child(3),
+.ing-table.mini td:nth-child(3){
+  width: 15%;
+  text-align: center;
+}
+
+/* 4) qty (15%) */
+.ing-table.mini th:nth-child(4),
+.ing-table.mini td:nth-child(4){
+  width: 15%;
+  text-align: center;
+}
+
+/* 5) € (20%) */
+.ing-table.mini th:nth-child(5),
+.ing-table.mini td:nth-child(5){
+  width: 20%;
+  text-align: right;
+}
+
+/* Ajuste fino en móviles muy estrechos (opcional) */
+@media (max-width: 360px){
+  .ing-table.mini th:nth-child(2),
+  .ing-table.mini td:nth-child(2){ width: 38%; }
+  .ing-table.mini th:nth-child(5),
+  .ing-table.mini td:nth-child(5){ width: 22%; }
 }
 
 /* React Modal: mismo ancho que las cards */
@@ -314,7 +405,6 @@
 @media (max-width:480px){
   .ReactModal__Content{ margin:0 10px !important; }
 }
-
 /* Footer (alineado al ancho de las cards) */
 .footer{
   width:100%;
