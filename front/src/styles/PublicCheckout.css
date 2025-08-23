@@ -394,64 +394,53 @@
   border-color:#b7f0c0;
 }
 
-/* ─────────────────────────────────────────────────────────────
-   CUPÓN: que el badge ocupe 100% y parpadee infinito
-   (sin mover el input ni el botón)
-   ──────────────────────────────────────────────────────────── */
 .pc-card[aria-label="Cupón de descuento"] .pc-actions .pc-badge{
-  flex: 1 0 100%;            /* Fuerza a bajar y ocupar toda la fila */
-  width: 100%;
+  flex: 0 0 100%;         /* baja a la siguiente línea sin romper la fila del input+botón */
+  width: 90%;
+  margin: 6px auto 0;     /* centrado dentro de la tarjeta */
   text-align: center;
-  margin-top: 6px;
+  border-radius: 14px;    /* un poco más alto/“pill” */
+  padding: 8px 12px;      /* más altura visual */
 }
 
-.pc-card[aria-label="Cupón de descuento"] .pc-badge--success{
+/* Colores de marca para el badge del cupón */
+.pc-badge--brand{
+  background: linear-gradient(135deg,#ff2f92,#3a7dff);
+  color: #fff;
+  border: 0;
+  text-shadow: 0 1px 1px rgba(0,0,0,.22);
+  background-size: 200% 200%;
+}
+
+/* Parpadeo continuo + desplazamiento del degradado */
+.pc-badge--blink{
+  animation:
+    pc-grad-shift 2.4s ease-in-out infinite alternate,
+    pc-blink      1.4s ease-in-out infinite;
+}
+
+@keyframes pc-grad-shift{
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+@keyframes pc-blink{
+  0%,100% { opacity: 1; filter: saturate(1); }
+  50%     { opacity: .9; filter: saturate(1.15); }
+}
+
+/* Respeta “reducir movimiento” del sistema */
+@media (prefers-reduced-motion: reduce){
+  .pc-badge--blink{ animation: none !important; }
+}
+
+/* (Opcional) si usas el toast de cupón: mismo look/parpadeo */
+.pc-toast--brand{
   background: linear-gradient(135deg,#ff2f92,#3a7dff);
   color:#fff;
-  border-color:transparent;
-  text-shadow:0 1px 1px rgba(0,0,0,.25);
   background-size:200% 200%;
 }
-
-/* Pulso infinito + vaivén del degradado + blink suave */
-.pc-card[aria-label="Cupón de descuento"] .pc-badge--pulse{
+.pc-toast--blink{
   animation:
-    pc-pulse-brand 1.2s ease-out infinite,
     pc-grad-shift 2.4s ease-in-out infinite alternate,
-    pc-blink 1.6s ease-in-out infinite;
-}
-
-@keyframes pc-pulse-brand{
-  0%{
-    box-shadow:
-      0 0 0 0 rgba(255,47,146,.45),
-      0 0 0 0 rgba(58,125,255,.35);
-  }
-  70%{
-    box-shadow:
-      0 0 0 10px rgba(255,47,146,0),
-      0 0 0 16px rgba(58,125,255,0);
-  }
-  100%{
-    box-shadow:
-      0 0 0 0 rgba(255,47,146,0),
-      0 0 0 0 rgba(58,125,255,0);
-  }
-}
-@keyframes pc-grad-shift{
-  0%{ background-position:0% 50%; }
-  100%{ background-position:100% 50%; }
-}
-/* parpadeo suave (sin molestar) */
-@keyframes pc-blink{
-  0%,100%{ opacity:1; filter:saturate(1); }
-  50%    { opacity:.92; filter:saturate(1.15); }
-}
-
-/* Respeta reducir movimiento */
-@media (prefers-reduced-motion: reduce){
-  .pc-card[aria-label="Cupón de descuento"] .pc-badge--success,
-  .pc-card[aria-label="Cupón de descuento"] .pc-badge--pulse{
-    animation:none !important;
-  }
+    pc-blink      1.4s ease-in-out infinite;
 }
