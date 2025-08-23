@@ -67,6 +67,8 @@ export default function PublicCheckout() {
   // pagar
   const [isPaying, setIsPaying] = useState(false);
 
+
+
   // ===== helpers tienda =====
   const getStoreById = useCallback(
     (id) => stores.find((s) => Number(s.id) === Number(id)),
@@ -130,7 +132,9 @@ export default function PublicCheckout() {
   const [coupon, setCoupon] = useState(null); // { code, percent }
   const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
+  const [showCouponToast, setShowCouponToast] = useState(false);
 
+  
   const checkCoupon = useCallback(async () => {
     const code = (couponCode || "").trim().toUpperCase();
     if (!code) {
@@ -146,6 +150,8 @@ export default function PublicCheckout() {
         setCoupon({ code, percent: pct });
         setCouponOk(true);
         setCouponMsg(`Cupón aplicado: ${pct}%`);
+        setShowCouponToast(true);
+        setTimeout(() => setShowCouponToast(false), 2600);
       } else {
         setCoupon(null);
         setCouponOk(false);
@@ -821,7 +827,15 @@ export default function PublicCheckout() {
       </footer>
     );
   }
-
+{showCouponToast && (
+  <div
+    className="pc-toast pc-toast--success"
+    role="status"
+    onClick={() => setShowCouponToast(false)}
+  >
+    ✅ {coupon?.code} aplicado: {coupon?.percent}% de descuento
+  </div>
+)}
   // === Caja de Cupón (solo portada) ===
   const CouponCard = (
     <div className="pc-card" aria-label="Cupón de descuento">
@@ -836,7 +850,11 @@ export default function PublicCheckout() {
           aria-label="Código de cupón"
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
-        {coupon && couponOk && <span className="pc-badge" aria-live="polite">{couponMsg}</span>}
+        {coupon && couponOk && (
+          <span className="pc-badge pc-badge--success pc-badge--pulse" aria-live="polite">
+            {couponMsg}
+          </span>
+        )}
       </div>
       {!couponOk && couponMsg && <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>}
     </div>
