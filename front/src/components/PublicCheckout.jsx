@@ -829,7 +829,7 @@ export default function PublicCheckout() {
   }
 {showCouponToast && (
   <div
-    className="pc-toast pc-toast--success"
+    className="pc-toast pc-toast--brand pc-toast--blink"
     role="status"
     onClick={() => setShowCouponToast(false)}
   >
@@ -851,10 +851,10 @@ export default function PublicCheckout() {
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
         {coupon && couponOk && (
-          <span className="pc-badge pc-badge--success pc-badge--pulse" aria-live="polite">
-            {couponMsg}
-          </span>
-        )}
+        <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
+          {couponMsg}
+        </span>
+      )}
       </div>
       {!couponOk && couponMsg && <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>}
     </div>

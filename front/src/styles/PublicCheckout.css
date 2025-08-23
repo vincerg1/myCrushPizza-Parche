@@ -368,110 +368,74 @@
 }
 
 
-/* ---------- PROMO SPOT / CAROUSEL ---------- */
-.pc-spot{
-  max-width:520px;
-  margin:16px auto 24px;
-  outline:none;
-}
-.pc-spot__viewport{
-  position:relative;
-  height:300px;
-  width:300px;
-  border-radius:12px;
-  overflow:hidden;
-  box-shadow:0 10px 20px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.05);
-  background:var(--brand-pink);
-}
-@media (min-width:860px){
-  .pc-spot__viewport{ height:240px; }
-}
-.pc-spot__slide{
-  position:absolute; inset:0;
-  opacity:0; transition:opacity .5s ease;
-  display:block;
-}
-.pc-spot__slide.is-active{ opacity:1; }
-.pc-spot__img{ width:100%; height:100%; object-fit:cover; display:block; }
-.pc-spot__html{ width:100%; height:100%; }
-.pc-spot__nav{
-  position:absolute; top:50%; transform:translateY(-50%);
-  background:rgba(0,0,0,.25); color:#fff;
-  border:0; width:36px; height:36px; border-radius:50%;
-  display:grid; place-items:center; cursor:pointer;
-}
-.pc-spot__nav--prev{ left:8px; }
-.pc-spot__nav--next{ right:8px; }
-.pc-spot__nav:hover{ background:rgba(0,0,0,.35); }
-.pc-spot__dots{
-  display:flex; justify-content:center; gap:8px;
-  margin-top:10px;
-}
-.pc-spot__dot{
-  width:8px; height:8px; border-radius:999px;
-  border:0; background:#d8e3ff; cursor:pointer;
-}
-.pc-spot__dot.is-active{ background:var(--brand-blue); }
-
 /* Alinear input + botón + badge del cupón */
-.pc-card .pc-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
+.pc-badge--brand{
+  background: linear-gradient(135deg, var(--brand-pink), var(--brand-blue));
+  color:#fff;
+  border:0;
+  text-shadow: 0 1px 1px rgba(0,0,0,.25);
+  background-size: 200% 200%;
+  animation: pc-grad-shift 2.2s ease-in-out infinite alternate;
 }
-.pc-card .pc-actions .pc-input {
-  flex: 1;
-  min-width: 220px;
-}
-.pc-card .pc-actions .pc-btn { white-space: nowrap; }
 
-/* Badges */
-.pc-badge {
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: .85rem;
-  border: 1px solid transparent;
+.pc-badge--blink{
+  position: relative;
+  box-shadow: 0 0 0 0 rgba(255,47,146,.55), 0 0 0 0 rgba(58,125,255,.45);
+  animation: pc-brand-blink 1.4s ease-out 3;
 }
-.pc-badge--success {
-  background: #e6ffed;
-  color: #08660d;
-  border-color: #b7f0c0;
-}
-/* Pulso suave para celebrar */
-@keyframes pc-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(16,185,129,.45); }
-  70%  { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
-  100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
-}
-.pc-badge--pulse { animation: pc-pulse 1.4s ease-out 2; }
 
-/* Toast flotante (clic para cerrar) */
-.pc-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%) translateY(8px);
-  background: #111;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  box-shadow: 0 8px 22px rgba(0,0,0,.35);
-  z-index: 1000;
-  opacity: 0;
-  animation: pc-toast-in .22s ease-out forwards,
-             pc-toast-out .22s ease-in forwards;
-  animation-delay: 0s, 2.4s; /* visible ~2.4s */
-  cursor: pointer;
-  user-select: none;
+/* ===== Toast de marca (comparten animaciones) ===== */
+.pc-toast--brand{
+  background: linear-gradient(135deg, var(--brand-pink), var(--brand-blue));
+  color:#fff;
+  text-shadow: 0 1px 1px rgba(0,0,0,.25);
+  border: none;
+  background-size: 200% 200%;
 }
-.pc-toast--success { background: #0f5132; }
 
+.pc-toast--blink{
+  box-shadow: 0 8px 22px rgba(0,0,0,.35), 0 0 0 0 rgba(255,47,146,.45);
+  animation:
+    pc-toast-in .22s ease-out forwards,
+    pc-toast-out .22s ease-in forwards 2.4s,
+    pc-brand-blink 1.2s ease-out 2;
+}
+
+/* ===== Animaciones ===== */
+@keyframes pc-grad-shift{
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+@keyframes pc-brand-blink{
+  0%, 100%{
+    box-shadow:
+      0 0 0 0 rgba(255,47,146,.55),
+      0 0 0 0 rgba(58,125,255,.45);
+    transform: translateZ(0);
+  }
+  50%{
+    box-shadow:
+      0 0 0 10px rgba(255,47,146,0),
+      0 0 0 16px rgba(58,125,255,0);
+  }
+}
+
+/* ya existentes: entrada/salida del toast */
 @keyframes pc-toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 @keyframes pc-toast-out {
   to   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+}
+
+/* Accesibilidad: reducir movimiento si el usuario lo pide */
+@media (prefers-reduced-motion: reduce){
+  .pc-badge--brand,
+  .pc-badge--blink,
+  .pc-toast--brand,
+  .pc-toast--blink{
+    animation: none !important;
+  }
 }
