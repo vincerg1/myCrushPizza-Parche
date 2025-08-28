@@ -4,46 +4,45 @@ const twilio = require('twilio');
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
-  TWILIO_MESSAGING_SERVICE_SID,
-  TWILIO_STATUS_CALLBACK_URL,
-  TWILIO_ALPHA_SENDER_ID, // opcional, por si quieres sobreescribir "MYCRUSHPIZZA"
+  TWILIO_MESSAGING_SERVICE_SID, // MGxxxxxxxx (OBLIGATORIO)
+  TWILIO_STATUS_CALLBACK_URL     // opcional
 } = process.env;
+
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+  console.warn('[twilio] Faltan credenciales TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN');
+}
+if (!TWILIO_MESSAGING_SERVICE_SID) {
+  console.warn('[twilio] Falta TWILIO_MESSAGING_SERVICE_SID');
+}
 
 const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
-// Normaliza números de ES a E.164 (+34...)
-function toE164ES(phone) {
-  const raw = String(phone).replace(/[^\d+]/g, '');
-  if (raw.startsWith('+')) return raw;           // ya viene en E.164
-  if (/^\d{9}$/.test(raw)) return `+34${raw}`;   // 9 dígitos -> +34...
-  if (raw.startsWith('0')) return `+34${raw.slice(1)}`;
-  return raw; // último recurso, lo envía tal cual
+// Normaliza a E.164. Por defecto añade +34 si no hay prefijo.
+function toE164(raw, defaultCc = '+34') {
+  if (!raw) return raw;
+  let n = String(raw).replace(/[^\d+]/g, '');
+  if (n.startsWith('00')) n = '+' + n.slice(2);
+  if (!n.startsWith('+')) n = defaultCc + n;
+  return n;
 }
 
-/**
- * Enviar SMS.
- * Usa primero Messaging Service; si no existe, usa Alpha Sender.
- */
-async function sendSMS({ to, body, from }) {
-  if (!to || !body) throw new Error('to y body son requeridos');
+async function sendSms({ to, body }) {
+  if (!to || !body) throw new Error('Parámetros requeridos: to, body');
+  if (!TWILIO_MESSAGING_SERVICE_SID) throw new Error('Falta TWILIO_MESSAGING_SERVICE_SID');
 
   const payload = {
-    to: toE164ES(to),
+    to: toE164(to),
     body,
+    messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID
   };
-
-  if (TWILIO_MESSAGING_SERVICE_SID) {
-    payload.messagingServiceSid = TWILIO_MESSAGING_SERVICE_SID;
-  } else {
-    payload.from = from || TWILIO_ALPHA_SENDER_ID || 'MYCRUSHPIZZA';
-  }
 
   if (TWILIO_STATUS_CALLBACK_URL) {
     payload.statusCallback = TWILIO_STATUS_CALLBACK_URL;
   }
 
+  // No incluir "from" cuando usamos messagingServiceSid
   const msg = await client.messages.create(payload);
-  return msg; // contiene sid, status, etc.
+  return msg;
 }
 
-module.exports = { sendSMS, toE164ES, client };
+module.exports = { sendSms };
