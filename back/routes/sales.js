@@ -147,19 +147,43 @@ r.get('/pending', auth(), async (_, res) => {
 
 
   /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
-  r.patch('/:id/ready', auth(), async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      await prisma.sale.update({
-        where: { id },
-        data : { processed: true }
-      });
-      res.json({ ok: true });
-    } catch (e) {
-      console.error('[PATCH /ready]', e);
-      res.status(400).json({ error: e.message });
-    }
-  });
+    r.patch('/:id/ready', auth(), async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+
+        // marcamos la venta como procesada y traemos datos necesarios
+        const sale = await prisma.sale.update({
+          where: { id },
+          data : { processed: true },
+          include: {
+            store: { select: { storeName: true } }
+          }
+        });
+
+        // SMS si tenemos teléfono
+        const phone = sale?.customerData?.phone;
+        if (phone) {
+          const tienda = sale?.store?.storeName || 'myCrushPizza';
+          // delivery es bool en tu create; por seguridad también miramos type
+          const isDelivery = Boolean(sale.delivery) ||
+                            String(sale.type || '').toLowerCase() === 'delivery';
+
+          const msg = isDelivery
+            ? `🍕 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
+            : `🍕 ${tienda}: Tu pedido ${sale.code} está LISTO para recoger. ¡Gracias!`;
+
+          // envío "a prueba de fallos" (que no rompa la respuesta)
+          sendSMS(phone, msg).catch(err =>
+            console.error('[Twilio SMS error READY]', err.message)
+          );
+        }
+
+        res.json({ ok: true });
+      } catch (e) {
+        console.error('[PATCH /ready]', e);
+        res.status(400).json({ error: e.message });
+      }
+    });
 
   /* ────────────── GET /api/sales (histórico) ───────────── */
   r.get('/', auth(), async (req, res) => {
