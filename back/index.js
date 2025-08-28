@@ -57,6 +57,7 @@ const googleRouter          = require('./routes/googleProxy');
 const publicRoutes          = require('./routes/public')(prisma);
 const ventaRouter           = require('./routes/venta')(prisma);
 const couponsRouter         = require('./routes/coupons')(prisma);
+const notifyRouter         = require('./routes/notify') (prisma);
 
 /* Montaje */
 app.use('/api/pizzas',          pizzasRouter);
@@ -72,6 +73,8 @@ app.use('/api/google',          googleRouter);
 app.use('/api/public',          publicRoutes);
 app.use('/api/venta',           ventaRouter);   
 app.use('/api/coupons',         couponsRouter);
+app.use('/api/notify',      notifyRouter);
+
 
 /* Ruta base */
 app.get('/', (_, res) => {
@@ -106,6 +109,14 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
+
+app.post('/webhooks/twilio/status',
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    console.log('Twilio status:', req.body); // MessageStatus, To, SmsSid, etc.
+    res.sendStatus(200);
+  }
+);
 
 /* Arranque */
 const PORT = process.env.PORT || 8080;
