@@ -125,65 +125,63 @@ module.exports = (prisma) => {
     }
   });
 
-/* ─────────────── GET /api/sales/pending ─────────────── */
-r.get('/pending', auth(), async (_, res) => {
-  try {
-    const list = await prisma.sale.findMany({
-      where: {
-        processed: false,
-        NOT: { status: 'AWAITING_PAYMENT' } // ← excluye impagadas; incluye PAID y también NULL
-      },
-      orderBy: { date: 'asc' },
-      include: {
-        customer: { select: { code: true } }
-      }
-    });
-    res.json(list);
-  } catch (e) {
-    console.error('[GET /pending]', e);
-    res.status(500).json({ error: 'internal' });
-  }
-});
-
+  /* ─────────────── GET /api/sales/pending ─────────────── */
+  r.get('/pending', auth(), async (_, res) => {
+    try {
+      const list = await prisma.sale.findMany({
+        where: {
+          processed: false,
+          NOT: { status: 'AWAITING_PAYMENT' } // ← excluye impagadas; incluye PAID y también NULL
+        },
+        orderBy: { date: 'asc' },
+        include: {
+          customer: { select: { code: true } }
+        }
+      });
+      res.json(list);
+    } catch (e) {
+      console.error('[GET /pending]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
 
   /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
-    r.patch('/:id/ready', auth(), async (req, res) => {
-      try {
-        const id = Number(req.params.id);
+  r.patch('/:id/ready', auth(), async (req, res) => {
+    try {
+      const id = Number(req.params.id);
 
-        // marcamos la venta como procesada y traemos datos necesarios
-        const sale = await prisma.sale.update({
-          where: { id },
-          data : { processed: true },
-          include: {
-            store: { select: { storeName: true } }
-          }
-        });
+      // Marcamos como processed y traemos datos para el SMS
+      const sale = await prisma.sale.update({
+        where : { id },
+        data  : { processed: true },
+        include: { store: { select: { storeName: true } } }
+      });
 
-        // SMS si tenemos teléfono
-        const phone = sale?.customerData?.phone;
-        if (phone) {
-          const tienda = sale?.store?.storeName || 'myCrushPizza';
-          // delivery es bool en tu create; por seguridad también miramos type
-          const isDelivery = Boolean(sale.delivery) ||
-                            String(sale.type || '').toLowerCase() === 'delivery';
+      // Enviar SMS solo si hay teléfono
+      const phone = sale?.customerData?.phone;
+      if (phone) {
+        const tienda = sale?.store?.storeName || 'myCrushPizza';
+        const isDelivery =
+          Boolean(sale.delivery) ||
+          String(sale.type || '').toLowerCase() === 'delivery' ||
+          String(sale.type || '').toUpperCase().includes('DELIV');
 
-          const msg = isDelivery
-            ? `🍕 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
-            : `🍕 ${tienda}: Tu pedido ${sale.code} está LISTO para recoger. ¡Gracias!`;
+        const msg = isDelivery
+          ? `🛵 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
+          : `🍕 ${tienda}: Tu pedido ${sale.code} está LISTO para recoger. ¡Gracias!`;
 
-          // envío "a prueba de fallos" (que no rompa la respuesta)
-          sendSMS(phone, msg).catch(err =>
-            console.error('[Twilio SMS error READY]', err.message)
-          );
-        }
-
-        res.json({ ok: true });
-      } catch (e) {
-        console.error('[PATCH /ready]', e);
-        res.status(400).json({ error: e.message });
+        // Silencioso si falla
+        sendSMS(phone, msg).catch(err =>
+          console.error('[Twilio SMS error READY]', err.message)
+        );
       }
-    });
+
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[PATCH /ready]', e);
+      res.status(400).json({ error: e.message });
+    }
+  });
 
   /* ────────────── GET /api/sales (histórico) ───────────── */
   r.get('/', auth(), async (req, res) => {
@@ -209,61 +207,62 @@ r.get('/pending', auth(), async (_, res) => {
     }));
     res.json(list);
   });
+
   r.get('/public/order/:code', async (req, res) => {
-      try {
-        const order = await prisma.sale.findUnique({
-          where: { code: req.params.code },
-          select: {
-            code: true,               // ORD-12345
-            date: true,               // ISO
-            deliveredAt: true,
-            processed: true,
-            customerData: true,       // { name, phone, addr, lat, lng }
-          },
-        });
-        if (!order) throw new Error('not found');
+    try {
+      const order = await prisma.sale.findUnique({
+        where: { code: req.params.code },
+        select: {
+          code: true,
+          date: true,
+          deliveredAt: true,
+          processed: true,
+          customerData: true,
+        },
+      });
+      if (!order) throw new Error('not found');
 
-        const cd = order.customerData || {};
-        res.json({
-          orderCode : order.code,
-          date      : order.date,        // ISO  ← importante
-          deliveredAt: order.deliveredAt,
-          name  : cd.name  ?? null,
-          phone : cd.phone ?? null,
-          addr  : cd.addr ?? cd.address_1 ?? cd.address ?? null,
-          lat   : cd.lat   ?? null,
-          lng   : cd.lng   ?? null,
-        });
-      } catch {
-        res.status(404).json({ error:'Order not found' });
-      }
-  });   
-  r.patch('/public/order/:code/delivered', async (req, res) => {
-  try {
-    const sale = await prisma.sale.update({
-      where : { code: req.params.code },
-      data  : { deliveredAt: new Date(), },
-      select: {
-        deliveredAt : true,
-        customerData: true           // necesitamos el teléfono
-      }
-    });
-
-    // ── intentar SMS (silencioso si falla) ──
-    const phone = sale.customerData?.phone;
-    if (phone) {
-      sendSMS(phone, '📦 Pedido entregado. ¡Buen provecho! 🍕 myCrushPizza :)')
-        .catch(err => console.error('[Twilio SMS error]', err.message));
+      const cd = order.customerData || {};
+      res.json({
+        orderCode : order.code,
+        date      : order.date,        // ISO
+        deliveredAt: order.deliveredAt,
+        name  : cd.name  ?? null,
+        phone : cd.phone ?? null,
+        addr  : cd.addr ?? cd.address_1 ?? cd.address ?? null,
+        lat   : cd.lat   ?? null,
+        lng   : cd.lng   ?? null,
+      });
+    } catch {
+      res.status(404).json({ error:'Order not found' });
     }
-
-    res.json({ ok:true, deliveredAt: sale.deliveredAt });
-
-  } catch (e) {
-    console.error('[PATCH delivered]', e);
-    res.status(404).json({ error:'Order not found' });
-  }
   });
 
+  r.patch('/public/order/:code/delivered', async (req, res) => {
+    try {
+      const sale = await prisma.sale.update({
+        where : { code: req.params.code },
+        data  : { deliveredAt: new Date() },
+        select: {
+          deliveredAt : true,
+          customerData: true
+        }
+      });
+
+      const phone = sale.customerData?.phone;
+      if (phone) {
+        sendSMS(
+          phone,
+          '📦 Pedido entregado. ¡Buen provecho! 🍕 myCrushPizza :)'
+        ).catch(err => console.error('[Twilio SMS error]', err.message));
+      }
+
+      res.json({ ok:true, deliveredAt: sale.deliveredAt });
+    } catch (e) {
+      console.error('[PATCH delivered]', e);
+      res.status(404).json({ error:'Order not found' });
+    }
+  });
 
   return r;
 };

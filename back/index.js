@@ -57,7 +57,7 @@ const googleRouter          = require('./routes/googleProxy');
 const publicRoutes          = require('./routes/public')(prisma);
 const ventaRouter           = require('./routes/venta')(prisma);
 const couponsRouter         = require('./routes/coupons')(prisma);
-const notifyRouter         = require('./routes/notify') (prisma);
+const notifyRouter          = require('./routes/notify')(prisma);
 
 /* Montaje */
 app.use('/api/pizzas',          pizzasRouter);
@@ -71,10 +71,39 @@ app.use('/api/sales',           salesRouter);
 app.use('/api/menuDisponible',  menuDisponibleRouter);
 app.use('/api/google',          googleRouter);
 app.use('/api/public',          publicRoutes);
-app.use('/api/venta',           ventaRouter);   
+app.use('/api/venta',           ventaRouter);
 app.use('/api/coupons',         couponsRouter);
-app.use('/api/notify',      notifyRouter);
+app.use('/api/notify',          notifyRouter);
 
+/* === Twilio Status Callback (usar la MISMA ruta que en el env) ===
+   TWILIO_STATUS_CALLBACK_URL = https://mycrushpizza-parche-production.up.railway.app/twilio/status-callback
+   Debe ir ANTES del 404. Twilio envía application/x-www-form-urlencoded. */
+app.post(
+  '/twilio/status-callback',
+  express.urlencoded({ extended: false }),
+  (req, res) => {
+    const {
+      MessageSid,
+      MessageStatus,
+      To,
+      From,
+      ErrorCode,
+      ErrorMessage
+    } = req.body || {};
+
+    console.log('[Twilio Status]', {
+      MessageSid,
+      MessageStatus,
+      To,
+      From,
+      ErrorCode,
+      ErrorMessage
+    });
+
+    // Aquí podrías persistir en BD si lo necesitas
+    res.sendStatus(200);
+  }
+);
 
 /* Ruta base */
 app.get('/', (_, res) => {
@@ -109,14 +138,6 @@ app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal Server Error' });
 });
-
-app.post('/webhooks/twilio/status',
-  express.urlencoded({ extended: false }),
-  (req, res) => {
-    console.log('Twilio status:', req.body); // MessageStatus, To, SmsSid, etc.
-    res.sendStatus(200);
-  }
-);
 
 /* Arranque */
 const PORT = process.env.PORT || 8080;
