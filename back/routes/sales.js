@@ -145,43 +145,44 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
-  r.patch('/:id/ready', auth(), async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-
-      // Marcamos como processed y traemos datos para el SMS
-      const sale = await prisma.sale.update({
-        where : { id },
-        data  : { processed: true },
-        include: { store: { select: { storeName: true } } }
-      });
-
-      // Enviar SMS solo si hay teléfono
-      const phone = sale?.customerData?.phone;
-      if (phone) {
-        const tienda = sale?.store?.storeName || 'myCrushPizza';
-        const isDelivery =
-          Boolean(sale.delivery) ||
-          String(sale.type || '').toLowerCase() === 'delivery' ||
-          String(sale.type || '').toUpperCase().includes('DELIV');
-
-        const msg = isDelivery
-          ? `🛵 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
-          : `🍕 ${tienda}: Tu pedido ${sale.code} está LISTO para recoger. ¡Gracias!`;
-
-        // Silencioso si falla
-        sendSMS(phone, msg).catch(err =>
-          console.error('[Twilio SMS error READY]', err.message)
-        );
+    /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
+   r.patch('/:id/ready', auth(), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const sale = await prisma.sale.update({
+      where : { id },
+      data  : { processed: true },
+      select: {
+        id: true, code: true, type: true, delivery: true, customerData: true,
+        store: { select: { storeName: true } }
       }
+    });
 
-      res.json({ ok: true });
-    } catch (e) {
-      console.error('[PATCH /ready]', e);
-      res.status(400).json({ error: e.message });
+    const phone = sale?.customerData?.phone?.trim();
+    if (phone) {
+      const tienda  = sale?.store?.storeName || 'myCrushPizza';
+      const rawType = String(sale.type || '').trim().toLowerCase();
+      const byBool  = sale.delivery === true || sale.delivery === 1 || sale.delivery === '1';
+      const byType  = ['delivery','del','reparto','envío','envio'].includes(rawType);
+      const isDelivery = byBool || byType;
+
+      const msg = isDelivery
+        ? `🛵 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
+        : `🍕 ${tienda}: Tu pedido ${sale.code} está listo para recoger. ¡Gracias!`;
+
+      sendSMS(phone, msg).catch(err =>
+        console.error('[Twilio SMS error READY]', { err: err.message, saleId: sale.id, rawType, delivery: sale.delivery })
+      );
     }
-  });
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[PATCH /ready]', e);
+    res.status(400).json({ error: e.message });
+  }
+    });
+
+
 
   /* ────────────── GET /api/sales (histórico) ───────────── */
   r.get('/', auth(), async (req, res) => {

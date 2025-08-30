@@ -4,8 +4,8 @@ const twilio = require('twilio');
 const {
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN,
-  TWILIO_MESSAGING_SERVICE_SID, // MGxxxxxxxxxxxxxxxxxxxx
-  TWILIO_STATUS_CALLBACK_URL,   // opcional
+  TWILIO_MESSAGING_SERVICE_SID, 
+  TWILIO_STATUS_CALLBACK_URL,   
 } = process.env;
 
 const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
@@ -38,7 +38,7 @@ module.exports = async function sendSMS(to, body) {
   if (!/^\+\d{8,15}$/.test(dest)) throw new Error('Invalid phone after formatting');
 
   const payload = {
-    messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID, // 👈 usa el MSID (Alpha Sender dentro)
+    messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID, 
     to: dest,
     body,
   };
