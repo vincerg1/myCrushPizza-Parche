@@ -146,41 +146,57 @@ module.exports = (prisma) => {
   });
 
     /* ─────────────── PATCH /api/sales/:id/ready ─────────── */
-   r.patch('/:id/ready', auth(), async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const sale = await prisma.sale.update({
-      where : { id },
-      data  : { processed: true },
-      select: {
-        id: true, code: true, type: true, delivery: true, customerData: true,
-        store: { select: { storeName: true } }
+    r.patch('/:id/ready', auth(), async (req, res) => {
+      try {
+        const id = Number(req.params.id);
+        const sale = await prisma.sale.update({
+          where : { id },
+          data  : { processed: true },
+          select: {
+            id: true, code: true, type: true, delivery: true, customerData: true,
+            store: { select: { storeName: true } }
+          }
+        });
+
+        // Helpers
+        const firstName = (raw) => {
+          if (!raw || typeof raw !== 'string') return '';
+          const clean = raw.replace(/\s+/g, ' ').trim();
+          if (!clean) return '';
+          const [w] = clean.split(' ');
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        };
+
+        const tienda = sale?.store?.storeName || 'myCrushPizza';
+        const phone  = sale?.customerData?.phone?.trim();
+        const nombre = firstName(sale?.customerData?.name);
+
+        if (phone) {
+          const rawType = String(sale.type || '').trim().toLowerCase();
+          const byBool  = sale.delivery === true || sale.delivery === 1 || sale.delivery === '1';
+          const byType  = ['delivery','del','reparto','envío','envio'].includes(rawType);
+          const isDelivery = byBool || byType;
+
+          const saludo = nombre ? `Hola ${nombre}, ` : '';
+
+          const msg = isDelivery
+            ? `${saludo}🛵 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
+            : `${saludo}🍕 ${tienda}: Tu pedido ${sale.code} está listo para recoger. ¡Gracias!`;
+
+          sendSMS(phone, msg).catch(err =>
+            console.error('[Twilio SMS error READY]', {
+              err: err.message, saleId: sale.id, rawType, delivery: sale.delivery
+            })
+          );
+        }
+
+        res.json({ ok: true });
+      } catch (e) {
+        console.error('[PATCH /ready]', e);
+        res.status(400).json({ error: e.message });
       }
     });
 
-    const phone = sale?.customerData?.phone?.trim();
-    if (phone) {
-      const tienda  = sale?.store?.storeName || 'myCrushPizza';
-      const rawType = String(sale.type || '').trim().toLowerCase();
-      const byBool  = sale.delivery === true || sale.delivery === 1 || sale.delivery === '1';
-      const byType  = ['delivery','del','reparto','envío','envio'].includes(rawType);
-      const isDelivery = byBool || byType;
-
-      const msg = isDelivery
-        ? `🛵 ${tienda}: Tu pedido ${sale.code} está listo y saldrá a reparto en breve.`
-        : `🍕 ${tienda}: Tu pedido ${sale.code} está listo para recoger. ¡Gracias!`;
-
-      sendSMS(phone, msg).catch(err =>
-        console.error('[Twilio SMS error READY]', { err: err.message, saleId: sale.id, rawType, delivery: sale.delivery })
-      );
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[PATCH /ready]', e);
-    res.status(400).json({ error: e.message });
-  }
-    });
 
 
 
