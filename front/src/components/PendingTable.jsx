@@ -45,6 +45,10 @@ export default function PendingTable() {
   const [isRinging, setIsRinging] = useState(false);
   const [needSoundUnlock, setNeedSoundUnlock] = useState(false);
 
+  // ID of the order awaiting confirmation for the "Ready" action.
+  // When this is non-null, a confirmation modal is shown to the user.
+  const [confirmOrderId, setConfirmOrderId] = useState(null);
+
   // Keep track of the timestamp of the last successful fetch.
   // This is used by the incremental polling fallback to request only newer
   // orders. If the backend does not support incremental fetch, this value is
@@ -315,6 +319,27 @@ export default function PendingTable() {
     }
   };
 
+  // When the user clicks the Ready button, we ask for confirmation by
+  // setting confirmOrderId. The modal will be shown until the user
+  // confirms or cancels.
+  const requestConfirmReady = (id) => {
+    setConfirmOrderId(id);
+  };
+
+  // Called when the user confirms they want to mark the order as ready.
+  // This invokes markReady and closes the modal.
+  const handleConfirmReady = async () => {
+    if (confirmOrderId != null) {
+      await markReady(confirmOrderId);
+    }
+    setConfirmOrderId(null);
+  };
+
+  // Called when the user cancels the confirmation.
+  const handleCancelReady = () => {
+    setConfirmOrderId(null);
+  };
+
   const printTicket = () => {
     const html = document.getElementById("ticket-content")?.innerHTML;
     if (!html) return;
@@ -387,7 +412,7 @@ export default function PendingTable() {
                 <td>{s.customerData?.name ?? "-"}</td>
                 <td>{s.customerData?.phone ?? "-"}</td>
                 <td>
-                  <button onClick={() => markReady(s.id)}>Ready</button>
+                  <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
                 </td>
                 <td>
                   <button onClick={() => setView(s)}>Ver</button>
@@ -446,7 +471,7 @@ export default function PendingTable() {
                   <strong>Tlf</strong>
                   <span>{s.customerData?.phone ?? "-"}</span>
                 </div>
-                <button onClick={() => markReady(s.id)}>Ready</button>
+                <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
                 <button onClick={() => setView(s)}>Ver</button>
               </article>
             ))}
@@ -467,6 +492,22 @@ export default function PendingTable() {
             <div className="pt-buttons">
               <button onClick={printTicket}>Print</button>
               <button onClick={() => setView(null)}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmOrderId != null && (
+        <div className="pt-modal-back" onClick={handleCancelReady}>
+          <div className="pt-modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Confirmar listo</h3>
+            <p>
+              ¿Estás seguro de que quieres marcar este pedido como listo? Esto
+              notificará al cliente.
+            </p>
+            <div className="pt-buttons">
+              <button onClick={handleConfirmReady}>Sí, marcar listo</button>
+              <button onClick={handleCancelReady}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -499,6 +540,23 @@ export default function PendingTable() {
               <button onClick={() => setAlertOrders([])}>
                 Aceptar y silenciar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal for marking an order as ready */}
+      {confirmOrderId != null && (
+        <div className="pt-modal-back" onClick={handleCancelReady}>
+          <div className="pt-modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3>¿Marcar pedido como listo?</h3>
+            <p>
+              Esta acción notificará al cliente y sacará el pedido de la lista.
+              ¿Estás seguro de que quieres continuar?
+            </p>
+            <div className="pt-buttons">
+              <button onClick={handleConfirmReady}>Sí, confirmar</button>
+              <button onClick={handleCancelReady}>Cancelar</button>
             </div>
           </div>
         </div>
