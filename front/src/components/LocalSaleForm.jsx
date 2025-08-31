@@ -127,6 +127,27 @@ export default function LocalSaleForm({
   );
   const current = menu.find(m => m.pizzaId === Number(sel.pizzaId));
 
+  /* ===== Auto-select size si el producto solo tiene uno ===== */
+  useEffect(() => {
+    const sizes = (current?.selectSize || []).filter(Boolean);
+    setSel((s) => {
+      // si no hay producto, limpia size si venía marcado
+      if (!current) return s.size ? { ...s, size: "" } : s;
+
+      // si solo hay un size y aún no está puesto → colócalo
+      if (sizes.length === 1 && s.size !== sizes[0]) {
+        return { ...s, size: sizes[0] };
+      }
+
+      // si el size actual no existe para el nuevo producto → limpia
+      if (s.size && !sizes.includes(s.size)) {
+        return { ...s, size: "" };
+      }
+
+      return s;
+    });
+  }, [current]);
+
   // Extras (de la misma respuesta, category='Extras')
   const extrasAvail = useMemo(
     () => menu.filter(m => normalize(m.category) === "extras" && (m.stock == null || m.stock > 0)),

@@ -67,8 +67,6 @@ export default function PublicCheckout() {
   // pagar
   const [isPaying, setIsPaying] = useState(false);
 
-
-
   // ===== helpers tienda =====
   const getStoreById = useCallback(
     (id) => stores.find((s) => Number(s.id) === Number(id)),
@@ -134,7 +132,6 @@ export default function PublicCheckout() {
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
 
-  
   const checkCoupon = useCallback(async () => {
     const code = (couponCode || "").trim().toUpperCase();
     if (!code) {
@@ -193,14 +190,10 @@ export default function PublicCheckout() {
   const nextGuard = () => {
     setTriedNext(true);
     if (mode === "deliveryLocate") {
-      if (!baseOk) {
-        flashCustomerBtn();
-      }
+      if (!baseOk) flashCustomerBtn();
       return baseOk && addrOk;
     } else {
-      if (!baseOk) {
-        flashCustomerBtn();
-      }
+      if (!baseOk) flashCustomerBtn();
       return baseOk && !!selectedStoreId;
     }
   };
@@ -415,14 +408,14 @@ export default function PublicCheckout() {
 
       <div className="pc-actions" style={{ marginTop: 10 }}>
         <button
-          className={`pc-btn ${baseOk ? "pc-btn-valid" : "pc-btn-danger"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
+          className={`pc-btn ${baseOk ? "pc-btn-valid" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
           onClick={() => setShowCus(true)}
         >
           Datos del cliente
         </button>
 
         <button
-          className="pc-btn pc-btn-primary push"
+          className={`pc-btn ${baseOk ? "pc-btn-primary" : "pc-btn-muted"} push`}
           onClick={() => {
             if (!nextGuard()) return;
             setStep("order");
@@ -540,14 +533,14 @@ export default function PublicCheckout() {
           {/* Botones */}
           <div className="pc-actions" style={{ marginTop: 10 }}>
             <button
-              className={"pc-btn " + (baseOk ? "pc-btn-valid" : "pc-btn-danger") + (!baseOk && flashCus ? " pc-shake" : "")}
+              className={`pc-btn ${baseOk ? "pc-btn-valid" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
               onClick={() => setShowCus(true)}
             >
               Datos del cliente
             </button>
 
             <button
-              className="pc-btn pc-btn-primary push"
+              className={`pc-btn ${baseOk ? "pc-btn-primary" : "pc-btn-muted"} push`}
               onClick={() => {
                 if (!nextGuard()) return;
                 setStep("order");
@@ -677,7 +670,6 @@ export default function PublicCheckout() {
         e?.response?.data?.error ||
         e?.message ||
         "No se pudo iniciar el pago";
-      // Mensajes específicos útiles
       if (/Stripe no configurado/i.test(msg)) {
         alert("Pago no disponible (Stripe no configurado).");
       } else if (/fuera.*zona|servicio/i.test(msg)) {
@@ -827,15 +819,18 @@ export default function PublicCheckout() {
       </footer>
     );
   }
-{showCouponToast && (
-  <div
-    className="pc-toast pc-toast--brand pc-toast--blink"
-    role="status"
-    onClick={() => setShowCouponToast(false)}
-  >
-    ✅ {coupon?.code} aplicado: {coupon?.percent}% de descuento
-  </div>
-)}
+
+  // === Toast Cupón (como variable JSX segura) ===
+  const CouponToast = showCouponToast ? (
+    <div
+      className="pc-toast pc-toast--brand pc-toast--blink"
+      role="status"
+      onClick={() => setShowCouponToast(false)}
+    >
+      ✅ {coupon?.code} aplicado: {coupon?.percent}% de descuento
+    </div>
+  ) : null;
+
   // === Caja de Cupón (solo portada) ===
   const CouponCard = (
     <div className="pc-card" aria-label="Cupón de descuento">
@@ -851,10 +846,10 @@ export default function PublicCheckout() {
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
         {coupon && couponOk && (
-        <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
-          {couponMsg}
-        </span>
-      )}
+          <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
+            {couponMsg}
+          </span>
+        )}
       </div>
       {!couponOk && couponMsg && <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>}
     </div>
@@ -863,6 +858,7 @@ export default function PublicCheckout() {
   // ========== RENDER ==========
   return (
     <div className="pc-page" onKeyDown={onKeyDown}>
+      {CouponToast}
       <div
         className="pc-wrap"
         onTouchStart={onTouchStart}

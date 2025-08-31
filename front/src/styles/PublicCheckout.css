@@ -517,3 +517,59 @@
 /* Un poco de “aire” al fondo y recorte por si acaso */
 .pc-card[aria-label="Cupón de descuento"] .pc-actions{ padding-bottom: 6px; }
 .pc-card[aria-label="Cupón de descuento"]{ overflow: hidden; }  /* por si algún glow se sale */
+
+
+
+
+
+
+/* ===== Botón de atención para "Datos del cliente" ===== */
+/* Fucsia (marca) + ligero glow */
+.pc-btn-attn{
+  background: linear-gradient(135deg, #ff2f92, var(--brand-pink)); /* fucsia → rosa marca */
+  color: #fff;
+  border: 0;
+  box-shadow: 0 10px 20px rgba(249,38,114,.18), 0 4px 10px rgba(0,0,0,.06);
+}
+.pc-btn-attn:hover{ filter: brightness(1.03); }
+.pc-btn-attn:active{ transform: translateY(1px); }
+
+/* Halo animado suave (pulso) alrededor del botón */
+.pc-btn-attn-pulse{
+  position: relative;
+  isolation: isolate;
+}
+.pc-btn-attn-pulse::after{
+  content: "";
+  position: absolute;
+  inset: -4px;                 /* halo un pelín fuera del botón */
+  border-radius: 14px;         /* que siga las esquinas del botón */
+  box-shadow: 0 0 0 0 rgba(249,38,114,.40);
+  animation: pc-attn-ring 1.8s ease-in-out infinite;
+  z-index: -1;
+}
+@keyframes pc-attn-ring{
+  0%   { box-shadow: 0 0 0 0   rgba(249,38,114,.35); }
+  70%  { box-shadow: 0 0 0 14px rgba(249,38,114,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(249,38,114,0);   }
+}
+@media (prefers-reduced-motion: reduce){
+  .pc-btn-attn-pulse::after{ animation: none; }
+}
+
+/* ===== CTA gris para “Siguiente → productos” cuando falte cliente ===== */
+.pc-btn-muted{
+  background:#e9e9ee;
+  color:#8a8a8a;
+  border:1px solid #dcdce6;
+}
+.pc-btn-muted:hover{ filter:none; }
+.pc-btn-muted:active{ transform:none; }
+
+/* Estado disabled real (por ejemplo, fuera de rango en delivery) */
+.pc-btn:disabled{
+  opacity:.6;
+  cursor:not-allowed;
+  filter:none;
+  transform:none;
+}
