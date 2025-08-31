@@ -1,4 +1,9 @@
 // routes/venta.js
+// ¡Archivo actualizado para incluir notificación via Twilio cuando un pago es confirmado!
+// Este módulo maneja el flujo de pedidos pagados a través de Stripe. Al momento de
+// confirmar el pago (evento checkout.session.completed), enviará un SMS al cliente
+// informándole que su pago se ha recibido y que su pedido está siendo preparado.
+
 'use strict';
 
 const express = require('express');
@@ -16,6 +21,10 @@ try {
     console.info('[venta] Stripe SDK cargado ✓');
   }
 } catch { console.warn('[venta] Falta paquete "stripe" (npm i stripe)'); }
+
+// Importamos la utilidad para enviar SMS mediante Twilio. Esta función se encarga de
+// formatear el número a E.164 y utilizar el Messaging Service SID configurado.
+const sendSMS = require('../utils/sendSMS');
 
 /* ───────── helpers ───────── */
 const ts  = () => new Date().toISOString();
@@ -44,6 +53,26 @@ function haversineKm(lat1, lon1, lat2, lon2){
 async function genOrderCode(db){ let code; do{ code='ORD-'+Math.floor(10000+Math.random()*90000);} while(await db.sale.findUnique({where:{code}})); return code; }
 async function genCustomerCode(db){ let code; do{ code='CUS-'+Math.floor(10000+Math.random()*90000);} while(await db.customer.findUnique({where:{code}})); return code; }
 
+/*
+ * Helpers para personalizar el SMS de pago confirmado.
+ * Obtiene el primer nombre del cliente (capitalizado) y construye un mensaje
+ * distinto según sea delivery o recogida.
+ */
+const firstName = (raw) => {
+  if (!raw || typeof raw !== 'string') return '';
+  const cleanName = raw.replace(/\s+/g, ' ').trim();
+  if (!cleanName) return '';
+  const [w] = cleanName.split(' ');
+  return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+};
+
+function buildPaidMsg({ name, code, storeName, isDelivery }) {
+  const saludo = name ? `Hola ${firstName(name)}, ` : 'Hola, ';
+  return isDelivery
+    ? `${saludo}hemos recibido tu pago del pedido ${code}. Lo estamos preparando en ${storeName}. Te avisaremos cuando salga a reparto. ¡Gracias!`
+    : `${saludo}hemos recibido tu pago del pedido ${code}. Lo estamos preparando en ${storeName}. Te avisaremos cuando esté listo para recoger. ¡Gracias!`;
+}
+
 /* ───────── items: normalización/stock/total ───────── */
 async function normalizeItems(db, items){
   const src = Array.isArray(items) ? items : [];
@@ -55,19 +84,17 @@ async function normalizeItems(db, items){
 
   for (const i of src){
     const raw = i.pizzaId ?? i.id ?? i.name ?? i.pizzaName;
-    theKey: {
-      const key = String(raw ?? '').trim();
-      const size = upper(i.size || 'M');
-      const qty  = Math.max(1, Number(i.qty || 1));
-      if (!key) throw new Error('Ítem inválido: id/nombre vacío');
+    const key = String(raw ?? '').trim();
+    const size = upper(i.size || 'M');
+    const qty  = Math.max(1, Number(i.qty || 1));
+    if (!key) throw new Error('Ítem inválido: id/nombre vacío');
 
-      if (/^\d+$/.test(key)){
-        direct.push({ pizzaId: Number(key), size, qty });
-        originalKinds.push({ kind:'id', key, size, qty });
-      } else {
-        namesNeeded.add(key);
-        originalKinds.push({ kind:'name', key, size, qty });
-      }
+    if (/^\d+$/.test(key)){
+      direct.push({ pizzaId: Number(key), size, qty });
+      originalKinds.push({ kind:'id', key, size, qty });
+    } else {
+      namesNeeded.add(key);
+      originalKinds.push({ kind:'name', key, size, qty });
     }
   }
 
@@ -419,12 +446,12 @@ module.exports = (prisma) => {
 
       // ⚠️ En producción, mejor guardar el carrito en BD y pasar un token.
       const session = await stripe.checkout.sessions.create({
-        mode: "payment",
+        mode: 'payment',
         payment_method_types: ['card'],
         line_items: [{
           price_data: {
-            currency: "eur",
-            product_data: { name: "Pedido MyCrushPizza" },
+            currency: 'eur',
+            product_data: { name: 'Pedido MyCrushPizza' },
             unit_amount: totalCents
           },
           quantity: 1
@@ -667,6 +694,10 @@ module.exports = (prisma) => {
       const checkoutId = session.id;
       const paymentIntent = session.payment_intent;
 
+      // Acumulador para SMS: llenaremos phone, name, code, storeName e isDelivery y enviaremos
+      // fuera de la transacción.
+      let paidNotify = null;
+
       try {
         /* ---------- C1) Modo carrito: crear venta ahora ---------- */
         if (session.metadata?.cart){
@@ -779,8 +810,31 @@ module.exports = (prisma) => {
                 });
               }
 
+              // Obtener nombre de la tienda para el SMS
+              const store = await tx.store.findUnique({
+                where: { id: sale.storeId },
+                select: { storeName: true }
+              });
+
+              // Preparar notificación para enviar fuera de la transacción
+              paidNotify = {
+                phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
+                name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
+                code : sale.code,
+                storeName: store?.storeName || 'myCrushPizza',
+                isDelivery: String(sale.delivery).toUpperCase() === 'COURIER' || String(sale.type).toUpperCase() === 'DELIVERY'
+              };
+
               logI('Venta creada desde webhook (cart)', { saleId:sale.id, code:sale.code });
             });
+
+            // Enviar SMS de pago confirmado (fuera de la transacción)
+            if (paidNotify?.phone) {
+              const body = buildPaidMsg(paidNotify);
+              sendSMS(paidNotify.phone, body).catch(err =>
+                console.error('[Twilio SMS error PAID(cart)]', { err: err.message, code: paidNotify.code })
+              );
+            }
 
             return res.json({ received:true });
           }
@@ -788,7 +842,17 @@ module.exports = (prisma) => {
 
         /* ---------- C2) Venta previa: marcar pagada y bajar stock ---------- */
         await prisma.$transaction(async (tx) => {
-          const sale = await tx.sale.findFirst({ where:{ stripeCheckoutSessionId: checkoutId } });
+          // Traer venta incluyendo storeName y customerData para el SMS
+          const sale = await tx.sale.findFirst({
+            where:{ stripeCheckoutSessionId: checkoutId },
+            select: {
+              id: true, code: true, type: true, delivery: true, status: true,
+              storeId: true,
+              products: true,
+              customerData: true,
+              store: { select: { storeName: true } }
+            }
+          });
           if (!sale){ logW('Webhook session sin venta asociada', { checkoutId }); return; }
           if (sale.status === 'PAID'){ logI('Webhook idempotente (ya pagado)', { saleId:sale.id }); return; }
 
@@ -805,8 +869,28 @@ module.exports = (prisma) => {
             data :{ status:'PAID', stripePaymentIntentId:String(paymentIntent), processed:false }
           });
 
+          // Preparar notificación para enviar fuera de la transacción
+          paidNotify = {
+            phone: (sale.customerData?.phone || '').trim(),
+            name : (sale.customerData?.name  || '').trim(),
+            code : sale.code,
+            storeName: sale.store?.storeName || 'myCrushPizza',
+            isDelivery:
+              String(sale.delivery).toUpperCase() === 'COURIER' ||
+              String(sale.type || '').toUpperCase() === 'DELIVERY' ||
+              sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
+          };
+
           logI('Venta marcada como PAID', { saleId:sale.id });
         });
+
+        // Enviar SMS de pago confirmado (fuera de la transacción)
+        if (paidNotify?.phone) {
+          const body = buildPaidMsg(paidNotify);
+          sendSMS(paidNotify.phone, body).catch(err =>
+            console.error('[Twilio SMS error PAID(update)]', { err: err.message, code: paidNotify.code })
+          );
+        }
 
       } catch (e) {
         logE('[webhook] error al procesar session.completed', e);
