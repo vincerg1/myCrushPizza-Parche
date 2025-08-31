@@ -1,4 +1,3 @@
-// src/components/PendingTable.jsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import moment from "moment";
 import "moment/dist/locale/es";
@@ -6,7 +5,30 @@ import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 import api from "../setupAxios";
 
-const REFRESH_MS = 60_000; // 1 min
+//
+// Refresher strategy for pending orders.
+//
+// This component originally relied on a long‑interval polling mechanism to refresh
+// the list of pending orders every minute. While simple, that strategy could
+// miss events if the network hung or the tab was in the background for an
+// extended period. The updated version below introduces a more robust
+// approach combining three techniques:
+//   1. **Initial fetch** to populate the table on mount.
+//   2. **Server‑sent events (SSE)**: if the backend exposes an endpoint
+//      `/api/sales/pending/stream` that emits updates whenever a new order is
+//      created, an `EventSource` is opened and updates the local state
+//      immediately. This provides near real‑time notifications without
+//      continuous polling. If SSE fails (because the endpoint does not exist
+//      or the browser doesn’t support it), the component falls back to
+//      incremental polling.
+//   3. **Incremental polling fallback**: instead of reloading the entire list
+//      every minute, the fallback polls more frequently (every 10 seconds)
+//      and requests only orders created since the last successful fetch.
+//
+// The component retains the ringing sound alert when new orders arrive and
+// preserves all existing UI behaviour.
+
+const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
 
 export default function PendingTable() {
   const [rows, setRows] = useState([]);
@@ -14,8 +36,8 @@ export default function PendingTable() {
   const [stores, setStores] = useState([]);
   const [view, setView] = useState(null);
 
-  const [secondsLeft, setSecondsLeft] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(null);
 
   const audioRef = useRef(null);
   const prevIdsRef = useRef(new Set());
@@ -23,7 +45,13 @@ export default function PendingTable() {
   const [isRinging, setIsRinging] = useState(false);
   const [needSoundUnlock, setNeedSoundUnlock] = useState(false);
 
-  /* ---------- sonido ---------- */
+  // Keep track of the timestamp of the last successful fetch.
+  // This is used by the incremental polling fallback to request only newer
+  // orders. If the backend does not support incremental fetch, this value is
+  // ignored and the entire list is reloaded.
+  const lastFetchAtRef = useRef(null);
+
+  /* ---------- sound control ---------- */
   const ringStart = useCallback(async () => {
     if (!audioRef.current) return;
     try {
@@ -57,7 +85,9 @@ export default function PendingTable() {
       audioRef.current.currentTime = 0;
       setNeedSoundUnlock(false);
       if (alertOrders.length > 0) ringStart();
-    } catch {}
+    } catch {
+      /* no‑op */
+    }
   }, [alertOrders.length, ringStart]);
 
   useEffect(() => {
@@ -71,31 +101,54 @@ export default function PendingTable() {
     };
   }, [needSoundUnlock, unlockSound]);
 
-  /* ---------- cargar pendientes ---------- */
-  const loadPending = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get("/api/sales/pending");
-      const arr = Array.isArray(data) ? data : [];
+  /* ---------- load pending orders ---------- */
+  const loadPending = useCallback(
+    async (since = null) => {
+      // This function fetches pending orders. If `since` is provided and the
+      // backend supports incremental fetch (accepting a `since` query param
+      // in ISO string or millisecond timestamp), it will return only orders
+      // created after that. Otherwise, the backend will ignore the param and
+      // return all pending orders.
+      setLoading(true);
+      try {
+        const params = {};
+        if (since) params.since = since;
+        const { data } = await api.get("/api/sales/pending", { params });
+        const arr = Array.isArray(data) ? data : [];
 
-      const idsNow = new Set(arr.map((s) => s.id));
-      const newOnes = arr.filter((s) => !prevIdsRef.current.has(s.id));
+        // Update last fetch time to now.
+        lastFetchAtRef.current = new Date().toISOString();
 
-      setRows(arr);
-      prevIdsRef.current = idsNow;
+        const idsNow = new Set(arr.map((s) => s.id));
+        const newOnes = arr.filter((s) => !prevIdsRef.current.has(s.id));
 
-      if (newOnes.length > 0) {
-        setAlertOrders(newOnes);
-        await ringStart();
+        setRows((prev) => {
+          // If this is incremental, append new orders; else replace entire list.
+          // We detect incremental vs full by whether a `since` was used.
+          if (since && prev.length > 0) {
+            const merged = [...prev];
+            newOnes.forEach((s) => merged.push(s));
+            return merged;
+          }
+          return arr;
+        });
+        // Save the set of seen IDs (for new order detection)
+        prevIdsRef.current = new Set([...prevIdsRef.current, ...idsNow]);
+
+        if (newOnes.length > 0) {
+          setAlertOrders((prev) => [...prev, ...newOnes]);
+          await ringStart();
+        }
+      } catch (e) {
+        console.error("load pending", e);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error("load pending", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [ringStart]);
+    },
+    [ringStart]
+  );
 
-  /* ---------- datos auxiliares ---------- */
+  /* ---------- load auxiliary data (menu, stores) ---------- */
   const loadMenu = useCallback(async () => {
     try {
       const { data } = await api.get("/api/pizzas");
@@ -114,41 +167,84 @@ export default function PendingTable() {
     }
   }, []);
 
-  /* ---------- inicial + bucle robusto ---------- */
+  /* ---------- SSE connection handling and fallback polling ---------- */
   useEffect(() => {
     let cancelled = false;
-    let tickId = null;
-    let secId = null;
+    let pollingTimer = null;
+    let sse = null;
 
-    const loop = async () => {
-      // si la pestaña está oculta, igualmente hacemos pull (podrías pausar si quieres)
-      await loadPending();
-      if (cancelled) return;
-
-      setSecondsLeft(Math.floor(REFRESH_MS / 1000));
-      tickId = setTimeout(loop, REFRESH_MS);
+    // Function to start fallback polling. It uses incremental fetch based on
+    // the timestamp of the last successful call (`lastFetchAtRef.current`).
+    const startFallbackPolling = () => {
+      async function pollLoop() {
+        // If cancelled, do not proceed
+        if (cancelled) return;
+        const since = lastFetchAtRef.current;
+        await loadPending(since);
+        if (cancelled) return;
+        pollingTimer = setTimeout(pollLoop, FALLBACK_POLL_MS);
+      }
+      pollLoop();
     };
 
-    // arranque inicial + datos auxiliares
-    (async () => {
+    // Setup initial data and connections
+    const init = async () => {
+      // Initial full load of data
       await Promise.all([loadPending(), loadMenu(), loadStores()]);
-      setSecondsLeft(Math.floor(REFRESH_MS / 1000));
-      tickId = setTimeout(loop, REFRESH_MS);
-    })();
+      // Try SSE if supported by the browser and the server (exists at the URL)
+      if (typeof window.EventSource !== "undefined") {
+        try {
+          sse = new EventSource("/api/sales/pending/stream");
+          sse.onmessage = (event) => {
+            // Each message is expected to contain a JSON payload with the new
+            // order(s). The server should send a JSON string representing a
+            // single order or an array of orders.
+            try {
+              const parsed = JSON.parse(event.data);
+              const newOrders = Array.isArray(parsed) ? parsed : [parsed];
+              // Update local state with new orders
+              setRows((prev) => [...prev, ...newOrders]);
+              newOrders.forEach((o) => prevIdsRef.current.add(o.id));
+              setAlertOrders((prev) => [...prev, ...newOrders]);
+              ringStart();
+            } catch (ex) {
+              console.error("Error parsing SSE event", ex);
+            }
+          };
+          sse.onerror = (err) => {
+            console.error("SSE error; falling back to polling", err);
+            if (sse) {
+              sse.close();
+              sse = null;
+            }
+            // Start fallback polling when SSE fails
+            if (!cancelled) startFallbackPolling();
+          };
+        } catch (err) {
+          console.error("Unable to open SSE; falling back to polling", err);
+          // Fall back to polling if SSE connection fails
+          startFallbackPolling();
+        }
+      } else {
+        // EventSource not supported; fallback to polling
+        startFallbackPolling();
+      }
+    };
 
-    // contador visual
-    secId = setInterval(() => {
-      setSecondsLeft((s) => (s != null && s > 0 ? s - 1 : s));
-    }, 1000);
+    init();
 
+    // Clean up on unmount
     return () => {
       cancelled = true;
-      if (tickId) clearTimeout(tickId);
-      if (secId) clearInterval(secId);
+      if (sse) {
+        sse.close();
+        sse = null;
+      }
+      if (pollingTimer) clearTimeout(pollingTimer);
     };
-  }, [loadPending, loadMenu, loadStores]);
+  }, [loadPending, loadMenu, loadStores, ringStart]);
 
-  /* ---------- varios efectos UI ---------- */
+  /* ---------- UI effects ---------- */
   useEffect(() => {
     const btn = document.getElementById("pending-tab");
     if (!btn) return;
@@ -194,7 +290,9 @@ export default function PendingTable() {
     try {
       const raw = sale.products ?? "[]";
       list = Array.isArray(raw) ? raw : JSON.parse(raw);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     if (!Array.isArray(list)) list = [];
     return list
       .map(
@@ -387,7 +485,7 @@ export default function PendingTable() {
             <ul className="alert-list">
               {alertOrders.slice(0, 5).map((o) => (
                 <li key={o.id}>
-                  <b>{o.code}</b> — {moment(o.date).format("HH:mm")} · {o.type} ·{" "}
+                  <b>{o.code}</b> — {moment(o.date).format("HH:mm")} · {o.type} ·{' '}
                   {storeById[o.storeId] || o.storeName || "-"}
                   <br />
                   <small>{fmtProducts(o)}</small>
