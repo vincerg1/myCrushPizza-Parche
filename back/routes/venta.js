@@ -403,18 +403,19 @@ module.exports = (prisma) => {
               : undefined;
 
           const session = await stripe.checkout.sessions.create({
-            mode:'payment',
+            mode: 'payment',
             payment_method_types: pmTypes,
             line_items: productLines,
-            shipping_address_collection: sale.delivery === 'COURIER' ? { allowed_countries:['ES'] } : undefined,
-            shipping_options: shippingOptions,
-            phone_number_collection: { enabled:true },
+            // Quitar shipping_address_collection para que Stripe NO solicite dirección de envío
+            // shipping_address_collection: sale.delivery === 'COURIER' ? { allowed_countries:['ES'] } : undefined,
+            // Opcional: si tienes gastos de envío calculados, los puedes incluir con shipping_options, pero no son obligatorios
+            // phone_number_collection: { enabled: true }, // conservar si quieres capturar teléfono
             customer_email: sale.customerData?.email || undefined,
             billing_address_collection: 'auto',
-            locale:'es',
+            locale: 'es',
             success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            metadata: { saleId:String(sale.id), saleCode:sale.code||'', type:sale.type, delivery:sale.delivery }
+            cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+            metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
           });
 
           // total final
