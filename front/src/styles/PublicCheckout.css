@@ -573,3 +573,171 @@
   filter:none;
   transform:none;
 }
+/* === Modales (base) === */
+.pc-modal-overlay{
+  position:fixed; inset:0; padding:16px;
+  background:rgba(0,0,0,.5);
+  display:flex; align-items:center; justify-content:center;
+  z-index:2000; /* por encima de mapas/toasts */
+}
+.pc-modal{
+  background:#fff; color:#111;
+  border-radius:16px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+  max-height:90vh; width:100%;
+  overflow:hidden;
+}
+.pc-modal__header, .pc-modal__footer{
+  display:flex; align-items:center; gap:8px;
+  padding:12px 20px;
+  border-bottom:1px solid rgba(0,0,0,.08);
+}
+.pc-modal__header{ justify-content:space-between; }
+.pc-modal__footer{
+  border-bottom:none; border-top:1px solid rgba(0,0,0,.08);
+  justify-content:flex-end;
+}
+.pc-modal__body{
+  padding:16px 20px;
+  max-height:calc(90vh - 120px);
+  overflow:auto;
+}
+
+/* Tablas y contenido dentro del modal */
+.pc-modal__body .pc-table{ width:100%; border-collapse:collapse; }
+.pc-modal__body .pc-table th,
+.pc-modal__body .pc-table td{ padding:8px; border-bottom:1px solid rgba(0,0,0,.06); }
+.pc-modal__body .pc-note{ opacity:.8; font-size:.92em; }
+
+/* Checkbox simple */
+.pc-checkbox{ display:inline-flex; align-items:center; gap:8px; }
+
+/* Enlaces del footer como botones-texto */
+.pc-link{
+  background:none; border:0; padding:0;
+  font:inherit; color:#0d6efd; cursor:pointer;
+  text-decoration:underline;
+}
+.pc-link:hover{ text-decoration:none; }
+.pc-link:focus-visible{ outline:2px solid #0d6efd; outline-offset:2px; border-radius:6px; }
+.footer__links{ text-align:center; }
+.footer__links .pc-link{ margin:0 6px; }
+
+/* Animación sutil de entrada (respeta reduced motion) */
+@media (prefers-reduced-motion: no-preference){
+  .pc-modal{ transform:translateY(8px); animation:pc-modal-in .16s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes pc-modal-in{
+    from{ opacity:0; transform:translateY(12px) scale(.985); }
+    to{ opacity:1; transform:translateY(0) scale(1); }
+  }
+}
+
+/* Modo oscuro opcional */
+@media (prefers-color-scheme: dark){
+  .pc-modal{ background:#111; color:#eee; border:1px solid rgba(255,255,255,.08); }
+  .pc-modal__header, .pc-modal__footer{ border-color:rgba(255,255,255,.12); }
+  .pc-modal-overlay{ background:rgba(0,0,0,.6); }
+  .pc-link{ color:#8cb6ff; }
+}
+/* Overlay con tinte de marca */
+.pc-modal-overlay--brand{
+  background:
+    radial-gradient(120% 120% at 50% -10%, rgba(249,38,114,.70) 0%, rgba(66,133,244,.70) 60%, rgba(0,0,0,.55) 100%);
+  backdrop-filter: blur(2px);
+}
+
+/* Fila de 3 botones iguales */
+.pc-actions--even3{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap:8px;
+}
+.pc-actions--even3 .pc-btn{ width:100%; }
+
+/* Responsive muy estrecho */
+@media (max-width: 360px){
+  .pc-actions--even3{ grid-template-columns: 1fr; }
+}
+
+/* (Opcional) destaca el título del modal */
+.pc-modal__header .pc-title{
+  color:#f92672; /* acento marca */
+}
+@media (prefers-color-scheme: dark){
+  .pc-modal__header .pc-title{ color:#ff80a6; }
+}
+/* Dos botones arriba + el primario a todo el ancho en la segunda fila */
+.pc-actions--2plus1{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:8px;
+}
+.pc-actions--2plus1 .pc-btn-primary{
+  grid-column: 1 / -1; /* ocupa ambas columnas */
+}
+
+/* Pulse suave para el CTA principal */
+@media (prefers-reduced-motion: no-preference){
+  .pc-btn-pulse{
+    animation: pc-btn-pulse 1.6s ease-in-out infinite;
+    will-change: transform, box-shadow;
+  }
+  @keyframes pc-btn-pulse{
+    0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(66,133,244,.45); }
+    60%  { transform: scale(1.02); box-shadow: 0 0 0 12px rgba(66,133,244,0); }
+    100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(66,133,244,0); }
+  }
+}
+
+/* Responsive muy estrecho: apila los tres */
+@media (max-width: 360px){
+  .pc-actions--2plus1{ grid-template-columns: 1fr; }
+}
+/* ===== Cookies table: desktop tweaks ===== */
+.pc-modal__body .pc-table{
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+.pc-modal__body .pc-table th,
+.pc-modal__body .pc-table td{
+  padding: 8px;
+  vertical-align: top;
+  text-align: left;
+  word-break: break-word;      /* corta __stripe_sid, etc. */
+  overflow-wrap: anywhere;
+  font-size: .95rem;
+}
+.pc-modal__body .pc-table th:nth-child(1){ width: 18%; } /* Tipo */
+.pc-modal__body .pc-table th:nth-child(2){ width: 24%; } /* Nombre */
+.pc-modal__body .pc-table th:nth-child(3){ width: 30%; } /* Finalidad */
+.pc-modal__body .pc-table th:nth-child(4){ width: 14%; } /* Duración */
+.pc-modal__body .pc-table th:nth-child(5){ width: 14%; } /* Titular */
+
+/* ===== Cookies table: mobile -> stacked cards ===== */
+@media (max-width: 420px){
+  .pc-modal__body .pc-table thead{ display: none; }
+  .pc-modal__body .pc-table,
+  .pc-modal__body .pc-table tbody,
+  .pc-modal__body .pc-table tr,
+  .pc-modal__body .pc-table td{
+    display: block;
+    width: 100%;
+  }
+  .pc-modal__body .pc-table tr{
+    margin: 0 0 12px 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(0,0,0,.08);
+    border-radius: 10px;
+    background: rgba(255,255,255,.9);
+  }
+  .pc-modal__body .pc-table td{
+    border: 0;
+    padding: 6px 0;
+  }
+  .pc-modal__body .pc-table td:nth-child(1)::before{ content: "Tipo: "; font-weight: 700; }
+  .pc-modal__body .pc-table td:nth-child(2)::before{ content: "Nombre: "; font-weight: 700; }
+  .pc-modal__body .pc-table td:nth-child(3)::before{ content: "Finalidad: "; font-weight: 700; }
+  .pc-modal__body .pc-table td:nth-child(4)::before{ content: "Duración: "; font-weight: 700; }
+  .pc-modal__body .pc-table td:nth-child(5)::before{ content: "Titular: "; font-weight: 700; }
+}

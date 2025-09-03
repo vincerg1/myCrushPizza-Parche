@@ -67,6 +67,25 @@ export default function PublicCheckout() {
   // pagar
   const [isPaying, setIsPaying] = useState(false);
 
+  // ===== LEGALES / COOKIES =====
+  const [showTermsPurchase, setShowTermsPurchase] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showCookiesPolicy, setShowCookiesPolicy] = useState(false);
+  const [showCookiePrefs, setShowCookiePrefs] = useState(false);
+  const [consentTick, setConsentTick] = useState(0); // para refrescar banner tras elegir
+
+  const CONSENT_KEY = "mcp_cookie_consent_v1";
+  const getConsent = () => {
+    try { return JSON.parse(localStorage.getItem(CONSENT_KEY) || "null"); } catch { return null; }
+  };
+  const setConsent = (obj) => {
+    localStorage.setItem(CONSENT_KEY, JSON.stringify(obj));
+    // Notificar y refrescar (para ocultar banner)
+    window.dispatchEvent(new CustomEvent("cookie-consent", { detail: obj }));
+    setConsentTick((t) => t + 1);
+  };
+  const hasConsent = () => !!getConsent();
+
   // ===== helpers tienda =====
   const getStoreById = useCallback(
     (id) => stores.find((s) => Number(s.id) === Number(id)),
@@ -101,7 +120,7 @@ export default function PublicCheckout() {
     if (!plc?.geometry) return;
 
     const fullAddr = plc.formatted_address?.toUpperCase() || "";
-    const lat = plc.geometry.location.lat();
+       const lat = plc.geometry.location.lat();
     const lng = plc.geometry.location.lng();
 
     setQuery(fullAddr);
@@ -131,6 +150,21 @@ export default function PublicCheckout() {
   const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
+  const COUPON_GROUPS = [3, 4, 4];
+
+  const formatCoupon = useCallback((v) => {
+    const raw = (v || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, ""); // solo letras/números
+    const parts = [];
+    let i = 0;
+    for (const g of COUPON_GROUPS) {
+      if (i >= raw.length) break;
+      parts.push(raw.slice(i, i + g));
+      i += g;
+    }
+    return parts.join("-");
+  }, []);
 
   const checkCoupon = useCallback(async () => {
     const code = (couponCode || "").trim().toUpperCase();
@@ -203,14 +237,14 @@ export default function PublicCheckout() {
   const SWIPE_X = 70; // px
   const SWIPE_Y_MAX = 40; // px vertical máximo
 
-  const isInteractive = (el) => {
-    if (!el) return false;
-    const tag = el.tagName;
-    if (!tag) return false;
-    const t = tag.toUpperCase();
-    if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(t)) return true;
-    return el.closest?.("[data-noswipe]") ? true : false;
-  };
+const isInteractive = (el) => {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (!tag) return false;
+  const tagU = tag.toUpperCase();
+  if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(tagU)) return true;
+  return el.closest?.("[data-noswipe]") ? true : false;
+};
 
   const goBack = () => {
     if (mode === "deliveryLocate" || mode === "pickupLocate") {
@@ -239,31 +273,30 @@ export default function PublicCheckout() {
     }
   };
 
-  const onTouchStart = (e) => {
-    const t = e.touches[0];
-    tStart.current = { x: t.clientX, y: t.clientY, at: Date.now(), target: e.target };
-  };
+const onTouchStart = (e) => {
+  const touch = e.touches[0];
+  tStart.current = { x: touch.clientX, y: touch.clientY, at: Date.now(), target: e.target };
+};
 
-  const onTouchMove = (e) => {
-    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-    const t = e.touches[0];
-    const dx = t.clientX - tStart.current.x;
-    const dy = Math.abs(t.clientY - tStart.current.y);
-    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
-  };
+const onTouchMove = (e) => {
+  if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - tStart.current.x;
+  const dy = Math.abs(touch.clientY - tStart.current.y);
+  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
+};
 
-  const onTouchEnd = (e) => {
-    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-    const changed = e.changedTouches?.[0];
-    if (!changed) return;
-    const dx = changed.clientX - tStart.current.x;
-    const dy = Math.abs(changed.clientY - tStart.current.y);
-    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
-      if (dx < 0) goForward();
-      else goBack();
-    }
-  };
-
+const onTouchEnd = (e) => {
+  if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+  const changed = e.changedTouches?.[0];
+  if (!changed) return;
+  const dx = changed.clientX - tStart.current.x;
+  const dy = Math.abs(changed.clientY - tStart.current.y);
+  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
+    if (dx < 0) goForward();
+    else goBack();
+  }
+};
   // soporte teclado (desktop)
   const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
@@ -275,6 +308,279 @@ export default function PublicCheckout() {
     setFlashCus(true);
     setTimeout(() => setFlashCus(false), 650);
   }, []);
+
+  // ===== Modales base y legales =====
+function BaseModal({ open, title, onClose, children, width = 640, hideFooter = false, overlayClassName = "" }) {
+  if (!open) return null;
+  return (
+    <div className={`pc-modal-overlay ${overlayClassName}`} role="dialog" aria-modal="true" onClick={onClose}>
+      <div
+        className="pc-modal"
+        style={{ maxWidth: width, width: "90%" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pc-modal__header">
+          <h3 className="pc-title" style={{ margin: 0 }}>{title}</h3>
+          <button className="pc-btn pc-btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+        <div className="pc-modal__body">{children}</div>
+        {!hideFooter && (
+          <div className="pc-modal__footer">
+            <button className="pc-btn pc-btn-primary" onClick={onClose}>Cerrar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
+  return (
+    <BaseModal
+      open={open}
+      title="Preferencias de privacidad"
+      onClose={onManage}
+      width={520}
+      hideFooter
+      overlayClassName="pc-modal-overlay--brand"
+    >
+      <p>
+        Usamos cookies <b>necesarias</b> para que el sitio funcione y, con tu permiso, cookies
+        <b> analíticas</b>. Puedes aceptar todas, rechazar las opcionales o configurar tus
+        preferencias.
+      </p>
+<div className="pc-actions pc-actions--2plus1" style={{ marginTop: 8 }}>
+  <button className="pc-btn" onClick={onManage}>Configurar</button>
+  <button className="pc-btn" onClick={onRejectOptional}>Rechazar</button>
+  <button className="pc-btn pc-btn-primary pc-btn-pulse" onClick={onAcceptAll}>
+    Aceptar todo
+  </button>
+</div>
+    </BaseModal>
+  );
+}
+
+
+  function CookiePrefsModal({ open, onClose }) {
+    const current = getConsent() || { necessary: true, analytics: false };
+    const [analytics, setAnalytics] = useState(!!current.analytics);
+
+    const save = () => {
+      setConsent({ necessary: true, analytics });
+      onClose();
+    };
+
+    return (
+      <BaseModal open={open} title="Preferencias de cookies" onClose={onClose} width={560}>
+        <div className="pc-card">
+          <div className="pc-grid" style={{ rowGap: 8 }}>
+            <div>
+              <b>Necesarias</b> (siempre activas)
+              <p className="pc-note">Imprescindibles para el funcionamiento básico del sitio (sesión, carrito, seguridad).</p>
+            </div>
+            <div>
+              <label className="pc-checkbox">
+                <input type="checkbox" checked disabled readOnly />
+                <span>Cookies necesarias</span>
+              </label>
+            </div>
+
+            <hr />
+
+            <div>
+              <b>Analíticas</b>
+              <p className="pc-note">Nos ayudan a entender el uso del sitio. Se activan solo con tu consentimiento.</p>
+            </div>
+            <div>
+              <label className="pc-checkbox">
+                <input
+                  type="checkbox"
+                  checked={analytics}
+                  onChange={(e) => setAnalytics(e.target.checked)}
+                />
+                <span>Permitir cookies analíticas</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="pc-actions" style={{ marginTop: 12 }}>
+            <button className="pc-btn" onClick={() => { setConsent({ necessary: true, analytics: false }); onClose(); }}>
+              Guardar (sin analíticas)
+            </button>
+            <button className="pc-btn pc-btn-primary push" onClick={save}>Guardar preferencias</button>
+          </div>
+        </div>
+      </BaseModal>
+    );
+  }
+
+  function TermsPurchaseModal({ open, onClose }) {
+    return (
+      <BaseModal open={open} title="Términos y Condiciones de Compra" onClose={onClose}>
+        <div className="pc-content">
+          <p><b>MYCRUSHPIZZA, S.L.</b> — CIF <b>B-21998257</b><br />
+            Plaza San Antonio 1 – Local A, 32004 Ourense (España)<br />
+            Registro Mercantil de Ourense: Hoja OR-18935, inscripción 1ª · IRUS: 1000451056147<br />
+            Tel.: +34 694 301 433 · Email: <a href="mailto:mycrushpizzaspain@gmail.com">mycrushpizzaspain@gmail.com</a>
+          </p>
+
+          <h4>1. Productos e información</h4>
+          <p>Descripciones, alérgenos, precios y fotos buscan ser exactos; pequeñas variaciones no afectan a la naturaleza del producto. Consulta alérgenos antes de confirmar.</p>
+
+          <h4>2. Precios, impuestos y gastos</h4>
+          <p>Precios en euros e incluyen IVA salvo indicación. Gastos de envío (si aplican) se calculan en el checkout.</p>
+
+          <h4>3. Códigos promocionales y cupones</h4>
+          <p>No acumulables salvo indicación. Deben aplicarse en el checkout.</p>
+
+          <h4>4. Proceso de pedido</h4>
+          <p>Selección → dirección/tienda → confirmación → pago. El contrato se perfecciona con la confirmación del pedido.</p>
+
+          <h4>5. Disponibilidad</h4>
+          <p>Si se agota un producto tras confirmar, contactaremos para reembolso, alternativa o reprogramación.</p>
+
+          <h4>6. Áreas y condiciones de entrega</h4>
+          <p>Reparto solo dentro del área de servicio indicada en el checkout. Gastos: {DELIVERY_FEE.toFixed(2)} € por cada bloque de {DELIVERY_BLOCK} pizzas (p. ej., 7 pizzas ⇒ 2 × {DELIVERY_FEE.toFixed(2)} €).</p>
+
+          <h4>7. Recogida en tienda</h4>
+          <p>Presentarse a la hora estimada y mostrar el número de pedido.</p>
+
+          <h4>8. Pago</h4>
+          <p>Pago con tarjeta a través de pasarela certificada (p. ej., Stripe). Aplicamos verificaciones antifraude automáticas.</p>
+
+          <h4>9. Factura</h4>
+          <p>Solicítala respondiendo a la confirmación o por email con tus datos fiscales.</p>
+
+          <h4>10. Desistimiento y cancelaciones</h4>
+          <p>Alimentos preparados/perecederos: no aplica desistimiento de 14 días. Cancelación gratuita posible antes de iniciar la preparación.</p>
+
+          <h4>11. Devoluciones e incidencias</h4>
+          <p>Comunícanos en 24 h con nº de pedido y, si procede, fotos. Ofrecemos reposición, vale o reembolso proporcional según el caso.</p>
+
+          <h4>12. Responsabilidad</h4>
+          <p>No respondemos por fallos de red/terceros. Nada limita derechos imperativos del consumidor.</p>
+
+          <h4>13. Alérgenos y seguridad alimentaria</h4>
+          <p>Información disponible. Puede haber trazas por instalaciones compartidas.</p>
+
+          <h4>14. Atención al cliente y reclamaciones</h4>
+          <p>Tel.: +34 694 301 433 · Email: mycrushpizzaspain@gmail.com. Hojas de Reclamaciones en el local. ODR UE: <a href="https://ec.europa.eu/consumers/odr/" target="_blank" rel="noreferrer">Plataforma ODR</a>.</p>
+
+          <h4>15. Protección de datos</h4>
+          <p>Se rige por la Política de Privacidad del portal.</p>
+
+          <h4>16. Modificaciones</h4>
+          <p>Podemos actualizar estas condiciones; aplican desde su publicación.</p>
+
+          <h4>17. Ley aplicable y jurisdicción</h4>
+          <p>Ley española. Fuero: Ourense (sin perjuicio de derechos imperativos).</p>
+
+          <p className="pc-note">Última actualización: {new Date().toLocaleDateString("es-ES")}</p>
+        </div>
+      </BaseModal>
+    );
+  }
+
+  function PrivacyPolicyModal({ open, onClose }) {
+    return (
+      <BaseModal open={open} title="Política de Privacidad — Portal de ventas" onClose={onClose}>
+        <div className="pc-content">
+          <p><b>Responsable</b><br />
+            MYCRUSHPIZZA, S.L. — CIF B-21998257<br />
+            Plaza San Antonio 1 – Local A, 32004 Ourense (España)<br />
+            Registro Mercantil de Ourense: Hoja OR-18935, inscripción 1ª · IRUS: 1000451056147<br />
+            Tel.: +34 694 301 433 · Email: <a href="mailto:mycrushpizzaspain@gmail.com">mycrushpizzaspain@gmail.com</a>
+          </p>
+
+          <h4>1) Datos que tratamos</h4>
+          <ul>
+            <li><b>Identificativos y contacto:</b> nombre, teléfono, email.</li>
+            <li><b>Dirección y ubicación:</b> dirección postal; coordenadas aproximadas si usas mapa/autocompletado.</li>
+            <li><b>Pedido y facturación:</b> productos, importe, método de entrega; NIF si solicitas factura.</li>
+            <li><b>Comunicaciones de servicio:</b> avisos por WhatsApp/email sobre tu pedido.</li>
+            <li><b>Técnicos:</b> IP, cookies/consentimiento, navegador/dispositivo, registros antifraude.</li>
+            <li><b>Pago:</b> <u>no tratamos números completos de tarjeta</u>. El pago se procesa en la <b>pasarela</b> (p. ej., Stripe); recibimos solo confirmaciones/tokens y metadatos (estado, importe, hora).</li>
+          </ul>
+
+          <h4>2) Finalidades y bases jurídicas</h4>
+          <table className="pc-table">
+            <thead><tr><th>Finalidad</th><th>Base legal (RGPD)</th><th>Conservación</th></tr></thead>
+            <tbody>
+              <tr><td>Gestionar pedido, cobro, entrega/recogida y soporte</td><td>Ejecución del contrato (6.1.b)</td><td>Pedido+soporte hasta 24 meses; contable/fiscal 6 años</td></tr>
+              <tr><td>Facturación y obligaciones legales</td><td>Obligación legal (6.1.c)</td><td>Plazos legales</td></tr>
+              <tr><td>Prevención del fraude y seguridad</td><td>Interés legítimo (6.1.f)</td><td>12–24 meses</td></tr>
+              <tr><td>Comunicaciones comerciales</td><td>Consentimiento (6.1.a)</td><td>Hasta retirada</td></tr>
+              <tr><td>Analítica (cookies no esenciales)</td><td>Consentimiento (6.1.a)</td><td>Hasta 24 meses</td></tr>
+            </tbody>
+          </table>
+
+          <h4>3) Destinatarios</h4>
+          <ul>
+            <li><b>Pasarela de pago</b> (p. ej., Stripe Payments Europe, Ltd.).</li>
+            <li><b>Alojamiento y proveedores IT</b> (hosting, backups, correo, mensajería transaccional).</li>
+            <li><b>Mensajería/Comunicación</b> (WhatsApp Business si se usa).</li>
+            <li><b>Servicios de mapas</b> (Google Maps/Places) para autocompletar/ubicación.</li>
+            <li><b>Tiendas propias y/o repartidores</b> para preparar/entregar el pedido.</li>
+            <li>Administraciones y FCSE cuando exista obligación legal.</li>
+          </ul>
+
+          <h4>4) Transferencias internacionales</h4>
+          <p>Con proveedores como Stripe, Google o Meta puede haber transferencias fuera del EEE bajo <i>Standard Contractual Clauses</i> (SCC) u otras garantías RGPD.</p>
+
+          <h4>5) Derechos</h4>
+          <p>Acceso, rectificación, supresión, oposición, limitación y portabilidad en <a href="mailto:mycrushpizzaspain@gmail.com">mycrushpizzaspain@gmail.com</a> o por correo postal, adjuntando documento identificativo. Reclamación ante la AEPD (www.aepd.es).</p>
+
+          <h4>6) Seguridad</h4>
+          <p>Medidas técnicas y organizativas apropiadas. <b>No almacenamos datos completos de tarjeta</b>; los gestiona la pasarela certificada.</p>
+
+          <h4>7) Menores</h4>
+          <p>Compras dirigidas a mayores de 18 años.</p>
+
+          <h4>8) Cookies</h4>
+          <p>Consulta la Política de Cookies para detalles y gestión del consentimiento.</p>
+
+          <p className="pc-note">Última actualización: {new Date().toLocaleDateString("es-ES")}</p>
+        </div>
+      </BaseModal>
+    );
+  }
+
+  function CookiesPolicyModal({ open, onClose }) {
+    return (
+      <BaseModal open={open} title="Política de Cookies" onClose={onClose}>
+        <div className="pc-content">
+          <h4>1. ¿Qué son las cookies?</h4>
+          <p>Archivos que el navegador guarda para recordar información de tu visita. Usamos cookies necesarias y, con tu consentimiento, analíticas (y, si se habilitan, de publicidad).</p>
+
+          <h4>2. Cookies que utilizamos</h4>
+          <table className="pc-table">
+            <thead><tr><th>Tipo</th><th>Nombre</th><th>Finalidad</th><th>Duración</th><th>Titular</th></tr></thead>
+            <tbody>
+              <tr><td>Técnicas (esenciales)</td><td>mcp_session</td><td>Sesión, carrito, flujo</td><td>24 h</td><td>Propia</td></tr>
+              <tr><td>Preferencias</td><td>mcp_termsAccepted</td><td>Recordar aceptación de condiciones</td><td>12 meses</td><td>Propia</td></tr>
+              <tr><td>Preferencias</td><td>mcp_cookie_consent_v1</td><td>Guardar tu consentimiento</td><td>12 meses</td><td>Propia</td></tr>
+              <tr><td>Técnicas de terceros (pago)</td><td>__stripe_mid, __stripe_sid</td><td>Fraude/seguridad del pago</td><td>hasta 1 año / sesión</td><td>Stripe</td></tr>
+              <tr><td>Técnicas de terceros (mapas)</td><td>NID, AEC (u otras)</td><td>Autocompletado/seguridad</td><td>según proveedor</td><td>Google</td></tr>
+              <tr><td>Analíticas (opcionales)</td><td>_ga</td><td>Métricas de uso (Google Analytics)</td><td>24 meses</td><td>Google</td></tr>
+              <tr><td>Analíticas (opcionales)</td><td>_gid</td><td>Métricas de uso (Google Analytics)</td><td>24 h</td><td>Google</td></tr>
+              {/* Publicidad opcional si se habilita: Meta/TikTok */}
+            </tbody>
+          </table>
+
+          <h4>3. Cambiar o retirar el consentimiento</h4>
+          <p>Puedes modificar tu elección en «Preferencias de cookies» en cualquier momento. El borrado de cookies desde el navegador puede resetear tus preferencias.</p>
+
+          <h4>4. Transferencias internacionales</h4>
+          <p>Con proveedores como Google o Stripe pueden darse transferencias bajo Cláusulas Contractuales Tipo (SCC) u otras garantías RGPD.</p>
+
+          <h4>5. Contacto</h4>
+          <p>mycrushpizzaspain@gmail.com</p>
+
+          <p className="pc-note">Última actualización: {new Date().toLocaleDateString("es-ES")}</p>
+        </div>
+      </BaseModal>
+    );
+  }
 
   // Paso 0: escoger modo
   const chooseMode = (
@@ -769,12 +1075,11 @@ export default function PublicCheckout() {
             <div className="pc-total">Total: €{reviewTotal.toFixed(2)}</div>
           </div>
 
-          {isDelivery && (
-            <p className="pc-note">
-              Nota: el envío cuesta <b>{DELIVERY_FEE.toFixed(2)} €</b> por cada bloque de <b>{DELIVERY_BLOCK}</b> pizzas (p. ej. 7 pizzas ⇒ 2×
-              {DELIVERY_FEE.toFixed(2)} €).
-            </p>
-          )}
+          {/* Aviso de pagos seguros */}
+          <p className="pc-note" style={{ marginTop: 8 }}>
+            Pagos seguros: el cobro se realiza a través de una pasarela certificada (p. ej., Stripe).
+            MYCRUSHPIZZA no almacena ni conoce los datos completos de tu tarjeta.
+          </p>
 
           <div className="pc-actions pc-sticky" style={{ marginTop: 10 }}>
             <button className="pc-btn pc-btn-ghost" onClick={() => setStep("order")}>
@@ -815,6 +1120,17 @@ export default function PublicCheckout() {
             © {new Date().getFullYear()} MyCrushPizza SL.<br />
             Todos los derechos reservados.
           </p>
+
+          {/* Enlaces legales */}
+          <p className="footer__links" style={{ marginTop: 8 }}>
+            <button className="pc-link" onClick={() => setShowTermsPurchase(true)}>Términos y condiciones</button>
+            {" · "}
+            <button className="pc-link" onClick={() => setShowPrivacyPolicy(true)}>Privacidad</button>
+            {" · "}
+            <button className="pc-link" onClick={() => setShowCookiesPolicy(true)}>Política de cookies</button>
+            {" · "}
+            <button className="pc-link" onClick={() => setShowCookiePrefs(true)}>Preferencias de cookies</button>
+          </p>
         </div>
       </footer>
     );
@@ -838,11 +1154,16 @@ export default function PublicCheckout() {
       <div className="pc-actions">
         <input
           className="pc-input"
-          placeholder="Escribe tu código (p. ej. MCRUSH10)"
+          placeholder="Escribe tu código (p. ej. MCP-XXXX-XXXX)"
           value={couponCode}
-          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+          onChange={(e) => setCouponCode(formatCoupon(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && checkCoupon()}
           aria-label="Código de cupón"
+          inputMode="text"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          maxLength={COUPON_GROUPS.reduce((a, b) => a + b, 0) + (COUPON_GROUPS.length - 1)}
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
         {coupon && couponOk && (
@@ -857,8 +1178,17 @@ export default function PublicCheckout() {
 
   // ========== RENDER ==========
   return (
-    <div className="pc-page" onKeyDown={onKeyDown}>
+    <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
       {CouponToast}
+
+      {/* Banner de cookies */}
+      <CookieGateModal
+        open={!hasConsent()}
+        onManage={() => setShowCookiePrefs(true)}
+        onAcceptAll={() => setConsent({ necessary: true, analytics: true })}
+        onRejectOptional={() => setConsent({ necessary: true, analytics: false })}
+      />
+
       <div
         className="pc-wrap"
         onTouchStart={onTouchStart}
@@ -872,6 +1202,13 @@ export default function PublicCheckout() {
         {step === "order" && orderView}
         {step === "review" && reviewView}
       </div>
+
+      {/* Modales legales */}
+      <CookiePrefsModal open={showCookiePrefs} onClose={() => setShowCookiePrefs(false)} />
+      <TermsPurchaseModal open={showTermsPurchase} onClose={() => setShowTermsPurchase(false)} />
+      <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
+      <CookiesPolicyModal open={showCookiesPolicy} onClose={() => setShowCookiesPolicy(false)} />
+
       <PublicFooter />
     </div>
   );
