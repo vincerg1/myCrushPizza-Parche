@@ -58,7 +58,7 @@ model Store {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
+  acceptingOrders   Boolean  @default(true)
   stocks StorePizzaStock[]
   sales  Sale[]
 }

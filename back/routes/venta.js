@@ -366,6 +366,14 @@ router.post('/pedido', async (req, res) => {
       });
       return sale;
     });
+    const storeRow = await prisma.store.findUnique({
+  where: { id: Number(storeId) },
+  select: { id: true, acceptingOrders: true, storeName: true }
+    });
+    if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
+    if (!storeRow.acceptingOrders) {
+      return res.status(403).json({ error: 'La tienda no está aceptando pedidos ahora mismo.' });
+    }
 
     logI('→ pedido creado', created);
     res.json(created);
