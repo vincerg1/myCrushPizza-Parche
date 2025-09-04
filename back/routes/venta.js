@@ -256,12 +256,11 @@ router.post('/pedido', async (req, res) => {
     // Ítems (solo pizzas base/size/qty/precio)
     const normItems = await normalizeItems(prisma, items);
 
-    // Helper local: captura extras por item (toppings/modificadores) y los multiplica por qty
+    // Helper: recoger extras adjuntos a cada ítem y multiplicarlos por qty
     const collectExtrasFromItems = (rawItems = []) => {
       const out = [];
       for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
         const qty = Math.max(1, Number(it?.qty || 1));
-
         const pools = []
           .concat(it?.extras || [])
           .concat(it?.toppings || [])
@@ -271,16 +270,11 @@ router.post('/pedido', async (req, res) => {
           .concat(it?.ingredients || [])
           .concat(it?.complements || [])
           .concat(it?.sides || []);
-
         for (const ex of pools) {
-          const parsed = [ex?.amount, ex?.price, ex?.delta]
-            .map(toPrice)
-            .find(Number.isFinite);
+          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
           if (!Number.isFinite(parsed) || parsed <= 0) continue;
-
           const code  = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
           const label = String(ex?.label || ex?.name || ex?.title || code);
-
           out.push({ code, label, amount: round2(parsed * qty) });
         }
       }
@@ -291,12 +285,10 @@ router.post('/pedido', async (req, res) => {
       await assertStock(tx, Number(storeId), normItems);
       const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-      /* ---- Extras (de items + de pedido) + Cupón ---- */
-
-      // a) extras provenientes de cada item (toppings/modificadores…)
+      // a) extras desde cada ítem
       const itemExtras = collectExtrasFromItems(items);
 
-      // b) extras enviados a nivel pedido
+      // b) extras a nivel pedido (ya vienen sumados/individuales)
       const orderLevelExtras = (Array.isArray(extras) ? extras : [])
         .map(ex => {
           const amountNum = toPrice(ex?.amount);
@@ -310,12 +302,12 @@ router.post('/pedido', async (req, res) => {
         })
         .filter(Boolean);
 
-      // c) unión final (cobrables + delivery + los que vienen por item)
+      // c) unión final (excepto cupón que se añade aparte)
       const extrasSanitized = [...itemExtras, ...orderLevelExtras];
 
+      // Cupón (aplica solo sobre productos)
       let discounts = 0;
       let couponEntry = null;
-
       const couponCode = upper(rawCoupon || rawCouponCode || '');
       if (couponCode) {
         const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
@@ -342,7 +334,11 @@ router.post('/pedido', async (req, res) => {
       logI('EXTRAS FROM ITEMS', { itemExtras });
       logI('EXTRAS INPUT RAW', { extras });
       logI('EXTRAS SANITIZED', { extrasSanitized, extrasChargeableTotal });
-      logI('PRODUCTS & TOTALS', { totalProducts, discountsPreview: discounts, saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal) });
+      logI('PRODUCTS & TOTALS', {
+        totalProducts,
+        discountsPreview: discounts,
+        saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal)
+      });
 
       const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
 
@@ -381,6 +377,7 @@ router.post('/pedido', async (req, res) => {
 
 
 
+
 /* ============================================================
  *  B) CHECKOUT SESSION
  *     - Con venta previa (orderId/code)  → flujo clásico
@@ -402,8 +399,10 @@ router.post('/checkout-session', async (req, res) => {
       if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
       if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
 
-      const productsJson = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
-      const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : JSON.parse(sale.extras   || '[]');
+      const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
+      const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : parseMaybe(sale.extras,   []);
+
+      let sessionUrl = null;
 
       await prisma.$transaction(async (tx) => {
         await assertStock(tx, sale.storeId, productsJson);
@@ -427,7 +426,7 @@ router.post('/checkout-session', async (req, res) => {
           : 0;
 
         const productLines = lineItems.map(li => {
-          const qty = Number(li.qty || 1);
+          const qty = Math.max(1, Number(li.qty || 1));
           const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
           const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
           const unitCents = Math.round(Number(li.price) * 100);
@@ -449,26 +448,25 @@ router.post('/checkout-session', async (req, res) => {
         });
 
         // --- EXTRAS ---
-        // 1) Envío desde extras (DELIVERY_FEE) → shipping_options (solo si viene en extras)
-        const extrasArray = (Array.isArray(extrasJson) ? extrasJson : []);
+        const extrasArray = Array.isArray(extrasJson) ? extrasJson : [];
         const deliveryFeeExtras = extrasArray.filter(ex => String(ex?.code || '').toUpperCase() === 'DELIVERY_FEE');
         const shippingAmountCentsFromExtras = deliveryFeeExtras.length
           ? Math.round(deliveryFeeExtras.reduce((s,e)=> s + (toPrice(e?.amount) || 0), 0) * 100)
           : 0;
 
-        // Si es COURIER y NO hay DELIVERY_FEE explícito, usamos fallback por bloques SOLO para Stripe
+        // Envío: usar explícito; si no hay y es COURIER, fallback por bloques
         let shippingAmountCents = 0;
-        if (sale.delivery === 'COURIER'){
+        if (String(sale.delivery).toUpperCase() === 'COURIER'){
           if (shippingAmountCentsFromExtras > 0){
             shippingAmountCents = shippingAmountCentsFromExtras;
           } else {
-            const totalQty = lineItems.reduce((s,li)=>s+Number(li.qty||0),0);
+            const totalQty = productLines.reduce((s,li)=> s + Number(li.quantity||0), 0);
             const blocks = Math.ceil(totalQty / 5);
             shippingAmountCents = blocks * 250; // 2.50 €
           }
         }
 
-        // 2) Otros extras COBRABLES como line_items (excluye COUPON y DELIVERY_FEE)
+        // Otros extras cobrables como line_items (excluye COUPON y DELIVERY_FEE)
         const extrasLineItems = [];
         let extrasOtherCents = 0;
         for (const ex of extrasArray){
@@ -498,7 +496,7 @@ router.post('/checkout-session', async (req, res) => {
         if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
 
         const shippingOptions =
-          sale.delivery === 'COURIER' && shippingAmountCents > 0
+          shippingAmountCents > 0
             ? [{
                 shipping_rate_data:{
                   display_name:'Gastos de envío',
@@ -508,23 +506,14 @@ router.post('/checkout-session', async (req, res) => {
               }]
             : undefined;
 
-        // -------- FALLBACK A PRUEBA DE BALAS (si faltan extras) ----------
-        // Suma de lo que REALMENTE enviaremos a Stripe (sin envío):
+        // -------- FALLBACK (si faltan extras) ----------
         const productsCentsSent = productLines.reduce((s,li) => s + (Number(li.price_data?.unit_amount||0) * Number(li.quantity||0)), 0);
         const itemsAlreadyCentsNoShipping = productsCentsSent + extrasOtherCents;
-
-        // Total declarado de la venta (puede o no incluir envío, según cómo se creó)
         const declaredSaleCents = Math.round(Number(sale.total || 0) * 100);
-
-        // Solo restamos el envío que esté DECLARADO en la venta (DELIVERY_FEE en extras),
-        // para comparar manzanas con manzanas:
         const declaredNoShippingCents = Math.max(0, declaredSaleCents - shippingAmountCentsFromExtras);
-
-        // Diferencia que falta por cobrar (por redondeos, extras mal parseados o perdidos)
         let missingExtrasCents = declaredNoShippingCents - itemsAlreadyCentsNoShipping;
 
         if (missingExtrasCents >= 1) {
-          // Añadimos un line item "Extras" por el delta faltante
           extrasLineItems.push({
             quantity: 1,
             price_data: {
@@ -557,7 +546,7 @@ router.post('/checkout-session', async (req, res) => {
           metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
         });
 
-        // total final en BD (productos con descuento + extras cobrables + envío)
+        // total final en BD (lo que REALMENTE mandamos a Stripe)
         const totalForDb = (productsCentsSent + extrasOtherCents + (shippingOptions ? shippingAmountCents : 0)) / 100;
         await tx.sale.update({
           where:{ id:sale.id },
@@ -576,8 +565,11 @@ router.post('/checkout-session', async (req, res) => {
           extrasOtherCents,
           shippingAmountCentsSent: shippingOptions ? shippingAmountCents : 0
         });
-        return res.json({ url: session.url });
+
+        sessionUrl = session.url; // ← guardamos y respondemos FUERA del tx
       });
+
+      return res.json({ url: sessionUrl });
     }
 
     /* ---------- B2) Modo carrito (pagar primero) ---------- */
@@ -599,7 +591,7 @@ router.post('/checkout-session', async (req, res) => {
         price_data: {
           currency: 'eur',
           product_data: { name: 'Pedido MyCrushPizza' },
-          unit_amount: totalCents
+        unit_amount: totalCents
         },
         quantity: 1
       }],
@@ -629,6 +621,7 @@ router.post('/checkout-session', async (req, res) => {
     res.status(400).json({ error:e.message });
   }
 });
+
 
 
 
