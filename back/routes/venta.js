@@ -157,152 +157,176 @@ module.exports = (prisma) => {
   /* ============================================================
    *  A) CREA LA VENTA (AWAITING_PAYMENT)  →  Checkout
    * ============================================================ */
-  router.post('/pedido', async (req, res) => {
-    const {
-      storeId,
-      type = 'DELIVERY',
-      delivery = 'COURIER',
-      customer,
-      items = [],
-      extras = [],
-      notes = '',
-      channel = 'WHATSAPP',
-      coupon: rawCoupon,
-      couponCode: rawCouponCode
-    } = req.body || {};
-    logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
+router.post('/pedido', async (req, res) => {
+  const {
+    storeId,
+    type = 'DELIVERY',
+    delivery = 'COURIER',
+    customer,
+    items = [],
+    extras = [],
+    notes = '',
+    channel = 'WHATSAPP',
+    coupon: rawCoupon,
+    couponCode: rawCouponCode
+  } = req.body || {};
+  logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
 
-    try {
-      if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+  try {
+    if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
 
-      // Cobertura (solo delivery)
-      if (String(delivery).toUpperCase() === 'COURIER'){
-        const lat = Number(customer?.lat), lng = Number(customer?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)){
-          return res.status(400).json({ error:'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
-        }
-        const activeStores = await prisma.store.findMany({
-          where: { active:true, latitude:{ not:null }, longitude:{ not:null } },
-          select:{ id:true, latitude:true, longitude:true }
-        });
-        if (!activeStores.length) return res.status(400).json({ error:'No hay tiendas activas configuradas con ubicación.' });
-
-        let nearest = { id:null, km:Infinity };
-        for (const s of activeStores){
-          const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
-          if (km < nearest.km) nearest = { id:s.id, km };
-        }
-        if (!nearest || nearest.km > DELIVERY_MAX_KM){
-          logW('Pedido fuera de cobertura', { lat, lng, nearestKm:Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm:DELIVERY_MAX_KM, nearestStoreId:nearest?.id || null });
-          return res.status(400).json({ error:`Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
-        }
+    // Cobertura (solo delivery)
+    if (String(delivery).toUpperCase() === 'COURIER'){
+      const lat = Number(customer?.lat), lng = Number(customer?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)){
+        return res.status(400).json({ error:'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
       }
-
-      // Cliente
-      let customerId = null, snapshot = null;
-      const isDelivery =
-        String(type).toUpperCase() === 'DELIVERY' ||
-        String(delivery).toUpperCase() === 'COURIER';
-
-      if (customer?.phone?.trim()){
-        const phone = onlyDigits(customer.phone);
-        const name  = (customer.name || '').trim();
-
-        const createAddress = isDelivery
-          ? (customer.address_1 || 'SIN DIRECCIÓN')
-          : `(PICKUP) ${phone}`;
-
-        const c = await prisma.customer.upsert({
-          where: { phone },
-          update: {
-            phone,
-            name,
-            ...(isDelivery && {
-              address_1: customer.address_1 || 'SIN DIRECCIÓN',
-              lat: clean(customer.lat),
-              lng: clean(customer.lng),
-            }),
-            portal: clean(customer.portal),
-            observations: clean(customer.observations),
-          },
-          create: {
-            code: await genCustomerCode(prisma),
-            phone,
-            name,
-            address_1: createAddress,
-            portal: clean(customer.portal),
-            observations: clean(customer.observations),
-            lat: isDelivery ? clean(customer.lat) : null,
-            lng: isDelivery ? clean(customer.lng) : null,
-          },
-        });
-        customerId = c.id;
-        snapshot = {
-          phone: c.phone, name: c.name,
-          address_1: c.address_1, portal: c.portal, observations: c.observations,
-          lat: c.lat, lng: c.lng
-        };
-      }
-
-      // Ítems
-      const normItems = await normalizeItems(prisma, items);
-
-      const created = await prisma.$transaction(async (tx) => {
-        await assertStock(tx, Number(storeId), normItems);
-        const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
-
-        // [COUPON] Extras + cupón (marca como usado YA; si prefieres tras pago, muévelo al webhook)
-        const extrasFinal = Array.isArray(extras) ? [...extras] : [];
-        let discounts = 0;
-
-        const couponCode = upper(rawCoupon || rawCouponCode || '');
-        if (couponCode) {
-          const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-          const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
-          if (!coup || coup.used || expired) {
-            throw new Error('Cupón inválido o ya usado/expirado');
-          }
-          const percent = Number(coup.percent) || 0;
-          if (percent > 0) {
-            const discountAmount = round2(totalProducts * (percent/100));
-            discounts = discountAmount;
-            extrasFinal.push({ code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts });
-            await tx.coupon.update({ where: { id: coup.id }, data : { used: true, usedAt: new Date() } });
-          }
-        }
-
-        const sale = await tx.sale.create({
-          data: {
-            code: await genOrderCode(tx),
-            storeId: Number(storeId),
-            customerId,
-            type,
-            delivery,
-            customerData: snapshot,
-            products: lineItems,
-            totalProducts,
-            discounts,
-            total: round2(totalProducts - discounts),
-            extras: extrasFinal,
-            notes,
-            channel,
-            status: 'AWAITING_PAYMENT',
-            address_1: snapshot?.address_1 ?? null,
-            lat: snapshot?.lat ?? null,
-            lng: snapshot?.lng ?? null,
-          },
-          select: { id:true, code:true, total:true, currency:true, discounts:true },
-        });
-        return sale;
+      const activeStores = await prisma.store.findMany({
+        where: { active:true, latitude:{ not:null }, longitude:{ not:null } },
+        select:{ id:true, latitude:true, longitude:true }
       });
+      if (!activeStores.length) return res.status(400).json({ error:'No hay tiendas activas configuradas con ubicación.' });
 
-      logI('→ pedido creado', created);
-      res.json(created);
-    } catch (e) {
-      logE('[POST /api/venta/pedido] error', e);
-      res.status(400).json({ error: e.message });
+      let nearest = { id:null, km:Infinity };
+      for (const s of activeStores){
+        const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
+        if (km < nearest.km) nearest = { id:s.id, km };
+      }
+      if (!nearest || nearest.km > DELIVERY_MAX_KM){
+        logW('Pedido fuera de cobertura', { lat, lng, nearestKm:Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm:DELIVERY_MAX_KM, nearestStoreId:nearest?.id || null });
+        return res.status(400).json({ error:`Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
+      }
     }
-  });
+
+    // Cliente
+    let customerId = null, snapshot = null;
+    const isDelivery =
+      String(type).toUpperCase() === 'DELIVERY' ||
+      String(delivery).toUpperCase() === 'COURIER';
+
+    if (customer?.phone?.trim()){
+      const phone = onlyDigits(customer.phone);
+      const name  = (customer.name || '').trim();
+
+      const createAddress = isDelivery
+        ? (customer.address_1 || 'SIN DIRECCIÓN')
+        : `(PICKUP) ${phone}`;
+
+      const c = await prisma.customer.upsert({
+        where: { phone },
+        update: {
+          phone,
+          name,
+          ...(isDelivery && {
+            address_1: customer.address_1 || 'SIN DIRECCIÓN',
+            lat: clean(customer.lat),
+            lng: clean(customer.lng),
+          }),
+          portal: clean(customer.portal),
+          observations: clean(customer.observations),
+        },
+        create: {
+          code: await genCustomerCode(prisma),
+          phone,
+          name,
+          address_1: createAddress,
+          portal: clean(customer.portal),
+          observations: clean(customer.observations),
+          lat: isDelivery ? clean(customer.lat) : null,
+          lng: isDelivery ? clean(customer.lng) : null,
+        },
+      });
+      customerId = c.id;
+      snapshot = {
+        phone: c.phone, name: c.name,
+        address_1: c.address_1, portal: c.portal, observations: c.observations,
+        lat: c.lat, lng: c.lng
+      };
+    }
+
+    // Ítems
+    const normItems = await normalizeItems(prisma, items);
+
+    const created = await prisma.$transaction(async (tx) => {
+      await assertStock(tx, Number(storeId), normItems);
+      const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
+
+      // ---- Extras (normalizados) + Cupón ----
+      const extrasSanitized = (Array.isArray(extras) ? extras : [])
+        .map(ex => {
+          const amountNum = toPrice(ex?.amount);
+          const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
+          if (!Number.isFinite(amount)) return null;
+          return {
+            code : String(ex?.code || 'EXTRA'),
+            label: String(ex?.label || 'Extra'),
+            amount
+          };
+        })
+        .filter(Boolean);
+
+      let discounts = 0;
+      let couponEntry = null;
+
+      const couponCode = upper(rawCoupon || rawCouponCode || '');
+      if (couponCode) {
+        const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+        const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+        if (!coup || coup.used || expired) {
+          throw new Error('Cupón inválido o ya usado/expirado');
+        }
+        const percent = Number(coup.percent) || 0;
+        if (percent > 0) {
+          const discountAmount = round2(totalProducts * (percent/100));
+          discounts = discountAmount;
+          // Se añade entrada visual, pero NO se suma a extras cobrables para evitar doble descuento
+          couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
+          await tx.coupon.update({ where: { id: coup.id }, data : { used: true, usedAt: new Date() } });
+        }
+      }
+
+      const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
+
+      // Total de extras COBRABLES (excluye explícitamente el cupón)
+      const extrasChargeableTotal = round2(
+        extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      );
+
+      const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
+
+      const sale = await tx.sale.create({
+        data: {
+          code: await genOrderCode(tx),
+          storeId: Number(storeId),
+          customerId,
+          type,
+          delivery,
+          customerData: snapshot,
+          products: lineItems,
+          totalProducts,
+          discounts,
+          total: saleTotal,
+          extras: extrasFinal,
+          notes,
+          channel,
+          status: 'AWAITING_PAYMENT',
+          address_1: snapshot?.address_1 ?? null,
+          lat: snapshot?.lat ?? null,
+          lng: snapshot?.lng ?? null,
+        },
+        select: { id:true, code:true, total:true, currency:true, discounts:true },
+      });
+      return sale;
+    });
+
+    logI('→ pedido creado', created);
+    res.json(created);
+  } catch (e) {
+    logE('[POST /api/venta/pedido] error', e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 
   /* ============================================================
    *  B) CHECKOUT SESSION
