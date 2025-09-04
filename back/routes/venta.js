@@ -39,9 +39,14 @@ const clean = v => (v === undefined || v === '' ? null : v);
 const upper = s => String(s || '').trim().toUpperCase();
 const toPrice = v => {
   if (v == null || v === '') return NaN;
-  // limpia todo menos dígitos, punto, coma y signo
-  const cleaned = String(v).replace(/[^0-9,.\-]/g, '').replace(',', '.');
-  const n = Number(cleaned);
+  // limpia todo excepto dígitos, punto, coma y signo
+  const cleaned = String(v).trim().replace(/[^0-9,.\-]/g, '').replace(',', '.');
+  // maneja formatos con múltiples separadores: toma el último punto como decimal
+  const parts = cleaned.split('.');
+  const normalized = parts.length > 2
+    ? parts.slice(0, -1).join('') + '.' + parts.slice(-1)
+    : cleaned;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : NaN;
 };
 const parseMaybe = (v, fb = {}) => { try { return v==null?fb : (typeof v==='string' ? JSON.parse(v) : v); } catch { return fb; } };
@@ -295,10 +300,12 @@ router.post('/pedido', async (req, res) => {
       const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
 
       // Total de extras COBRABLES (excluye explícitamente el cupón)
-      const extrasChargeableTotal = round2(
-        extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-      );
-
+const extrasChargeableTotal = round2(
+  extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+);
+logI('EXTRAS INPUT RAW', { extras });
+logI('EXTRAS SANITIZED', { extrasSanitized, extrasChargeableTotal });
+logI('PRODUCTS & TOTALS', { totalProducts, discountsPreview: 0, saleTotalPreview: round2(totalProducts - 0 + extrasChargeableTotal) });
       const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
 
       const sale = await tx.sale.create({
