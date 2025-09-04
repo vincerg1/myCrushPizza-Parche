@@ -39,9 +39,7 @@ const clean = v => (v === undefined || v === '' ? null : v);
 const upper = s => String(s || '').trim().toUpperCase();
 const toPrice = v => {
   if (v == null || v === '') return NaN;
-  // limpia todo excepto dígitos, punto, coma y signo
   const cleaned = String(v).trim().replace(/[^0-9,.\-]/g, '').replace(',', '.');
-  // maneja formatos con múltiples separadores: toma el último punto como decimal
   const parts = cleaned.split('.');
   const normalized = parts.length > 2
     ? parts.slice(0, -1).join('') + '.' + parts.slice(-1)
@@ -255,16 +253,51 @@ router.post('/pedido', async (req, res) => {
       };
     }
 
-    // Ítems
+    // Ítems (solo pizzas base/size/qty/precio)
     const normItems = await normalizeItems(prisma, items);
+
+    // Helper local: captura extras por item (toppings/modificadores) y los multiplica por qty
+    const collectExtrasFromItems = (rawItems = []) => {
+      const out = [];
+      for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
+        const qty = Math.max(1, Number(it?.qty || 1));
+
+        const pools = []
+          .concat(it?.extras || [])
+          .concat(it?.toppings || [])
+          .concat(it?.addOns || it?.addons || [])
+          .concat(it?.options || [])
+          .concat(it?.modifiers || [])
+          .concat(it?.ingredients || [])
+          .concat(it?.complements || [])
+          .concat(it?.sides || []);
+
+        for (const ex of pools) {
+          const parsed = [ex?.amount, ex?.price, ex?.delta]
+            .map(toPrice)
+            .find(Number.isFinite);
+          if (!Number.isFinite(parsed) || parsed <= 0) continue;
+
+          const code  = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
+          const label = String(ex?.label || ex?.name || ex?.title || code);
+
+          out.push({ code, label, amount: round2(parsed * qty) });
+        }
+      }
+      return out;
+    };
 
     const created = await prisma.$transaction(async (tx) => {
       await assertStock(tx, Number(storeId), normItems);
       const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-      // ---- Extras (normalizados) + Cupón ----
-      
-      const extrasSanitized = (Array.isArray(extras) ? extras : [])
+      /* ---- Extras (de items + de pedido) + Cupón ---- */
+
+      // a) extras provenientes de cada item (toppings/modificadores…)
+      const itemExtras = collectExtrasFromItems(items);
+
+      // b) extras enviados a nivel pedido
+      const orderLevelExtras = (Array.isArray(extras) ? extras : [])
         .map(ex => {
           const amountNum = toPrice(ex?.amount);
           const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
@@ -276,6 +309,9 @@ router.post('/pedido', async (req, res) => {
           };
         })
         .filter(Boolean);
+
+      // c) unión final (cobrables + delivery + los que vienen por item)
+      const extrasSanitized = [...itemExtras, ...orderLevelExtras];
 
       let discounts = 0;
       let couponEntry = null;
@@ -291,7 +327,6 @@ router.post('/pedido', async (req, res) => {
         if (percent > 0) {
           const discountAmount = round2(totalProducts * (percent/100));
           discounts = discountAmount;
-          // Se añade entrada visual, pero NO se suma a extras cobrables para evitar doble descuento
           couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
           await tx.coupon.update({ where: { id: coup.id }, data : { used: true, usedAt: new Date() } });
         }
@@ -299,13 +334,16 @@ router.post('/pedido', async (req, res) => {
 
       const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
 
-      // Total de extras COBRABLES (excluye explícitamente el cupón)
-const extrasChargeableTotal = round2(
-  extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-);
-logI('EXTRAS INPUT RAW', { extras });
-logI('EXTRAS SANITIZED', { extrasSanitized, extrasChargeableTotal });
-logI('PRODUCTS & TOTALS', { totalProducts, discountsPreview: 0, saleTotalPreview: round2(totalProducts - 0 + extrasChargeableTotal) });
+      // Total de extras COBRABLES (excluye SOLO el cupón)
+      const extrasChargeableTotal = round2(
+        extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      );
+
+      logI('EXTRAS FROM ITEMS', { itemExtras });
+      logI('EXTRAS INPUT RAW', { extras });
+      logI('EXTRAS SANITIZED', { extrasSanitized, extrasChargeableTotal });
+      logI('PRODUCTS & TOTALS', { totalProducts, discountsPreview: discounts, saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal) });
+
       const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
 
       const sale = await tx.sale.create({
@@ -340,6 +378,7 @@ logI('PRODUCTS & TOTALS', { totalProducts, discountsPreview: 0, saleTotalPreview
     res.status(400).json({ error: e.message });
   }
 });
+
 
 
 /* ============================================================

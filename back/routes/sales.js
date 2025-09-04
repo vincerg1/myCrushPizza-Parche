@@ -20,110 +20,172 @@ module.exports = (prisma) => {
   }
 
   /* ───────────────────────── POST /api/sales ───────────────────────── */
-  r.post('/', auth(), async (req, res) => {
-    try {
-      const {
-        storeId: storeIdBody,
-        type, delivery, customer,
-        products, extras = [],
-        discounts = 0, notes = '',
-      } = req.body;
+r.post('/', auth(), async (req, res) => {
+  try {
+    const {
+      storeId: storeIdBody,
+      type, delivery, customer,
+      products, extras = [],
+      discounts = 0, notes = '',
+    } = req.body;
 
-      /* storeId según rol ------------------------------ */
-      let storeId;
-      if (req.user.role === 'store') {
-        const s = await prisma.store.findFirst({
-          where: { storeName: req.user.storeName }
-        });
-        if (!s) return res.status(403).json({ error: 'Tienda no válida' });
-        storeId = s.id;
-      } else {
-        storeId = Number(storeIdBody);
-        if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
-      }
+    // ───────── helpers locales ─────────
+    const round2 = n => Math.round(Number(n) * 100) / 100;
+    const toPriceHard = v => {
+      if (v == null || v === '') return NaN;
+      const cleaned = String(v).trim().replace(/[^0-9,.\-]/g, '').replace(',', '.');
+      const parts = cleaned.split('.');
+      const normalized = parts.length > 2
+        ? parts.slice(0, -1).join('') + '.' + parts.slice(-1)
+        : cleaned;
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : NaN;
+    };
+    const sanitizeExtra = (e) => {
+      const amountNum = toPriceHard(e?.amount);
+      if (!Number.isFinite(amountNum)) return null;
+      return {
+        code : String(e?.code || 'EXTRA'),
+        label: String(e?.label || 'Extra'),
+        amount: round2(amountNum)
+      };
+    };
+    const isCoupon      = (e) => String(e.code).toUpperCase() === 'COUPON';
+    const isDeliveryFee = (e) => String(e.code).toUpperCase() === 'DELIVERY_FEE';
 
-      /* validar productos ------------------------------ */
-      if (!Array.isArray(products) || !products.length)
-        return res.status(400).json({ error: 'products vacío' });
-      for (const p of products) {
-        if (![p.pizzaId, p.qty, p.price].every(n => Number(n) > 0) || !p.size)
-          return res.status(400).json({ error: 'Producto mal formado' });
-      }
+    /* storeId según rol ------------------------------ */
+    let storeId;
+    if (req.user.role === 'store') {
+      const s = await prisma.store.findFirst({
+        where: { storeName: req.user.storeName }
+      });
+      if (!s) return res.status(403).json({ error: 'Tienda no válida' });
+      storeId = s.id;
+    } else {
+      storeId = Number(storeIdBody);
+      if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+    }
 
-      /* upsert cliente --------------------------------- */
-      let customerId = null;
-      let snapshot   = null;
-      if (customer?.phone?.trim()) {
-        const data = (({ phone, name, address_1, portal, observations, lat, lng }) => ({
-          phone, name, address_1, portal, observations, lat, lng
-        }))(customer);
+    /* validar productos ------------------------------ */
+    if (!Array.isArray(products) || !products.length)
+      return res.status(400).json({ error: 'products vacío' });
 
-        const c = await prisma.customer.upsert({
-          where : { phone: data.phone },
-          update: data,
-          create: { code: await genCustomerCode(prisma), ...data }
-        });
+    for (const p of products) {
+      if (![p.pizzaId, p.qty, p.price].every(n => Number(n) > 0) || !p.size)
+        return res.status(400).json({ error: 'Producto mal formado' });
+    }
 
-        customerId = c.id;
-        snapshot   = data;
-      }
+    /* upsert cliente --------------------------------- */
+    let customerId = null;
+    let snapshot   = null;
+    if (customer?.phone?.trim()) {
+      const data = (({ phone, name, address_1, portal, observations, lat, lng }) => ({
+        phone, name, address_1, portal, observations, lat, lng
+      }))(customer);
 
-      /* totales ---------------------------------------- */
-      const totalProducts = products
-        .reduce((t, p) => t + Number(p.price) * Number(p.qty), 0);
-      const total = totalProducts - Number(discounts);
-
-      /* transacción ------------------------------------ */
-      const sale = await prisma.$transaction(async (tx) => {
-        /* (a) stock */
-        for (const p of products) {
-          const stk = await tx.storePizzaStock.findUnique({
-            where : { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
-            select: { stock: true }
-          });
-          if (!stk || stk.stock < p.qty)
-            throw new Error(`Stock insuficiente para pizza ${p.pizzaId}`);
-        }
-
-        /* (b) código público */
-        const publicCode = await genOrderCode(tx);
-
-        /* (c) crear venta */
-        const newSale = await tx.sale.create({
-          data: {
-            code: publicCode,
-            storeId,
-            customerId,
-            type,
-            delivery,
-            customerData : snapshot,
-            processed    : false,
-            products,
-            extras,
-            totalProducts,
-            discounts,
-            total,
-            notes
-          }
-        });
-
-        /* (d) restar stock */
-        for (const p of products) {
-          await tx.storePizzaStock.update({
-            where:{ storeId_pizzaId:{ storeId, pizzaId:p.pizzaId }},
-            data :{ stock:{ decrement:p.qty }}
-          });
-        }
-        return newSale;
+      const c = await prisma.customer.upsert({
+        where : { phone: data.phone },
+        update: data,
+        create: { code: await genCustomerCode(prisma), ...data }
       });
 
-      res.json(sale);
-
-    } catch (err) {
-      console.error('[POST /api/sales]', err);
-      res.status(400).json({ error: err.message });
+      customerId = c.id;
+      snapshot   = data;
     }
-  });
+
+    /* extras (aplanar + sanear) ---------------------- */
+    // a) extras anidados por producto (multiplica por qty del producto)
+    const nestedExtras = (Array.isArray(products) ? products : []).flatMap(p => {
+      const qty = Math.max(1, Number(p?.qty || 1));
+      const exs = Array.isArray(p?.extras) ? p.extras : [];
+      return exs.map(e => {
+        const se = sanitizeExtra(e);
+        if (!se) return null;
+        return { ...se, amount: round2(se.amount * qty) };
+      }).filter(Boolean);
+    });
+
+    // b) extras a nivel pedido
+    const topLevelExtras = (Array.isArray(extras) ? extras : [])
+      .map(sanitizeExtra)
+      .filter(Boolean);
+
+    // c) unión final
+    const extrasAll = [...nestedExtras, ...topLevelExtras];
+
+    /* totales ---------------------------------------- */
+    const totalProducts = round2(
+      products.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
+    );
+
+    const extrasChargeableTotal = round2(
+      extrasAll
+        .filter(e => !isCoupon(e) && !isDeliveryFee(e))
+        .reduce((s, e) => s + (Number(e.amount) || 0), 0)
+    );
+
+    const deliveryFeeTotal = round2(
+      extrasAll
+        .filter(isDeliveryFee)
+        .reduce((s, e) => s + (Number(e.amount) || 0), 0)
+    );
+
+    const total = round2(
+      totalProducts - Number(discounts || 0) + extrasChargeableTotal + deliveryFeeTotal
+    );
+
+    /* transacción ------------------------------------ */
+    const sale = await prisma.$transaction(async (tx) => {
+      /* (a) stock */
+      for (const p of products) {
+        const stk = await tx.storePizzaStock.findUnique({
+          where : { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
+          select: { stock: true }
+        });
+        if (!stk || stk.stock < p.qty)
+          throw new Error(`Stock insuficiente para pizza ${p.pizzaId}`);
+      }
+
+      /* (b) código público */
+      const publicCode = await genOrderCode(tx);
+
+      /* (c) crear venta */
+      const newSale = await tx.sale.create({
+        data: {
+          code: publicCode,
+          storeId,
+          customerId,
+          type,
+          delivery,
+          customerData : snapshot,
+          processed    : false,
+          products,
+          extras       : extrasAll,      // ← guardamos los extras saneados y aplanados
+          totalProducts,
+          discounts    : Number(discounts || 0),
+          total,
+          notes
+        }
+      });
+
+      /* (d) restar stock */
+      for (const p of products) {
+        await tx.storePizzaStock.update({
+          where:{ storeId_pizzaId:{ storeId, pizzaId:p.pizzaId }},
+          data :{ stock:{ decrement:p.qty }}
+        });
+      }
+      return newSale;
+    });
+
+    res.json(sale);
+
+  } catch (err) {
+    console.error('[POST /api/sales]', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
   /* ─────────────── GET /api/sales/pending ─────────────── */
   r.get('/pending', auth(), async (_, res) => {
