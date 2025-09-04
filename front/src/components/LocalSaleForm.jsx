@@ -9,7 +9,7 @@ import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 import "../styles/LocalSaleForm.css";
 
-const categories = ["Pizza", "Sides", "Bebidas", "Desserts"]; // ocultamos “Extras” al usuario
+const categories = ["Pizza", "Sides", "Drinks", "Desserts"]; // ocultamos “Extras” al usuario
 const normalize = (c) => (c || "Pizza").trim().toLowerCase();
 
 /* Toast vía portal */
