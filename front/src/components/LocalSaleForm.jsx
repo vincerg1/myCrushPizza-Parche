@@ -9,7 +9,7 @@ import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 import "../styles/LocalSaleForm.css";
 
-const categories = ["Pizza", "Sides", "Drinks", "Desserts"]; // ocultamos “Extras” al usuario
+const categories = ["Pizza", "Sides", "Bebidas", "Desserts"]; // ocultamos “Extras” al usuario
 const normalize = (c) => (c || "Pizza").trim().toLowerCase();
 
 /* Toast vía portal */
@@ -420,54 +420,89 @@ export default function LocalSaleForm({
 
             <p className="total">Total: €{total.toFixed(2)}</p>
 
-            <button
-              className="btn-confirm"
-              onClick={async () => {
-                if (onConfirmCart) {
-                  if (!storeId) return alert("Select store");
-                  onConfirmCart({
-                    storeId: Number(storeId),
-                    items: cart.map(c => ({
-                      pizzaId: c.pizzaId,
-                      name: c.name,      // fallback para el backend (name→id)
-                      size: c.size,
-                      qty: c.qty,
-                      price: c.price,
-                      extras: c.extras,
-                    })),
-                    total,
-                  });
-                  return;
-                }
-                try {
-                  const payload = {
-                    storeId,
-                    type: forcedStoreId ? "DELIVERY" : "LOCAL",
-                    delivery: forcedStoreId ? "COURIER" : "PICKUP",
-                    products: cart.map((c) => ({
-                      pizzaId: c.pizzaId,
-                      size: c.size,
-                      qty: c.qty,
-                      price: c.price,
-                      extras: c.extras,
-                    })),
-                    totalProducts: total,
-                    discounts: 0,
-                    total,
-                  };
-                  if (customer?.phone?.trim()) payload.customer = customer;
-                  await api.post("/api/sales", payload);
-                  setToast("Sale saved ✓");
-                  setCart([]);
-                  setTimeout(() => onDone(), 2000);
-                } catch (e) {
-                  console.error(e);
-                  alert(e.response?.data?.error || "Error");
-                }
-              }}
-            >
-              {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
-            </button>
+         <button
+            className="btn-confirm"
+            onClick={async () => {
+              // Helper para normalizar extras de una línea
+              const extrasArrayForItem = (line) =>
+                (line.extras || []).map((e) => ({
+                  id: e.id,
+                  code: "EXTRA",
+                  label: e.name,
+                  // Enviamos el precio unitario del extra; el backend ya lo multiplica por qty
+                  amount: Number(e.price) || 0,
+                }));
+
+              // Mapa boolean opcional (por compatibilidad con back antiguos)
+              const extrasMapForItem = (line) =>
+                Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
+
+              if (onConfirmCart) {
+                if (!storeId) return alert("Select store");
+                onConfirmCart({
+                  storeId: Number(storeId),
+                  // El backend /pedido recalcula precios, solo necesita items y extras
+                  items: cart.map((c) => ({
+                    pizzaId: c.pizzaId,
+                    name: c.name, // fallback name→id si hiciera falta
+                    size: c.size,
+                    qty: c.qty,
+                    // extras como ARRAY con amount (unitario)
+                    extras: extrasArrayForItem(c),
+                    // extra: mapa boolean (opcional)
+                    extrasMap: extrasMapForItem(c),
+                  })),
+                  // total es informativo; /pedido no depende de él
+                  total,
+                });
+                return;
+              }
+
+              // ---- Branch /api/sales (backoffice) ----
+              try {
+                // Extras agregados a nivel pedido (sumamos por línea qty×precio extra unitario)
+                const aggregatedExtras = cart.flatMap((c) =>
+                  (c.extras || []).map((e) => ({
+                    code: "EXTRA",
+                    label: e.name,
+                    amount: (Number(e.price) || 0) * Number(c.qty || 1),
+                  }))
+                );
+
+                const payload = {
+                  storeId,
+                  type: forcedStoreId ? "DELIVERY" : "LOCAL",
+                  delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                  products: cart.map((c) => ({
+                    pizzaId: c.pizzaId,
+                    size: c.size,
+                    qty: c.qty,
+                    price: c.price, // base unitario; sales.js lo usa
+                    // Incluimos también extras por producto por si el backend los aprovecha
+                    extras: extrasArrayForItem(c),
+                  })),
+                  // Totales que usaba tu sales.js
+                  totalProducts: cart.reduce((t, l) => t + Number(l.price || 0) * Number(l.qty || 1), 0),
+                  discounts: 0,
+                  total, // incluye extras (porque subtotal ya sumaba extras)
+                  // Extras a nivel pedido para que queden guardados/visibles en backoffice
+                  extras: aggregatedExtras,
+                };
+                if (customer?.phone?.trim()) payload.customer = customer;
+
+                await api.post("/api/sales", payload);
+                setToast("Sale saved ✓");
+                setCart([]);
+                setTimeout(() => onDone(), 2000);
+              } catch (e) {
+                console.error(e);
+                alert(e.response?.data?.error || "Error");
+              }
+            }}
+          >
+            {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
+          </button>
+
           </>
         )}
       </div>

@@ -905,16 +905,34 @@ function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
   );
 
   // ---------- helper: construir items válidos para la API ----------
-  const buildItemsForApi = (items) =>
-    (items || [])
-      .map((x) => {
-        const id = Number(x.pizzaId ?? x.id);
-        const name = String(x.name ?? x.pizzaName ?? "").trim();
-        if (Number.isFinite(id) && id > 0) return { pizzaId: id, size: x.size, qty: x.qty };
-        if (name) return { name, size: x.size, qty: x.qty };
-        return null;
-      })
-      .filter(Boolean);
+const buildItemsForApi = (items) =>
+  (items || [])
+    .map((x) => {
+      const id   = Number(x.pizzaId ?? x.id);
+      const name = String(x.name ?? x.pizzaName ?? "").trim();
+
+      // Mantener extras por línea: [{ id|name, price }]  →  backend acepta price/amount
+      const lineExtras = Array.isArray(x.extras)
+        ? x.extras
+            .map((e) => {
+              const code  = String(e.code ?? e.id ?? e.name ?? "EXTRA");
+              const label = String(e.label ?? e.name ?? code);
+              const price = Number(e.price ?? e.amount ?? 0);
+              if (!Number.isFinite(price) || price <= 0) return null;
+              return { code, label, price, amount: price };
+            })
+            .filter(Boolean)
+        : [];
+
+      if (Number.isFinite(id) && id > 0) {
+        return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
+      }
+      if (name) {
+        return { name, size: x.size, qty: x.qty, extras: lineExtras };
+      }
+      return null;
+    })
+    .filter(Boolean);
 
   // Paso 3: review + pagar — cálculo por bloques de 5 pizzas
   const isDelivery = mode === "deliveryLocate";
