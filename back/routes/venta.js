@@ -328,185 +328,218 @@ router.post('/pedido', async (req, res) => {
 });
 
 
-  /* ============================================================
-   *  B) CHECKOUT SESSION
-   *     - Con venta previa (orderId/code)  → flujo clásico
-   *     - O con carrito "cart"             → pagar primero
-   * ============================================================ */
-  router.post('/checkout-session', async (req, res) => {
-    if (!stripeReady){
-      logW('checkout-session llamado sin Stripe listo');
-      return res.status(503).json({ error:'Stripe no configurado' });
-    }
+    /* ============================================================
+    *  B) CHECKOUT SESSION
+    *     - Con venta previa (orderId/code)  → flujo clásico
+    *     - O con carrito "cart"             → pagar primero
+    * ============================================================ */
+    router.post('/checkout-session', async (req, res) => {
+      if (!stripeReady){
+        logW('checkout-session llamado sin Stripe listo');
+        return res.status(503).json({ error:'Stripe no configurado' });
+      }
 
-    try{
-      const { orderId, code, cart } = req.body || {};
+      try{
+        const { orderId, code, cart } = req.body || {};
 
-      /* ---------- B1) Venta previa ---------- */
-      if (orderId || code){
-        const where = orderId ? { id:Number(orderId) } : { code:String(code) };
-        const sale = await prisma.sale.findUnique({ where });
-        if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
-        if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
+        /* ---------- B1) Venta previa ---------- */
+        if (orderId || code){
+          const where = orderId ? { id:Number(orderId) } : { code:String(code) };
+          const sale = await prisma.sale.findUnique({ where });
+          if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
+          if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
 
-        const productsJson = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
-        const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : JSON.parse(sale.extras   || '[]');
+          const productsJson = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
+          const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : JSON.parse(sale.extras   || '[]');
 
-        await prisma.$transaction(async (tx) => {
-          await assertStock(tx, sale.storeId, productsJson);
-          const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
+          await prisma.$transaction(async (tx) => {
+            await assertStock(tx, sale.storeId, productsJson);
+            const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
 
-          // nombres por id
-          const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
-          let nameById = new Map();
-          if (ids.length){
-            const pizzas = await tx.menuPizza.findMany({ where:{ id:{ in: ids } }, select:{ id:true, name:true } });
-            nameById = new Map(pizzas.map(p => [p.id, p.name]));
-          }
-
-          const currency = String(sale.currency || 'EUR').toLowerCase();
-
-          // prorrateo de descuento
-          const totalProductsOriginal = Number(total);
-          const discountAmount = Number(sale.discounts || 0);
-          const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
-            ? (discountAmount / totalProductsOriginal)
-            : 0;
-
-          const productLines = lineItems.map(li => {
-            const qty = Number(li.qty || 1);
-            const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
-            const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
-            const unitCents = Math.round(Number(li.price) * 100);
-            const discountedCents = discountFraction > 0
-              ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
-              : unitCents;
-
-            return {
-              quantity: qty,
-              price_data: {
-                currency,
-                unit_amount: discountedCents,
-                product_data: {
-                  name: displayName,
-                  metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
-                }
-              }
-            };
-          });
-
-          // envío desde extras (DELIVERY_FEE) o cálculo blocks
-          let shippingAmountCents = 0;
-          if (sale.delivery === 'COURIER'){
-            const shippingExtras = (Array.isArray(extrasJson)?extrasJson:[])
-              .filter(ex => ex && ex.code === 'DELIVERY_FEE' && typeof ex.amount === 'number');
-            if (shippingExtras.length){
-              shippingAmountCents = Math.round(
-                shippingExtras.reduce((s,e)=>s+Number(e.amount||0),0) * 100
-              );
-            } else {
-              const totalQty = lineItems.reduce((s,li)=>s+Number(li.qty||0),0);
-              const blocks = Math.ceil(totalQty / 5);
-              shippingAmountCents = blocks * 250; // 2.50 €
+            // nombres por id (para mostrar)
+            const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
+            let nameById = new Map();
+            if (ids.length){
+              const pizzas = await tx.menuPizza.findMany({ where:{ id:{ in: ids } }, select:{ id:true, name:true } });
+              nameById = new Map(pizzas.map(p => [p.id, p.name]));
             }
-          }
 
-          const pmTypes = ['card'];
-          if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
-          if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+            const currency = String(sale.currency || 'EUR').toLowerCase();
 
-          const shippingOptions =
-            sale.delivery === 'COURIER' && shippingAmountCents > 0
-              ? [{
-                  shipping_rate_data:{
-                    display_name:'Gastos de envío',
-                    type:'fixed_amount',
-                    fixed_amount:{ amount:shippingAmountCents, currency }
+            // prorrateo de descuento SOLO sobre productos
+            const totalProductsOriginal = Number(total);
+            const discountAmount = Number(sale.discounts || 0);
+            const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
+              ? (discountAmount / totalProductsOriginal)
+              : 0;
+
+            const productLines = lineItems.map(li => {
+              const qty = Number(li.qty || 1);
+              const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
+              const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
+              const unitCents = Math.round(Number(li.price) * 100);
+              const discountedCents = discountFraction > 0
+                ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
+                : unitCents;
+
+              return {
+                quantity: qty,
+                price_data: {
+                  currency,
+                  unit_amount: discountedCents,
+                  product_data: {
+                    name: displayName,
+                    metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
                   }
-                }]
-              : undefined;
+                }
+              };
+            });
 
-          const session = await stripe.checkout.sessions.create({
-            mode: 'payment',
-            payment_method_types: pmTypes,
-            line_items: productLines,
-            // Quitar shipping_address_collection para que Stripe NO solicite dirección de envío
-            // shipping_address_collection: sale.delivery === 'COURIER' ? { allowed_countries:['ES'] } : undefined,
-            // Opcional: si tienes gastos de envío calculados, los puedes incluir con shipping_options, pero no son obligatorios
-            // phone_number_collection: { enabled: true }, // conservar si quieres capturar teléfono
-            customer_email: sale.customerData?.email || undefined,
-            billing_address_collection: 'auto',
-            locale: 'es',
-            success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
+            // --- EXTRAS ---
+            // 1) Envío desde extras (DELIVERY_FEE) → shipping_options
+            let shippingAmountCents = 0;
+            if (sale.delivery === 'COURIER'){
+              const shippingExtras = (Array.isArray(extrasJson)?extrasJson:[])
+                .filter(ex => ex && ex.code === 'DELIVERY_FEE' && toPrice(ex.amount) > 0);
+              if (shippingExtras.length){
+                shippingAmountCents = Math.round(
+                  shippingExtras.reduce((s,e)=>s+(toPrice(e.amount)||0),0) * 100
+                );
+              } else {
+                // fallback por bloques
+                const totalQty = lineItems.reduce((s,li)=>s+Number(li.qty||0),0);
+                const blocks = Math.ceil(totalQty / 5);
+                shippingAmountCents = blocks * 250; // 2.50 €
+              }
+            }
+
+            // 2) Otros extras COBRABLES como line_items (excluye COUPON y DELIVERY_FEE)
+            const extrasLineItems = [];
+            let extrasOtherCents = 0;
+
+            (Array.isArray(extrasJson) ? extrasJson : []).forEach(ex => {
+              const code = String(ex?.code || '').toUpperCase();
+              if (code === 'COUPON' || code === 'DELIVERY_FEE') return;
+              const amt = toPrice(ex?.amount);
+              if (!Number.isFinite(amt)) return;
+              const cents = Math.round(amt * 100);
+              if (cents <= 0) return;
+
+              extrasOtherCents += cents;
+              extrasLineItems.push({
+                quantity: 1,
+                price_data: {
+                  currency,
+                  unit_amount: cents,
+                  product_data: {
+                    name: String(ex?.label || ex?.code || 'Extra'),
+                    metadata: { extraCode: String(ex?.code || '') }
+                  }
+                }
+              });
+            });
+
+            const pmTypes = ['card'];
+            if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+            if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+
+            const shippingOptions =
+              sale.delivery === 'COURIER' && shippingAmountCents > 0
+                ? [{
+                    shipping_rate_data:{
+                      display_name:'Gastos de envío',
+                      type:'fixed_amount',
+                      fixed_amount:{ amount:shippingAmountCents, currency }
+                    }
+                  }]
+                : undefined;
+
+            const session = await stripe.checkout.sessions.create({
+              mode: 'payment',
+              payment_method_types: pmTypes,
+              line_items: [
+                ...productLines,
+                ...extrasLineItems, // 👈 ahora sí cobramos los extras
+              ],
+              customer_email: sale.customerData?.email || undefined,
+              billing_address_collection: 'auto',
+              locale: 'es',
+              ...(shippingOptions ? { shipping_options: shippingOptions } : {}),
+              success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+              cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+              metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
+            });
+
+            // total final que verá negocio/BD (productos con descuento + extras cobrables + envío)
+            const netProductsTotal = round2(totalProductsOriginal - discountAmount);
+            const totalWithExtrasAndShipping = netProductsTotal + (extrasOtherCents/100) + (shippingAmountCents/100);
+
+            await tx.sale.update({
+              where:{ id:sale.id },
+              data : {
+                total: totalWithExtrasAndShipping,
+                stripeCheckoutSessionId: session.id,
+                status:'AWAITING_PAYMENT'
+              }
+            });
+
+            logI('→ Stripe session creada (venta previa) con extras', { id:session.id, saleId:sale.id });
+            res.json({ url: session.url });
           });
 
-          // total final
-          const netProductsTotal = round2(totalProductsOriginal - discountAmount);
-          const totalWithShipping = netProductsTotal + (shippingAmountCents/100);
+          return;
+        }
 
-          await tx.sale.update({
-            where:{ id:sale.id },
-            data : { total: totalWithShipping, stripeCheckoutSessionId: session.id, status:'AWAITING_PAYMENT' }
-          });
+        /* ---------- B2) Modo carrito (pagar primero) ---------- */
+        if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
+        if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
+          return res.status(400).json({ error: 'cart inválido' });
+        }
 
-          logI('→ Stripe session creada (venta previa)', { id:session.id, saleId:sale.id });
-          res.json({ url: session.url });
+        const totalCents = Math.round(Number(cart?.totals?.total) * 100);
+        if (!Number.isFinite(totalCents) || totalCents <= 0){
+          return res.status(400).json({ error: 'total inválido' });
+        }
+
+        // ⚠️ En producción, mejor guardar el carrito en BD y pasar un token.
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: ['card'],
+          line_items: [{
+            price_data: {
+              currency: 'eur',
+              product_data: { name: 'Pedido MyCrushPizza' },
+              unit_amount: totalCents
+            },
+            quantity: 1
+          }],
+          success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+          locale:'es',
+          metadata: {
+            cart: JSON.stringify({
+              storeId: cart.storeId,
+              type   : cart.type,
+              delivery: cart.delivery,
+              channel: cart.channel || 'WEB',
+              customer: cart.customer || null,
+              items: cart.items,            // [{pizzaId,size,qty}]
+              extras: cart.extras || [],    // p.ej. DELIVERY_FEE + otros
+              coupon: cart.coupon || null,
+              totals: cart.totals || null
+            })
+          }
         });
 
-        return;
+        logI('→ Stripe session creada (modo cart)', { id:session.id });
+        return res.json({ url: session.url });
+
+      } catch (e) {
+        logE('[POST /api/venta/checkout-session] error', e);
+        res.status(400).json({ error:e.message });
       }
+    });
 
-      /* ---------- B2) Modo carrito (pagar primero) ---------- */
-      if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
-      if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
-        return res.status(400).json({ error: 'cart inválido' });
-      }
-
-      const totalCents = Math.round(Number(cart?.totals?.total) * 100);
-      if (!Number.isFinite(totalCents) || totalCents <= 0){
-        return res.status(400).json({ error: 'total inválido' });
-      }
-
-      // ⚠️ En producción, mejor guardar el carrito en BD y pasar un token.
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'eur',
-            product_data: { name: 'Pedido MyCrushPizza' },
-            unit_amount: totalCents
-          },
-          quantity: 1
-        }],
-        success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
-        locale:'es',
-        metadata: {
-          cart: JSON.stringify({
-            storeId: cart.storeId,
-            type   : cart.type,
-            delivery: cart.delivery,
-            channel: cart.channel || 'WEB',
-            customer: cart.customer || null,
-            items: cart.items,            // [{pizzaId,size,qty}]
-            extras: cart.extras || [],    // p.ej. DELIVERY_FEE
-            coupon: cart.coupon || null,
-            totals: cart.totals || null
-          })
-        }
-      });
-
-      logI('→ Stripe session creada (modo cart)', { id:session.id });
-      return res.json({ url: session.url });
-
-    } catch (e) {
-      logE('[POST /api/venta/checkout-session] error', e);
-      res.status(400).json({ error:e.message });
-    }
-  });
 
   /* ============================================================
    *  B.1) Confirmación manual (doble seguro)
