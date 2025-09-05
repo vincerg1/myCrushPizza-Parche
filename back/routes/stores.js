@@ -156,43 +156,7 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ───────── ACCEPTING SWITCH (ON/OFF pedidos) ───────── */
 
-  // GET estado (público está bien; si prefieres, protégelo con auth())
-  router.get("/:id/accepting", async (req, res) => {
-    const id = Number(req.params.id);
-    if (Number.isNaN(id)) return res.status(400).json({ error: "id must be number" });
-    const s = await prisma.store.findUnique({
-      where: { id },
-      select: { id: true, accepting: true }    // ← nombre del campo en tu modelo
-    });
-    if (!s) return res.status(404).json({ error: "store not found" });
-    res.json({ storeId: s.id, accepting: !!s.accepting });
-  });
-
-  // PATCH estado (requiere auth; admin cualquiera, role 'store' solo su propia tienda)
-  router.patch("/:id/accepting", auth(), async (req, res) => {
-    const id = Number(req.params.id);
-    const { accepting } = req.body || {};
-    if (Number.isNaN(id)) return res.status(400).json({ error: "id must be number" });
-    if (typeof accepting !== "boolean")
-      return res.status(400).json({ error: "accepting boolean requerido" });
-
-    if (req.user.role === "store") {
-      const me = await prisma.store.findFirst({
-        where: { storeName: req.user.storeName },
-        select: { id: true }
-      });
-      if (!me || me.id !== id) return res.status(403).json({ error: "forbidden" });
-    }
-
-    const s = await prisma.store.update({
-      where: { id },
-      data: { accepting },
-      select: { id: true, accepting: true }
-    });
-    res.json({ storeId: s.id, accepting: !!s.accepting });
-  });
 
   return router;
 };

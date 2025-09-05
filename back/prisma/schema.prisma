@@ -141,6 +141,13 @@ model Coupon {
 
 }
 
+model AppMeta {
+  id              Int      @id @default(1)
+  acceptingOrders Boolean  @default(true)
+  closedMessage   String?  @db.Text
+  updatedAt       DateTime @updatedAt
+}
+
 model Sale {
   id            Int            @id @default(autoincrement())
   code          String         @unique

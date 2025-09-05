@@ -167,6 +167,12 @@ module.exports = (prisma) => {
    *  A) CREA LA VENTA (AWAITING_PAYMENT)  →  Checkout
    * ============================================================ */
 router.post('/pedido', async (req, res) => {
+  
+  const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
+if (appMeta && appMeta.acceptingOrders === false) {
+  const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
+  return res.status(503).json({ error: msg });
+}
   const {
     storeId,
     type = 'DELIVERY',
