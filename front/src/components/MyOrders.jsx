@@ -1,10 +1,7 @@
-// ─────────────────────────────────────────────────────────
 // src/components/MyOrders.jsx
-//   • Botón/interruptor "Recibir pedidos" (ON/OFF) para la tienda logueada
-//   • Carga estado inicial desde GET /api/stores/:id/accepting
-//   • Actualiza con PATCH /api/stores/:id/accepting { accepting: boolean }
-//   • Añadido id="pending-tab" al botón de pendientes → permite parpadeo.
-// ─────────────────────────────────────────────────────────
+//   • Switch global "App online" (solo Admin) → /api/app/status (GET/PATCH)
+//   • Botón Pending con id="pending-tab"
+//   • Sin logout duplicado ni controles por tienda
 import React, { useEffect, useState } from "react";
 import LocalSaleForm    from "./LocalSaleForm";
 import DeliverySaleForm from "./DeliverySaleForm";
@@ -44,67 +41,59 @@ function LoginForm() {
 
 /* ───────────────── Dash ───────────────── */
 function Dashboard() {
-  const { auth, logout } = useAuth();
-  const isAdmin   = auth.role === "admin";
-  const myStoreId = auth?.storeId ?? null;
+  const { auth } = useAuth();
+  const isAdmin = auth?.role === "admin";
 
   // vista nivel-1: "pending" | "newsale"
   const [view, setView] = useState("pending");
   // vista nivel-2 (dentro de newsale)
   const [sub , setSub ] = useState("local");
 
-  // Interruptor: recibir pedidos
-  const [accepting, setAccepting]     = useState(true);
-  const [loadingAcc, setLoadingAcc]   = useState(!!myStoreId);
-  const [accErr, setAccErr]           = useState("");
+  // Switch global de la app (solo admin)
+  const [appAccepting, setAppAccepting] = useState(true);
+  const [saving, setSaving]             = useState(false);
+  const [errMsg, setErrMsg]             = useState("");
 
-  // cargar estado inicial del switch
   useEffect(() => {
-    if (!myStoreId) return;
-    setLoadingAcc(true);
-    api.get(`/api/stores/${myStoreId}/accepting`)
-      .then(r => setAccepting(!!r.data?.accepting))
-      .catch(() => {})
-      .finally(() => setLoadingAcc(false));
-  }, [myStoreId]);
+    if (!isAdmin) return;
+    (async () => {
+      try {
+        const { data } = await api.get("/api/app/status");
+        setAppAccepting(!!data.accepting);
+      } catch {/* noop */}
+    })();
+  }, [isAdmin]);
 
-  const toggleAccepting = async () => {
-    if (!myStoreId) return;
-    const next = !accepting;
-    setAccepting(next); // optimista
+  const toggleGlobal = async () => {
+    if (!isAdmin || saving) return;
+    const next = !appAccepting;
+    setSaving(true);
     try {
-      await api.patch(`/api/stores/${myStoreId}/accepting`, { accepting: next });
-      setAccErr("");
+      await api.patch("/api/app/status", { accepting: next });
+      // refrescamos desde el backend para quedar en estado real
+      const { data } = await api.get("/api/app/status");
+      setAppAccepting(!!data.accepting);
+      setErrMsg("");
     } catch (e) {
-      setAccepting(!next); // revertir
-      setAccErr(e?.response?.data?.error || "No se pudo cambiar el estado");
-      setTimeout(() => setAccErr(""), 3000);
+      setErrMsg(e?.response?.data?.error || "No se pudo cambiar el estado");
+    } finally {
+      setSaving(false);
     }
   };
 
-  // estilos inline para el switch (sin depender del CSS)
-  const swStyle = {
-    position: "relative",
-    width: 54,
-    height: 28,
-    borderRadius: 999,
-    border: "none",
-    padding: 0,
-    cursor: loadingAcc ? "not-allowed" : "pointer",
-    background: accepting ? "#16a34a" : "#9ca3af",
-    transition: "background .15s ease",
+  // estilos switch inline
+  const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10 };
+  const swBtn  = {
+    position:"relative", width:54, height:28, borderRadius:999, border:"none", padding:0,
+    cursor: saving ? "not-allowed" : "pointer",
+    background: appAccepting ? "#16a34a" : "#9ca3af",
+    transition:"background .15s ease"
   };
-  const knobStyle = {
-    position: "absolute",
-    top: 3,
-    left: 3,
-    width: 22,
-    height: 22,
-    borderRadius: "50%",
-    background: "#fff",
-    transform: accepting ? "translateX(26px)" : "translateX(0px)",
-    transition: "transform .2s ease",
-    boxShadow: "0 1px 2px rgba(0,0,0,.25)",
+  const swKnob = {
+    position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
+    transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
+    transition:"transform .2s ease",
+    boxShadow:"0 1px 2px rgba(0,0,0,.25)"
   };
 
   return (
@@ -113,33 +102,26 @@ function Dashboard() {
       <header className="dash-head" style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
 
-        {/* Interruptor solo para role 'store' (puedes habilitarlo también para admin si lo necesitas) */}
-        {!isAdmin && myStoreId && (
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, opacity: .9 }}>Recibir pedidos</span>
+        {/* Switch global solo admin */}
+        {isAdmin && (
+          <div style={swWrap}>
+            <span className="pc-note" style={{ fontSize:14 }}>App online</span>
             <button
-              style={swStyle}
-              onClick={toggleAccepting}
-              disabled={loadingAcc}
-              aria-pressed={accepting}
-              aria-label={accepting ? "Recibir pedidos: ON" : "Recibir pedidos: OFF"}
-              title={accepting ? "ON" : "OFF"}
+              style={swBtn}
+              onClick={toggleGlobal}
+              disabled={saving}
+              aria-pressed={appAccepting}
+              aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
+              title={appAccepting ? "ON" : "OFF"}
             >
-              <span style={knobStyle} />
+              <span style={swKnob}/>
             </button>
           </div>
         )}
-
-        {!isAdmin && (
-          <button onClick={logout}>Logout</button>
-        )}
       </header>
 
-      {accErr && (
-        <div className="pc-alert" style={{ margin: "8px 0" }}>
-          {accErr}
-        </div>
-      )}
+      {/* error del switch */}
+      {errMsg && <div className="pc-alert" style={{ margin: "8px 0" }}>{errMsg}</div>}
 
       {/* botones de nivel-1 */}
       <div style={{ marginBottom: 12 }}>

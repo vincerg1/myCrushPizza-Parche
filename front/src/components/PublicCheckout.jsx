@@ -72,7 +72,24 @@ export default function PublicCheckout() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showCookiesPolicy, setShowCookiesPolicy] = useState(false);
   const [showCookiePrefs, setShowCookiePrefs] = useState(false);
-  const [consentTick, setConsentTick] = useState(0); // para refrescar banner tras elegir
+  const [consentTick, setConsentTick] = useState(0); 
+  const [appAccepting, setAppAccepting] = useState(true);
+  const [appClosedMsg, setAppClosedMsg] = useState("");
+
+useEffect(() => {
+  (async () => {
+    try {
+      const { data } = await api.get("/api/app/status");
+      setAppAccepting(!!data.accepting);
+      setAppClosedMsg(data.message || "");
+    } catch {
+      // mientras no migres, quedará abierto por defecto
+      setAppAccepting(true);
+      setAppClosedMsg("");
+    }
+  })();
+}, []);
+
 
   const CONSENT_KEY = "mcp_cookie_consent_v1";
   const getConsent = () => {
@@ -945,76 +962,82 @@ const buildItemsForApi = (items) =>
   const reviewNetProducts = pending ? Number(pending.total || 0) - couponDiscount : 0;
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 
-  const startPayment = useCallback(async () => {
-    if (!pending || isPaying) return;
-    setIsPaying(true);
-    try {
-      const payload = {
-        storeId: pending.storeId,
-        type: isDelivery ? "DELIVERY" : "LOCAL",
-        delivery: isDelivery ? "COURIER" : "PICKUP",
-        channel: "WHATSAPP",
-        customer: isDelivery
-          ? {
-              phone: customer?.phone,
-              name: customer?.name,
-              address_1: customer?.address_1 || query,
-              lat: coords?.lat,
-              lng: coords?.lng,
-            }
-          : { phone: customer?.phone, name: customer?.name },
-        items: buildItemsForApi(pending.items),
-        extras: isDelivery
-          ? [
-              {
-                code: "DELIVERY_FEE",
-                label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-                amount: deliveryFeeTotal,
-              },
-            ]
-          : [],
-        // Solo enviamos cupón si es válido
-        ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
-        notes: "",
-      };
-
-      // 1) Crear venta (AWAITING_PAYMENT)
-      const { data: created } = await api.post("/api/venta/pedido", payload);
-
-      // 2) Crear sesión de pago (pasamos id y code por robustez)
-      const { data: pay } = await api.post("/api/venta/checkout-session", {
-        orderId: created?.id,
-        code: created?.code,
-      });
-
-      if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
-      window.location.href = pay.url;
-    } catch (e) {
-      const msg =
-        e?.response?.data?.error ||
-        e?.message ||
-        "No se pudo iniciar el pago";
-      if (/Stripe no configurado/i.test(msg)) {
-        alert("Pago no disponible (Stripe no configurado).");
-      } else if (/fuera.*zona|servicio/i.test(msg)) {
-        alert("La dirección está fuera del área de servicio.");
-      } else {
-        alert(msg);
-      }
+ const startPayment = useCallback(async () => {
+  if (!pending || isPaying) return;
+  setIsPaying(true);
+  try {
+    // 🔒 Chequeo global antes de crear pedido
+    const { data: app } = await api.get("/api/app/status");
+    if (!app?.accepting) {
+      alert(app?.message || "La app está cerrada. Volvemos en breve.");
       setIsPaying(false);
+      return;
     }
-  }, [
-    pending,
-    isPaying,
-    isDelivery,
-    customer,
-    query,
-    coords,
-    deliveryBlocks,
-    deliveryFeeTotal,
-    couponOk,
-    coupon,
-  ]);
+
+    const payload = {
+      storeId: pending.storeId,
+      type: isDelivery ? "DELIVERY" : "LOCAL",
+      delivery: isDelivery ? "COURIER" : "PICKUP",
+      channel: "WHATSAPP",
+      customer: isDelivery
+        ? {
+            phone: customer?.phone,
+            name: customer?.name,
+            address_1: customer?.address_1 || query,
+            lat: coords?.lat,
+            lng: coords?.lng,
+          }
+        : { phone: customer?.phone, name: customer?.name },
+      items: buildItemsForApi(pending.items),
+      extras: isDelivery
+        ? [{
+            code: "DELIVERY_FEE",
+            label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+            amount: deliveryFeeTotal,
+          }]
+        : [],
+      ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
+      notes: "",
+    };
+
+    // 1) Crear venta (AWAITING_PAYMENT)
+    const { data: created } = await api.post("/api/venta/pedido", payload);
+
+    // 2) Crear sesión de pago
+    const { data: pay } = await api.post("/api/venta/checkout-session", {
+      orderId: created?.id,
+      code: created?.code,
+    });
+
+    if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
+    window.location.href = pay.url;
+  } catch (e) {
+    const msg =
+      e?.response?.data?.error ||
+      e?.message ||
+      "No se pudo iniciar el pago";
+    if (/Stripe no configurado/i.test(msg)) {
+      alert("Pago no disponible (Stripe no configurado).");
+    } else if (/fuera.*zona|servicio/i.test(msg)) {
+      alert("La dirección está fuera del área de servicio.");
+    } else {
+      alert(msg);
+    }
+    setIsPaying(false);
+  }
+}, [
+  pending,
+  isPaying,
+  isDelivery,
+  customer,
+  query,
+  coords,
+  deliveryBlocks,
+  deliveryFeeTotal,
+  couponOk,
+  coupon,
+]);
+
 
   const reviewView = (
     <div className="pc-card">
@@ -1195,6 +1218,17 @@ const buildItemsForApi = (items) =>
   );
 
   // ========== RENDER ==========
+if (!appAccepting) {
+  return (
+    <div className="pc-page">
+      <div className="pc-card" style={{ textAlign:"center" }}>
+        <h2 className="pc-title">Ahora mismo estamos cerrados</h2>
+        <p>{appClosedMsg || "Volvemos pronto. ¡Gracias!"}</p>
+      </div>
+    </div>
+  );
+}
+
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
       {CouponToast}
