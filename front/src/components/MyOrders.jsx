@@ -65,7 +65,7 @@ useEffect(() => {
 }, [auth?.role]);
 
 const toggleGlobal = async () => {
-  if (auth?.role !== "admin" || saving) return;
+  if (auth?.role !== "admin" || saving) return;  // evita spam de clicks
   const next = !appAccepting;
   setSaving(true);
   try {
@@ -74,23 +74,21 @@ const toggleGlobal = async () => {
     setAppAccepting(!!data.accepting);
     setErr("");
   } catch (e) {
-    if (e?.response?.status === 401) {
-      setErr("Sesión inválida/expirada. Sal y entra de nuevo como Admin.");
-    } else if (e?.response?.status === 403) {
-      setErr("Solo un Admin puede usar este interruptor.");
-    } else {
-      setErr(e?.response?.data?.error || "No se pudo cambiar el estado");
-    }
+    if (e?.response?.status === 401) setErr("Sesión inválida/expirada. Sal y entra de nuevo como Admin.");
+    else if (e?.response?.status === 403) setErr("Solo un Admin puede usar este interruptor.");
+    else setErr(e?.response?.data?.error || "No se pudo cambiar el estado");
   } finally {
     setSaving(false);
   }
 };
 
+
   // estilos switch inline
-const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10, zIndex: 2 };
+const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10, zIndex: 2000 };
 const swBtn  = {
-  position:"relative", width:54, height:28, borderRadius:999, border:"none", padding:0,
-  cursor: saving ? "not-allowed" : "pointer",
+  position:"relative",
+  width:54, height:28, borderRadius:999, border:"none", padding:0,
+  cursor:"pointer",                        // <- siempre pointer
   background: appAccepting ? "#16a34a" : "#9ca3af",
   transition:"background .15s ease"
 };
@@ -99,20 +97,19 @@ const swKnob = {
   transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
   transition:"transform .2s ease", boxShadow:"0 1px 2px rgba(0,0,0,.25)"
 };
-  return (
+ return (
   <div className="orders-dashboard">
-    <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12 }}>
+    <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
       <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
 
-        {/* Switch global solo admin */}
-{isAdmin && (
+      {/* Switch global solo admin */}
+      {isAdmin && (
         <div style={swWrap}>
           <span className="pc-note" style={{ fontSize:14 }}>App online</span>
           <button
             type="button"
             style={swBtn}
-            onClick={toggleGlobal}
-            disabled={saving}
+            onClick={toggleGlobal}               // <- sin disabled; el guard está dentro
             aria-pressed={appAccepting}
             aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
             title={appAccepting ? "ON" : "OFF"}
@@ -150,7 +147,7 @@ const swKnob = {
       </>
     )}
   </div>
-  );
+);
 }
 
 /* ─────────── Gate ─────────── */
