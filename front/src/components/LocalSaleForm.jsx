@@ -80,6 +80,7 @@ export default function LocalSaleForm({
   const [errors, setErrors] = useState({ item: false, size: false });
   const [triedAdd, setTriedAdd] = useState(false);   // intentó agregar con errores
   const [shakeAdd, setShakeAdd] = useState(false);   // para relanzar la animación
+  const MAX_QTY_SELECT = 12;
 
   /* effects */
   useEffect(() => {
@@ -131,19 +132,13 @@ export default function LocalSaleForm({
   useEffect(() => {
     const sizes = (current?.selectSize || []).filter(Boolean);
     setSel((s) => {
-      // si no hay producto, limpia size si venía marcado
       if (!current) return s.size ? { ...s, size: "" } : s;
-
-      // si solo hay un size y aún no está puesto → colócalo
       if (sizes.length === 1 && s.size !== sizes[0]) {
         return { ...s, size: sizes[0] };
       }
-
-      // si el size actual no existe para el nuevo producto → limpia
       if (s.size && !sizes.includes(s.size)) {
         return { ...s, size: "" };
       }
-
       return s;
     });
   }, [current]);
@@ -165,6 +160,20 @@ export default function LocalSaleForm({
 
   const linePreview = (baseUnitPrice + extrasUnitTotal) * Number(sel.qty || 1);
 
+  /* ===== Cantidad: opciones según stock / tope ===== */
+  const qtyOptions = useMemo(() => {
+    const hardMax = MAX_QTY_SELECT;
+    const stockMax = current?.stock == null ? hardMax : Number(current.stock);
+    const n = Math.max(1, Math.min(hardMax, stockMax));
+    return Array.from({ length: n }, (_, i) => i + 1);
+  }, [current?.stock]);
+
+  // Si cambian las opciones, encajar qty dentro del rango
+  useEffect(() => {
+    const max = qtyOptions[qtyOptions.length - 1] || 1;
+    setSel((s) => ({ ...s, qty: Math.min(Math.max(1, Number(s.qty || 1)), max) }));
+  }, [qtyOptions]);
+
   /* handlers */
   const toggleExtra = (id) =>
     setSel(s => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
@@ -176,8 +185,6 @@ export default function LocalSaleForm({
     if (invalidItem || invalidSize) {
       setErrors({ item: invalidItem, size: invalidSize });
       setTriedAdd(true);
-
-      // re-dispara la animación del botón Add
       setShakeAdd(false);
       requestAnimationFrame(() => setShakeAdd(true));
       setTimeout(() => setShakeAdd(false), 380);
@@ -283,7 +290,7 @@ export default function LocalSaleForm({
               <option value="">– item –</option>
               {itemsAvail.map(it => (
                 <option key={it.pizzaId} value={it.pizzaId}>
-                  {it.name} 
+                  {it.name}
                 </option>
               ))}
             </select>
@@ -309,25 +316,20 @@ export default function LocalSaleForm({
               </select>
             </div>
 
-            {/* Cantidad */}
+            {/* Cantidad (selector) */}
             <div className="lsf-box">
-              <label htmlFor="lsf_qty" className="lsf-label">
-                Cantidad
-              </label>
-              <input
+              <label htmlFor="lsf_qty" className="lsf-label">Cantidad</label>
+              <select
                 id="lsf_qty"
-                className="lsf-field"
-                type="number"
-                min="1"
-                step="1"
-                value={sel.qty}
-                onChange={(e) =>
-                  setSel({
-                    ...sel,
-                    qty: Math.max(1, Number(e.target.value || 1)),
-                  })
-                }
-              />
+                className="lsf-field lsf-field--qty"
+                value={String(sel.qty)}
+                onChange={(e) => setSel({ ...sel, qty: Number(e.target.value) })}
+                disabled={!current}
+              >
+                {qtyOptions.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -369,7 +371,7 @@ export default function LocalSaleForm({
             </div>
           )}
 
-          {/* Botón Add: no deshabilitar; aplica shake en error */}
+          {/* Botón Add */}
           <button
             className={`ADDBTN ${triedAdd && (errors.item || errors.size) && shakeAdd ? "is-error pc-shake" : ""}`}
             onClick={addLine}
@@ -420,89 +422,77 @@ export default function LocalSaleForm({
 
             <p className="total">Total: €{total.toFixed(2)}</p>
 
-         <button
-            className="btn-confirm"
-            onClick={async () => {
-              // Helper para normalizar extras de una línea
-              const extrasArrayForItem = (line) =>
-                (line.extras || []).map((e) => ({
-                  id: e.id,
-                  code: "EXTRA",
-                  label: e.name,
-                  // Enviamos el precio unitario del extra; el backend ya lo multiplica por qty
-                  amount: Number(e.price) || 0,
-                }));
-
-              // Mapa boolean opcional (por compatibilidad con back antiguos)
-              const extrasMapForItem = (line) =>
-                Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
-
-              if (onConfirmCart) {
-                if (!storeId) return alert("Select store");
-                onConfirmCart({
-                  storeId: Number(storeId),
-                  // El backend /pedido recalcula precios, solo necesita items y extras
-                  items: cart.map((c) => ({
-                    pizzaId: c.pizzaId,
-                    name: c.name, // fallback name→id si hiciera falta
-                    size: c.size,
-                    qty: c.qty,
-                    // extras como ARRAY con amount (unitario)
-                    extras: extrasArrayForItem(c),
-                    // extra: mapa boolean (opcional)
-                    extrasMap: extrasMapForItem(c),
-                  })),
-                  // total es informativo; /pedido no depende de él
-                  total,
-                });
-                return;
-              }
-
-              // ---- Branch /api/sales (backoffice) ----
-              try {
-                // Extras agregados a nivel pedido (sumamos por línea qty×precio extra unitario)
-                const aggregatedExtras = cart.flatMap((c) =>
-                  (c.extras || []).map((e) => ({
+            <button
+              className="btn-confirm"
+              onClick={async () => {
+                const extrasArrayForItem = (line) =>
+                  (line.extras || []).map((e) => ({
+                    id: e.id,
                     code: "EXTRA",
                     label: e.name,
-                    amount: (Number(e.price) || 0) * Number(c.qty || 1),
-                  }))
-                );
+                    amount: Number(e.price) || 0, // precio unitario del extra
+                  }));
 
-                const payload = {
-                  storeId,
-                  type: forcedStoreId ? "DELIVERY" : "LOCAL",
-                  delivery: forcedStoreId ? "COURIER" : "PICKUP",
-                  products: cart.map((c) => ({
-                    pizzaId: c.pizzaId,
-                    size: c.size,
-                    qty: c.qty,
-                    price: c.price, // base unitario; sales.js lo usa
-                    // Incluimos también extras por producto por si el backend los aprovecha
-                    extras: extrasArrayForItem(c),
-                  })),
-                  // Totales que usaba tu sales.js
-                  totalProducts: cart.reduce((t, l) => t + Number(l.price || 0) * Number(l.qty || 1), 0),
-                  discounts: 0,
-                  total, // incluye extras (porque subtotal ya sumaba extras)
-                  // Extras a nivel pedido para que queden guardados/visibles en backoffice
-                  extras: aggregatedExtras,
-                };
-                if (customer?.phone?.trim()) payload.customer = customer;
+                const extrasMapForItem = (line) =>
+                  Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
 
-                await api.post("/api/sales", payload);
-                setToast("Sale saved ✓");
-                setCart([]);
-                setTimeout(() => onDone(), 2000);
-              } catch (e) {
-                console.error(e);
-                alert(e.response?.data?.error || "Error");
-              }
-            }}
-          >
-            {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
-          </button>
+                if (onConfirmCart) {
+                  if (!storeId) return alert("Select store");
+                  onConfirmCart({
+                    storeId: Number(storeId),
+                    items: cart.map((c) => ({
+                      pizzaId: c.pizzaId,
+                      name: c.name,
+                      size: c.size,
+                      qty: c.qty,
+                      extras: extrasArrayForItem(c),
+                      extrasMap: extrasMapForItem(c),
+                    })),
+                    total,
+                  });
+                  return;
+                }
 
+                // ---- Branch /api/sales (backoffice) ----
+                try {
+                  const aggregatedExtras = cart.flatMap((c) =>
+                    (c.extras || []).map((e) => ({
+                      code: "EXTRA",
+                      label: e.name,
+                      amount: (Number(e.price) || 0) * Number(c.qty || 1),
+                    }))
+                  );
+
+                  const payload = {
+                    storeId,
+                    type: forcedStoreId ? "DELIVERY" : "LOCAL",
+                    delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                    products: cart.map((c) => ({
+                      pizzaId: c.pizzaId,
+                      size: c.size,
+                      qty: c.qty,
+                      price: c.price, // base unitario
+                      extras: extrasArrayForItem(c),
+                    })),
+                    totalProducts: cart.reduce((t, l) => t + Number(l.price || 0) * Number(l.qty || 1), 0),
+                    discounts: 0,
+                    total, // incluye extras
+                    extras: aggregatedExtras,
+                  };
+                  if (customer?.phone?.trim()) payload.customer = customer;
+
+                  await api.post("/api/sales", payload);
+                  setToast("Sale saved ✓");
+                  setCart([]);
+                  setTimeout(() => onDone(), 2000);
+                } catch (e) {
+                  console.error(e);
+                  alert(e.response?.data?.error || "Error");
+                }
+              }}
+            >
+              {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
+            </button>
           </>
         )}
       </div>

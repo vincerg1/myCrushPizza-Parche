@@ -756,7 +756,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
 
       <div className="pc-actions" style={{ marginTop: 10 }}>
         <button
-          className={`pc-btn ${baseOk ? "pc-btn-valid" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
+          className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
           onClick={() => setShowCus(true)}
         >
           Datos del cliente
@@ -1266,7 +1266,7 @@ if (!appAccepting) {
           padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
         }
         .pc-closed__card{
-          width:min(92vw, 720px); text-align:center; background:#fff;
+          width:min(86vw, 600px); text-align:center; background:#fff;
           border-radius:20px; padding:clamp(22px,4vw,32px);
           box-shadow:0 16px 40px rgba(0,0,0,.15); animation:fadeIn .25s ease;
         }

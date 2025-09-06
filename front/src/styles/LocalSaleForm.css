@@ -227,6 +227,7 @@
   cursor:pointer;
 }
 .ADDBTN:hover{ filter:brightness(.95); }
+.lsf-field--qty { max-width: 120px; }
 
 /* --- Responsive --- */
 @media (max-width: 560px){
@@ -235,3 +236,4 @@
   }
   .btn-confirm, .ADDBTN{ width:100%; }
 }
+.lsf-field--qty { max-width: 120px; }
