@@ -20,6 +20,7 @@ const DELIVERY_BLOCK = 5;
 const DELIVERY_MAX_KM = Number(
   process.env.REACT_APP_DELIVERY_MAX_KM || process.env.DELIVERY_MAX_KM || 7
 );
+const STATUS_POLL_MS = 8000; // ← refresco del estado de la app
 
 // Utils
 const phoneDigits = (s) => (s || "").replace(/\D/g, "");
@@ -72,24 +73,50 @@ export default function PublicCheckout() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showCookiesPolicy, setShowCookiesPolicy] = useState(false);
   const [showCookiePrefs, setShowCookiePrefs] = useState(false);
-  const [consentTick, setConsentTick] = useState(0); 
+  const [consentTick, setConsentTick] = useState(0);
   const [appAccepting, setAppAccepting] = useState(true);
   const [appClosedMsg, setAppClosedMsg] = useState("");
 
-useEffect(() => {
-  (async () => {
-    try {
-      const { data } = await api.get("/api/app/status");
-      setAppAccepting(!!data.accepting);
-      setAppClosedMsg(data.message || "");
-    } catch {
-      // mientras no migres, quedará abierto por defecto
-      setAppAccepting(true);
-      setAppClosedMsg("");
-    }
-  })();
-}, []);
+  // === Estado de la app: polling + onFocus/visibility ===
+  useEffect(() => {
+    let stop = false;
+    let timer = null;
 
+    const fetchStatus = async () => {
+      try {
+        const { data } = await api.get("/api/app/status", {
+          headers: { "Cache-Control": "no-cache" }
+        });
+        setAppAccepting(!!data.accepting);
+        setAppClosedMsg(data.message || "");
+      } catch {
+        // si falla, mantenemos el estado actual
+      }
+    };
+
+    // 1) carga inicial
+    fetchStatus();
+
+    // 2) loop de refresco
+    const loop = async () => {
+      await fetchStatus();
+      if (!stop) timer = setTimeout(loop, STATUS_POLL_MS);
+    };
+    timer = setTimeout(loop, STATUS_POLL_MS);
+
+    // 3) refrescar al volver a foco / pestaña visible
+    const onFocus = () => fetchStatus();
+    const onVis = () => { if (!document.hidden) fetchStatus(); };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   const CONSENT_KEY = "mcp_cookie_consent_v1";
   const getConsent = () => {
@@ -97,7 +124,6 @@ useEffect(() => {
   };
   const setConsent = (obj) => {
     localStorage.setItem(CONSENT_KEY, JSON.stringify(obj));
-    // Notificar y refrescar (para ocultar banner)
     window.dispatchEvent(new CustomEvent("cookie-consent", { detail: obj }));
     setConsentTick((t) => t + 1);
   };
@@ -137,7 +163,7 @@ useEffect(() => {
     if (!plc?.geometry) return;
 
     const fullAddr = plc.formatted_address?.toUpperCase() || "";
-       const lat = plc.geometry.location.lat();
+    const lat = plc.geometry.location.lat();
     const lng = plc.geometry.location.lng();
 
     setQuery(fullAddr);
@@ -172,7 +198,7 @@ useEffect(() => {
   const formatCoupon = useCallback((v) => {
     const raw = (v || "")
       .toUpperCase()
-      .replace(/[^A-Z0-9]/g, ""); // solo letras/números
+      .replace(/[^A-Z0-9]/g, "");
     const parts = [];
     let i = 0;
     for (const g of COUPON_GROUPS) {
@@ -254,14 +280,14 @@ useEffect(() => {
   const SWIPE_X = 70; // px
   const SWIPE_Y_MAX = 40; // px vertical máximo
 
-const isInteractive = (el) => {
-  if (!el) return false;
-  const tag = el.tagName;
-  if (!tag) return false;
-  const tagU = tag.toUpperCase();
-  if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(tagU)) return true;
-  return el.closest?.("[data-noswipe]") ? true : false;
-};
+  const isInteractive = (el) => {
+    if (!el) return false;
+    const tag = el.tagName;
+    if (!tag) return false;
+    const tagU = tag.toUpperCase();
+    if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(tagU)) return true;
+    return el.closest?.("[data-noswipe]") ? true : false;
+  };
 
   const goBack = () => {
     if (mode === "deliveryLocate" || mode === "pickupLocate") {
@@ -290,30 +316,30 @@ const isInteractive = (el) => {
     }
   };
 
-const onTouchStart = (e) => {
-  const touch = e.touches[0];
-  tStart.current = { x: touch.clientX, y: touch.clientY, at: Date.now(), target: e.target };
-};
+  const onTouchStart = (e) => {
+    const touch = e.touches[0];
+    tStart.current = { x: touch.clientX, y: touch.clientY, at: Date.now(), target: e.target };
+  };
 
-const onTouchMove = (e) => {
-  if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - tStart.current.x;
-  const dy = Math.abs(touch.clientY - tStart.current.y);
-  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
-};
+  const onTouchMove = (e) => {
+    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - tStart.current.x;
+    const dy = Math.abs(touch.clientY - tStart.current.y);
+    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
+  };
 
-const onTouchEnd = (e) => {
-  if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-  const changed = e.changedTouches?.[0];
-  if (!changed) return;
-  const dx = changed.clientX - tStart.current.x;
-  const dy = Math.abs(changed.clientY - tStart.current.y);
-  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
-    if (dx < 0) goForward();
-    else goBack();
-  }
-};
+  const onTouchEnd = (e) => {
+    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
+    const changed = e.changedTouches?.[0];
+    if (!changed) return;
+    const dx = changed.clientX - tStart.current.x;
+    const dy = Math.abs(changed.clientY - tStart.current.y);
+    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
+      if (dx < 0) goForward();
+      else goBack();
+    }
+  };
   // soporte teclado (desktop)
   const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
@@ -327,56 +353,55 @@ const onTouchEnd = (e) => {
   }, []);
 
   // ===== Modales base y legales =====
-function BaseModal({ open, title, onClose, children, width = 640, hideFooter = false, overlayClassName = "" }) {
-  if (!open) return null;
-  return (
-    <div className={`pc-modal-overlay ${overlayClassName}`} role="dialog" aria-modal="true" onClick={onClose}>
-      <div
-        className="pc-modal"
-        style={{ maxWidth: width, width: "90%" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="pc-modal__header">
-          <h3 className="pc-title" style={{ margin: 0 }}>{title}</h3>
-          <button className="pc-btn pc-btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button>
-        </div>
-        <div className="pc-modal__body">{children}</div>
-        {!hideFooter && (
-          <div className="pc-modal__footer">
-            <button className="pc-btn pc-btn-primary" onClick={onClose}>Cerrar</button>
+  function BaseModal({ open, title, onClose, children, width = 640, hideFooter = false, overlayClassName = "" }) {
+    if (!open) return null;
+    return (
+      <div className={`pc-modal-overlay ${overlayClassName}`} role="dialog" aria-modal="true" onClick={onClose}>
+        <div
+          className="pc-modal"
+          style={{ maxWidth: width, width: "90%" }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="pc-modal__header">
+            <h3 className="pc-title" style={{ margin: 0 }}>{title}</h3>
+            <button className="pc-btn pc-btn-ghost" onClick={onClose} aria-label="Cerrar">✕</button>
           </div>
-        )}
+          <div className="pc-modal__body">{children}</div>
+          {!hideFooter && (
+            <div className="pc-modal__footer">
+              <button className="pc-btn pc-btn-primary" onClick={onClose}>Cerrar</button>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
-  return (
-    <BaseModal
-      open={open}
-      title="Preferencias de privacidad"
-      onClose={onManage}
-      width={520}
-      hideFooter
-      overlayClassName="pc-modal-overlay--brand"
-    >
-      <p>
-        Usamos cookies <b>necesarias</b> para que el sitio funcione y, con tu permiso, cookies
-        <b> analíticas</b>. Puedes aceptar todas, rechazar las opcionales o configurar tus
-        preferencias.
-      </p>
-<div className="pc-actions pc-actions--2plus1" style={{ marginTop: 8 }}>
-  <button className="pc-btn" onClick={onManage}>Configurar</button>
-  <button className="pc-btn" onClick={onRejectOptional}>Rechazar</button>
-  <button className="pc-btn pc-btn-primary pc-btn-pulse" onClick={onAcceptAll}>
-    Aceptar todo
-  </button>
-</div>
-    </BaseModal>
-  );
-}
-
+  function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
+    return (
+      <BaseModal
+        open={open}
+        title="Preferencias de privacidad"
+        onClose={onManage}
+        width={520}
+        hideFooter
+        overlayClassName="pc-modal-overlay--brand"
+      >
+        <p>
+          Usamos cookies <b>necesarias</b> para que el sitio funcione y, con tu permiso, cookies
+          <b> analíticas</b>. Puedes aceptar todas, rechazar las opcionales o configurar tus
+          preferencias.
+        </p>
+        <div className="pc-actions pc-actions--2plus1" style={{ marginTop: 8 }}>
+          <button className="pc-btn" onClick={onManage}>Configurar</button>
+          <button className="pc-btn" onClick={onRejectOptional}>Rechazar</button>
+          <button className="pc-btn pc-btn-primary pc-btn-pulse" onClick={onAcceptAll}>
+            Aceptar todo
+          </button>
+        </div>
+      </BaseModal>
+    );
+  }
 
   function CookiePrefsModal({ open, onClose }) {
     const current = getConsent() || { necessary: true, analytics: false };
@@ -542,7 +567,7 @@ function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
           </ul>
 
           <h4>4) Transferencias internacionales</h4>
-          <p>Con proveedores como Stripe, Google o Meta puede haber transferencias fuera del EEE bajo <i>Standard Contractual Clauses</i> (SCC) u otras garantías RGPD.</p>
+          <p>Con proveedores como Google o Stripe pueden darse transferencias bajo Cláusulas Contractuales Tipo (SCC) u otras garantías RGPD.</p>
 
           <h4>5) Derechos</h4>
           <p>Acceso, rectificación, supresión, oposición, limitación y portabilidad en <a href="mailto:mycrushpizzaspain@gmail.com">mycrushpizzaspain@gmail.com</a> o por correo postal, adjuntando documento identificativo. Reclamación ante la AEPD (www.aepd.es).</p>
@@ -922,34 +947,33 @@ function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
   );
 
   // ---------- helper: construir items válidos para la API ----------
-const buildItemsForApi = (items) =>
-  (items || [])
-    .map((x) => {
-      const id   = Number(x.pizzaId ?? x.id);
-      const name = String(x.name ?? x.pizzaName ?? "").trim();
+  const buildItemsForApi = (items) =>
+    (items || [])
+      .map((x) => {
+        const id   = Number(x.pizzaId ?? x.id);
+        const name = String(x.name ?? x.pizzaName ?? "").trim();
 
-      // Mantener extras por línea: [{ id|name, price }]  →  backend acepta price/amount
-      const lineExtras = Array.isArray(x.extras)
-        ? x.extras
-            .map((e) => {
-              const code  = String(e.code ?? e.id ?? e.name ?? "EXTRA");
-              const label = String(e.label ?? e.name ?? code);
-              const price = Number(e.price ?? e.amount ?? 0);
-              if (!Number.isFinite(price) || price <= 0) return null;
-              return { code, label, price, amount: price };
-            })
-            .filter(Boolean)
-        : [];
+        const lineExtras = Array.isArray(x.extras)
+          ? x.extras
+              .map((e) => {
+                const code  = String(e.code ?? e.id ?? e.name ?? "EXTRA");
+                const label = String(e.label ?? e.name ?? code);
+                const price = Number(e.price ?? e.amount ?? 0);
+                if (!Number.isFinite(price) || price <= 0) return null;
+                return { code, label, price, amount: price };
+              })
+              .filter(Boolean)
+          : [];
 
-      if (Number.isFinite(id) && id > 0) {
-        return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
-      }
-      if (name) {
-        return { name, size: x.size, qty: x.qty, extras: lineExtras };
-      }
-      return null;
-    })
-    .filter(Boolean);
+        if (Number.isFinite(id) && id > 0) {
+          return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
+        }
+        if (name) {
+          return { name, size: x.size, qty: x.qty, extras: lineExtras };
+        }
+        return null;
+      })
+      .filter(Boolean);
 
   // Paso 3: review + pagar — cálculo por bloques de 5 pizzas
   const isDelivery = mode === "deliveryLocate";
@@ -962,82 +986,81 @@ const buildItemsForApi = (items) =>
   const reviewNetProducts = pending ? Number(pending.total || 0) - couponDiscount : 0;
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 
- const startPayment = useCallback(async () => {
-  if (!pending || isPaying) return;
-  setIsPaying(true);
-  try {
-    // 🔒 Chequeo global antes de crear pedido
-    const { data: app } = await api.get("/api/app/status");
-    if (!app?.accepting) {
-      alert(app?.message || "La app está cerrada. Volvemos en breve.");
+  const startPayment = useCallback(async () => {
+    if (!pending || isPaying) return;
+    setIsPaying(true);
+    try {
+      // 🔒 Chequeo global antes de crear pedido
+      const { data: app } = await api.get("/api/app/status");
+      if (!app?.accepting) {
+        alert(app?.message || "La app está cerrada. Volvemos en breve.");
+        setIsPaying(false);
+        return;
+      }
+
+      const payload = {
+        storeId: pending.storeId,
+        type: isDelivery ? "DELIVERY" : "LOCAL",
+        delivery: isDelivery ? "COURIER" : "PICKUP",
+        channel: "WHATSAPP",
+        customer: isDelivery
+          ? {
+              phone: customer?.phone,
+              name: customer?.name,
+              address_1: customer?.address_1 || query,
+              lat: coords?.lat,
+              lng: coords?.lng,
+            }
+          : { phone: customer?.phone, name: customer?.name },
+        items: buildItemsForApi(pending.items),
+        extras: isDelivery
+          ? [{
+              code: "DELIVERY_FEE",
+              label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+              amount: deliveryFeeTotal,
+            }]
+          : [],
+        ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
+        notes: "",
+      };
+
+      // 1) Crear venta (AWAITING_PAYMENT)
+      const { data: created } = await api.post("/api/venta/pedido", payload);
+
+      // 2) Crear sesión de pago
+      const { data: pay } = await api.post("/api/venta/checkout-session", {
+        orderId: created?.id,
+        code: created?.code,
+      });
+
+      if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
+      window.location.href = pay.url;
+    } catch (e) {
+      const msg =
+        e?.response?.data?.error ||
+        e?.message ||
+        "No se pudo iniciar el pago";
+      if (/Stripe no configurado/i.test(msg)) {
+        alert("Pago no disponible (Stripe no configurado).");
+      } else if (/fuera.*zona|servicio/i.test(msg)) {
+        alert("La dirección está fuera del área de servicio.");
+      } else {
+        alert(msg);
+      }
       setIsPaying(false);
-      return;
     }
-
-    const payload = {
-      storeId: pending.storeId,
-      type: isDelivery ? "DELIVERY" : "LOCAL",
-      delivery: isDelivery ? "COURIER" : "PICKUP",
-      channel: "WHATSAPP",
-      customer: isDelivery
-        ? {
-            phone: customer?.phone,
-            name: customer?.name,
-            address_1: customer?.address_1 || query,
-            lat: coords?.lat,
-            lng: coords?.lng,
-          }
-        : { phone: customer?.phone, name: customer?.name },
-      items: buildItemsForApi(pending.items),
-      extras: isDelivery
-        ? [{
-            code: "DELIVERY_FEE",
-            label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-            amount: deliveryFeeTotal,
-          }]
-        : [],
-      ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
-      notes: "",
-    };
-
-    // 1) Crear venta (AWAITING_PAYMENT)
-    const { data: created } = await api.post("/api/venta/pedido", payload);
-
-    // 2) Crear sesión de pago
-    const { data: pay } = await api.post("/api/venta/checkout-session", {
-      orderId: created?.id,
-      code: created?.code,
-    });
-
-    if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
-    window.location.href = pay.url;
-  } catch (e) {
-    const msg =
-      e?.response?.data?.error ||
-      e?.message ||
-      "No se pudo iniciar el pago";
-    if (/Stripe no configurado/i.test(msg)) {
-      alert("Pago no disponible (Stripe no configurado).");
-    } else if (/fuera.*zona|servicio/i.test(msg)) {
-      alert("La dirección está fuera del área de servicio.");
-    } else {
-      alert(msg);
-    }
-    setIsPaying(false);
-  }
-}, [
-  pending,
-  isPaying,
-  isDelivery,
-  customer,
-  query,
-  coords,
-  deliveryBlocks,
-  deliveryFeeTotal,
-  couponOk,
-  coupon,
-]);
-
+  }, [
+    pending,
+    isPaying,
+    isDelivery,
+    customer,
+    query,
+    coords,
+    deliveryBlocks,
+    deliveryFeeTotal,
+    couponOk,
+    coupon,
+  ]);
 
   const reviewView = (
     <div className="pc-card">
@@ -1218,16 +1241,46 @@ const buildItemsForApi = (items) =>
   );
 
   // ========== RENDER ==========
-if (!appAccepting) {
-  return (
-    <div className="pc-page">
-      <div className="pc-card" style={{ textAlign:"center" }}>
-        <h2 className="pc-title">Ahora mismo estamos cerrados</h2>
-        <p>{appClosedMsg || "Volvemos pronto. ¡Gracias!"}</p>
+  if (!appAccepting) {
+    return (
+      <div className="pc-page pc-closed">
+        <div className="pc-closed__card" role="status" aria-live="polite">
+          <img src={logo} alt="MyCrushPizza" className="pc-closed__logo" />
+          <h1 className="pc-closed__title">
+            Ahora mismo estamos <span>cerrados</span>
+          </h1>
+          <p className="pc-closed__msg">
+            {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
+          </p>
+          <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
+        </div>
+
+        {/* estilos scoped para el gate */}
+        <style>{`
+          .pc-closed{
+            min-height:100vh; display:flex; align-items:center; justify-content:center;
+            padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
+          }
+          .pc-closed__card{
+            width:100%; max-width:640px; text-align:center; background:#fff;
+            border-radius:20px; padding:26px; box-shadow:0 16px 40px rgba(0,0,0,.15);
+            animation:fadeIn .25s ease;
+          }
+          .pc-closed__logo{
+            width:84px; height:84px; object-fit:cover; border-radius:14px; margin-bottom:8px;
+            box-shadow:0 6px 20px rgba(255,46,115,.25);
+          }
+          .pc-closed__title{
+            margin:6px 0 4px; font-size:clamp(22px,3.5vw,30px); line-height:1.15;
+          }
+          .pc-closed__title span{ color:#ff2e73 }
+          .pc-closed__msg{ margin:8px 0 2px; font-size:16px }
+          .pc-closed__hint{ margin-top:6px; color:#666; font-size:12px }
+          @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+        `}</style>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
