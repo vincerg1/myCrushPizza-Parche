@@ -31,6 +31,7 @@ import api from "../setupAxios";
 const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
 
 export default function PendingTable() {
+  const ENABLE_SSE = false; 
   const [rows, setRows] = useState([]);
   const [menu, setMenu] = useState([]);
   const [stores, setStores] = useState([]);
@@ -144,6 +145,10 @@ export default function PendingTable() {
           await ringStart();
         }
       } catch (e) {
+        if (e?.response?.status === 401) {
+          console.warn("Unauthorized en /api/sales/pending. Rehaz login.");
+          return; // no retriggerear error
+        }
         console.error("load pending", e);
       } finally {
         setLoading(false);
@@ -175,13 +180,9 @@ export default function PendingTable() {
   useEffect(() => {
     let cancelled = false;
     let pollingTimer = null;
-    let sse = null;
 
-    // Function to start fallback polling. It uses incremental fetch based on
-    // the timestamp of the last successful call (`lastFetchAtRef.current`).
     const startFallbackPolling = () => {
       async function pollLoop() {
-        // If cancelled, do not proceed
         if (cancelled) return;
         const since = lastFetchAtRef.current;
         await loadPending(since);
@@ -191,62 +192,19 @@ export default function PendingTable() {
       pollLoop();
     };
 
-    // Setup initial data and connections
     const init = async () => {
-      // Initial full load of data
       await Promise.all([loadPending(), loadMenu(), loadStores()]);
-      // Try SSE if supported by the browser and the server (exists at the URL)
-      if (typeof window.EventSource !== "undefined") {
-        try {
-          sse = new EventSource("/api/sales/pending/stream");
-          sse.onmessage = (event) => {
-            // Each message is expected to contain a JSON payload with the new
-            // order(s). The server should send a JSON string representing a
-            // single order or an array of orders.
-            try {
-              const parsed = JSON.parse(event.data);
-              const newOrders = Array.isArray(parsed) ? parsed : [parsed];
-              // Update local state with new orders
-              setRows((prev) => [...prev, ...newOrders]);
-              newOrders.forEach((o) => prevIdsRef.current.add(o.id));
-              setAlertOrders((prev) => [...prev, ...newOrders]);
-              ringStart();
-            } catch (ex) {
-              console.error("Error parsing SSE event", ex);
-            }
-          };
-          sse.onerror = (err) => {
-            console.error("SSE error; falling back to polling", err);
-            if (sse) {
-              sse.close();
-              sse = null;
-            }
-            // Start fallback polling when SSE fails
-            if (!cancelled) startFallbackPolling();
-          };
-        } catch (err) {
-          console.error("Unable to open SSE; falling back to polling", err);
-          // Fall back to polling if SSE connection fails
-          startFallbackPolling();
-        }
-      } else {
-        // EventSource not supported; fallback to polling
-        startFallbackPolling();
-      }
+      // 🔕 Desactivamos SSE por ahora
+      startFallbackPolling();
     };
 
     init();
 
-    // Clean up on unmount
     return () => {
       cancelled = true;
-      if (sse) {
-        sse.close();
-        sse = null;
-      }
       if (pollingTimer) clearTimeout(pollingTimer);
     };
-  }, [loadPending, loadMenu, loadStores, ringStart]);
+  }, [loadPending, loadMenu, loadStores]);
 
   /* ---------- UI effects ---------- */
   useEffect(() => {

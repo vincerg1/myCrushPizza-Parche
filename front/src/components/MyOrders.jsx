@@ -64,108 +64,85 @@ function Dashboard() {
     })();
   }, [isAdmin]);
 
-  const toggleGlobal = async () => {
-    if (!isAdmin || saving) return;
-    const next = !appAccepting;
-    setSaving(true);
-    try {
-      await api.patch("/api/app/status", { accepting: next });
-      // refrescamos desde el backend para quedar en estado real
-      const { data } = await api.get("/api/app/status");
-      setAppAccepting(!!data.accepting);
-      setErrMsg("");
-    } catch (e) {
-      setErrMsg(e?.response?.data?.error || "No se pudo cambiar el estado");
-    } finally {
-      setSaving(false);
-    }
-  };
+const toggleGlobal = async () => {
+  if (!isAdmin || saving) return;
+  const next = !appAccepting;
+  setSaving(true);
+  try {
+    await api.patch("/api/app/status", { accepting: next });
+    const { data } = await api.get("/api/app/status");
+    setAppAccepting(!!data.accepting);
+    setErrMsg("");
+  } catch (e) {
+    setErrMsg(e?.response?.data?.error || "No se pudo cambiar el estado");
+  } finally {
+    setSaving(false);
+  }
+};
 
   // estilos switch inline
-  const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10 };
-  const swBtn  = {
-    position:"relative", width:54, height:28, borderRadius:999, border:"none", padding:0,
-    cursor: saving ? "not-allowed" : "pointer",
-    background: appAccepting ? "#16a34a" : "#9ca3af",
-    transition:"background .15s ease"
-  };
-  const swKnob = {
-    position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
-    transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
-    transition:"transform .2s ease",
-    boxShadow:"0 1px 2px rgba(0,0,0,.25)"
-  };
+const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10 };
+const swBtn  = {
+  position:"relative", width:54, height:28, borderRadius:999, border:"none", padding:0,
+  cursor: saving ? "wait" : "pointer",
+  background: appAccepting ? "#16a34a" : "#9ca3af",
+  transition:"background .15s ease"
+};
+const swKnob = {
+  position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
+  transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
+  transition:"transform .2s ease", boxShadow:"0 1px 2px rgba(0,0,0,.25)"
+};
 
   return (
-    <div className="orders-dashboard">
-      {/* cabecera */}
-      <header className="dash-head" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
+   <div className="orders-dashboard">
+    <header className="dash-head" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
 
         {/* Switch global solo admin */}
         {isAdmin && (
-          <div style={swWrap}>
-            <span className="pc-note" style={{ fontSize:14 }}>App online</span>
-            <button
-              style={swBtn}
-              onClick={toggleGlobal}
-              disabled={saving}
-              aria-pressed={appAccepting}
-              aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
-              title={appAccepting ? "ON" : "OFF"}
-            >
-              <span style={swKnob}/>
+        <div style={swWrap}>
+          <span className="pc-note" style={{ fontSize:14 }}>App online</span>
+          <button
+            style={swBtn}
+            onClick={toggleGlobal}
+            aria-pressed={appAccepting}
+            aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
+            title={appAccepting ? "ON" : "OFF"}
+          >
+            <span style={swKnob}/>
+          </button>
+        </div>
+      )}
+    </header>
+
+    {errMsg && <div className="pc-alert" style={{ margin: "8px 0" }}>{errMsg}</div>}
+
+    <div style={{ marginBottom: 12 }}>
+      <button id="pending-tab" className="level1-btn" onClick={() => setView("pending")} disabled={view === "pending"}>
+        Pending orders
+      </button>
+      <button onClick={() => setView("newsale")} disabled={view === "newsale"} className="level1-btn" style={{ marginLeft: 8 }}>
+        New sale
+      </button>
+    </div>
+
+    {view === "pending" && <PendingTable />}
+    {view === "newsale" && (
+      <>
+        {isAdmin && (
+          <div style={{ marginBottom: 8 }}>
+            <button onClick={() => setSub("local")} disabled={sub === "local"}>Local</button>
+            <button onClick={() => setSub("delivery")} disabled={sub === "delivery"} style={{ marginLeft: 8 }}>
+              Delivery
             </button>
           </div>
         )}
-      </header>
-
-      {/* error del switch */}
-      {errMsg && <div className="pc-alert" style={{ margin: "8px 0" }}>{errMsg}</div>}
-
-      {/* botones de nivel-1 */}
-      <div style={{ marginBottom: 12 }}>
-        <button
-          id="pending-tab"
-          className="level1-btn"
-          onClick={() => setView("pending")}
-          disabled={view === "pending"}
-        >
-          Pending orders
-        </button>
-
-        <button
-          onClick={() => setView("newsale")}
-          disabled={view === "newsale"}
-          className="level1-btn"
-          style={{ marginLeft: 8 }}
-        >
-          New sale
-        </button>
-      </div>
-
-      {/* Vista Pending */}
-      {view === "pending" && <PendingTable />}
-
-      {/* Vista New sale */}
-      {view === "newsale" && (
-        <>
-          {/* tabs local/delivery SOLO admin */}
-          {isAdmin && (
-            <div style={{ marginBottom: 8 }}>
-              <button onClick={() => setSub("local")}    disabled={sub === "local"}>Local</button>
-              <button onClick={() => setSub("delivery")} disabled={sub === "delivery"} style={{ marginLeft: 8 }}>
-                Delivery
-              </button>
-            </div>
-          )}
-
-          {/* Contenido según tab */}
-          {sub === "local"    && <LocalSaleForm    onDone={() => setView("pending")} />}
-          {sub === "delivery" && <DeliverySaleForm onDone={() => setView("pending")} />}
-        </>
-      )}
-    </div>
+        {sub === "local"    && <LocalSaleForm    onDone={() => setView("pending")} />}
+        {sub === "delivery" && <DeliverySaleForm onDone={() => setView("pending")} />}
+      </>
+    )}
+  </div>
   );
 }
 
