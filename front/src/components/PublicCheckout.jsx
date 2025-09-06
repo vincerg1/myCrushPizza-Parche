@@ -979,7 +979,8 @@ export default function PublicCheckout() {
   const couponDiscount = pending ? Math.round((Number(pending.total || 0) * (couponPct / 100)) * 100) / 100 : 0;
   const reviewNetProducts = pending ? Number(pending.total || 0) - couponDiscount : 0;
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
-
+const fmtEur = (n) =>
+  Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
   const startPayment = useCallback(async () => {
     if (!pending || isPaying) return;
     setIsPaying(true);
@@ -1090,32 +1091,53 @@ export default function PublicCheckout() {
                 <th>€</th>
               </tr>
             </thead>
-            <tbody>
-              {pending.items.map((it, i) => {
-                const unitBase = Number(it.price || 0);
-                const unitExtras = (Array.isArray(it.extras) ? it.extras : []).reduce(
-                  (s, e) => s + Number(e?.price || 0),
-                  0
-                );
-                const lineTotal = (unitBase + unitExtras) * Number(it.qty || 0);
-                const label = it.name && String(it.name).trim() ? it.name : `#${it.pizzaId}`;
-                return (
-                  <tr key={i}>
-                    <td>
-                      {label}
-                      {Array.isArray(it.extras) && it.extras.length > 0 && (
-                        <div className="pc-note">
-                          + {it.extras.map((e) => `${e.name} (+€${Number(e.price || 0).toFixed(2)})`).join(", ")}
-                        </div>
-                      )}
-                    </td>
-                    <td>{it.size}</td>
-                    <td style={{ textAlign: "center" }}>{it.qty}</td>
-                    <td style={{ textAlign: "right" }}>{lineTotal.toFixed(2)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
+   <tbody>
+  {pending.items.map((it, i) => {
+    const qty = Number(it.qty || 0);
+
+    const unitBase = Number(
+      it.unitPrice ??
+      it.price ??
+      it.amount ??
+      it.base ??
+      0
+    );
+
+    const extras = Array.isArray(it.extras) ? it.extras : [];
+
+    const unitExtras = extras.reduce((s, e) => {
+      const extraPrice = Number(e.price ?? e.amount ?? 0);
+      return s + (Number.isFinite(extraPrice) ? extraPrice : 0);
+    }, 0);
+
+    const lineTotal = (unitBase + unitExtras) * qty;
+
+    const label =
+      (it.name && String(it.name).trim()) ? it.name :
+      (it.pizzaName && String(it.pizzaName).trim()) ? it.pizzaName :
+      (Number.isFinite(it.pizzaId) ? `#${it.pizzaId}` : "Producto");
+
+    return (
+      <tr key={i}>
+        <td>
+          {label}
+          {extras.length > 0 && (
+            <div className="pc-note">
+              {extras.map((e, idx) => {
+                const n = String(e.name ?? e.label ?? e.code ?? "extra");
+                const p = Number(e.price ?? e.amount ?? 0);
+                return `${idx ? ", " : "+ "}${n} (+${fmtEur(p)})`;
+              }).join("")}
+            </div>
+          )}
+        </td>
+        <td>{it.size}</td>
+        <td style={{ textAlign: "center" }}>{qty}</td>
+        <td style={{ textAlign: "right" }}>{fmtEur(lineTotal)}</td>
+      </tr>
+    );
+  })}
+</tbody>
           </table>
 
           <div className="pc-totals">
@@ -1134,8 +1156,8 @@ export default function PublicCheckout() {
           </div>
 
           <p className="pc-note" style={{ marginTop: 8 }}>
-            Pagos seguros: el cobro se realiza a través de una pasarela certificada (p. ej., Stripe).
-            MYCRUSHPIZZA no almacena ni conoce los datos completos de tu tarjeta.
+            Pagos seguros: el cobro se realiza a través de una pasarela certificada.
+            MYCRUSHPIZZA no almacena ni conoce los datos completos de tu tarjeta. =)
           </p>
 
           <div className="pc-actions pc-sticky" style={{ marginTop: 10 }}>
