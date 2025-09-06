@@ -754,25 +754,26 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
         </div>
       )}
 
-      <div className="pc-actions" style={{ marginTop: 10 }}>
-        <button
-          className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
-          onClick={() => setShowCus(true)}
-        >
-          Datos del cliente
-        </button>
+    <div className="pc-actions" style={{ marginTop: 10 }}>
+  <button
+    className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
+    onClick={() => setShowCus(true)}
+  >
+    Datos del cliente
+  </button>
 
-        <button
-          className={`pc-btn ${baseOk ? "pc-btn-primary" : "pc-btn-muted"} push`}
-          onClick={() => {
-            if (!nextGuard()) return;
-            setStep("order");
-          }}
-          disabled={outOfRange ? true : false}
-        >
-          Siguiente → productos
-        </button>
-      </div>
+  <button
+    className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+    onClick={() => {
+      if (!nextGuard()) return;
+      setStep("order");
+    }}
+    disabled={outOfRange ? true : false}
+  >
+    Siguiente → productos
+  </button>
+</div>
+
 
       {showCus && (
         <CustomerModal
@@ -881,14 +882,14 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
           {/* Botones */}
           <div className="pc-actions" style={{ marginTop: 10 }}>
             <button
-              className={`pc-btn ${baseOk ? "pc-btn-valid" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
+              className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
               onClick={() => setShowCus(true)}
             >
               Datos del cliente
             </button>
 
             <button
-              className={`pc-btn ${baseOk ? "pc-btn-primary" : "pc-btn-muted"} push`}
+              className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
               onClick={() => {
                 if (!nextGuard()) return;
                 setStep("order");
@@ -897,8 +898,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
               Siguiente → productos
             </button>
           </div>
-        </div>
-      </div>
+
 
       {showCus && (
         <CustomerModal
