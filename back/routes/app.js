@@ -1,41 +1,33 @@
 // back/routes/app.js
 const express = require('express');
+const auth    = require('../middleware/auth'); // ← usa la factory
 
 module.exports = (prisma) => {
   const router = express.Router();
 
-  let authMw = null;
-  try {
-    const mod = require('../middleware/auth');
-    authMw = (typeof mod === 'function') ? mod
-            : (mod && typeof mod.auth === 'function') ? mod.auth
-            : null;
-  } catch {}
-  const protect = (req, res, next) => {
-    if (!authMw) return res.status(500).json({ error: 'Auth middleware no disponible' });
-    return authMw(req, res, next);
-  };
-
+  // GET público: si no existe la tabla, devolvemos abierto por defecto
   router.get('/status', async (_req, res) => {
     try {
       const meta = await prisma.appMeta.findUnique({
         where: { id: 1 },
-        select: { acceptingOrders: true, closedMessage: true }
+        select: { acceptingOrders: true, closedMessage: true },
       });
       res.json({
         accepting: meta?.acceptingOrders ?? true,
-        message  : meta?.closedMessage || ''
+        message  : meta?.closedMessage || '',
       });
     } catch (e) {
-      if (e?.code === 'P2021') return res.json({ accepting: true, message: '' });
+      if (e?.code === 'P2021') {
+        console.warn('[app/status] AppMeta no migrada. Devolviendo abierto por defecto.');
+        return res.json({ accepting: true, message: '' });
+      }
       res.status(500).json({ error: e.message });
     }
   });
 
-  router.patch('/status', protect, async (req, res) => {
+  // PATCH protegido: SOLO admin
+  router.patch('/status', auth(['admin']), async (req, res) => {
     try {
-      if (req?.user?.role !== 'admin') return res.status(403).json({ error: 'forbidden' });
-
       const data = {};
       if (typeof req.body.accepting === 'boolean') data.acceptingOrders = req.body.accepting;
       if (typeof req.body.message   === 'string')  data.closedMessage   = req.body.message;
@@ -46,14 +38,16 @@ module.exports = (prisma) => {
         create: {
           id: 1,
           acceptingOrders: data.acceptingOrders ?? true,
-          closedMessage  : data.closedMessage || ''
+          closedMessage  : data.closedMessage || '',
         },
-        select: { acceptingOrders: true, closedMessage: true }
+        select: { acceptingOrders: true, closedMessage: true },
       });
 
       res.json({ accepting: saved.acceptingOrders, message: saved.closedMessage || '' });
     } catch (e) {
-      if (e?.code === 'P2021') return res.status(500).json({ error: 'Falta migrar AppMeta.' });
+      if (e?.code === 'P2021') {
+        return res.status(500).json({ error: 'Falta migrar AppMeta. Ejecuta prisma migrate.' });
+      }
       res.status(400).json({ error: e.message || 'error' });
     }
   });
