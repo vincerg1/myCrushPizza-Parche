@@ -74,8 +74,8 @@ export default function PublicCheckout() {
   const [showCookiesPolicy, setShowCookiesPolicy] = useState(false);
   const [showCookiePrefs, setShowCookiePrefs] = useState(false);
   const [consentTick, setConsentTick] = useState(0);
-  const [appAccepting, setAppAccepting] = useState(true);
-  const [appClosedMsg, setAppClosedMsg] = useState("");
+const [appAccepting, setAppAccepting] = useState(true);
+const [appClosedMsg, setAppClosedMsg] = useState("");
 
   // === Estado de la app: polling + onFocus/visibility ===
   useEffect(() => {
@@ -1241,46 +1241,52 @@ export default function PublicCheckout() {
   );
 
   // ========== RENDER ==========
-  if (!appAccepting) {
-    return (
-      <div className="pc-page pc-closed">
-        <div className="pc-closed__card" role="status" aria-live="polite">
-          <img src={logo} alt="MyCrushPizza" className="pc-closed__logo" />
-          <h1 className="pc-closed__title">
-            Ahora mismo estamos <span>cerrados</span>
-          </h1>
-          <p className="pc-closed__msg">
-            {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
-          </p>
-          <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
-        </div>
-
-        {/* estilos scoped para el gate */}
-        <style>{`
-          .pc-closed{
-            min-height:100vh; display:flex; align-items:center; justify-content:center;
-            padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
-          }
-          .pc-closed__card{
-            width:100%; max-width:640px; text-align:center; background:#fff;
-            border-radius:20px; padding:26px; box-shadow:0 16px 40px rgba(0,0,0,.15);
-            animation:fadeIn .25s ease;
-          }
-          .pc-closed__logo{
-            width:84px; height:84px; object-fit:cover; border-radius:14px; margin-bottom:8px;
-            box-shadow:0 6px 20px rgba(255,46,115,.25);
-          }
-          .pc-closed__title{
-            margin:6px 0 4px; font-size:clamp(22px,3.5vw,30px); line-height:1.15;
-          }
-          .pc-closed__title span{ color:#ff2e73 }
-          .pc-closed__msg{ margin:8px 0 2px; font-size:16px }
-          .pc-closed__hint{ margin-top:6px; color:#666; font-size:12px }
-          @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
-        `}</style>
+if (!appAccepting) {
+  return (
+    <div className="pc-page pc-closed">
+      <div className="pc-closed__card" role="status" aria-live="polite">
+        {/* Usa el logo… */}
+        <img src={logo} alt="MyCrushPizza" className="pc-closed__logo" />
+        {/* …o si prefieres emoji, cambia la línea anterior por:
+            <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
+        */}
+        <h1 className="pc-closed__title">
+          Ahora mismo estamos <span>cerrados</span>
+        </h1>
+        <p className="pc-closed__msg">
+          {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
+        </p>
+        <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
       </div>
-    );
-  }
+
+      {/* estilos scoped del gate cerrado */}
+      <style>{`
+        .pc-closed{
+          min-height:100vh; display:flex; align-items:center; justify-content:center;
+          padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
+        }
+        .pc-closed__card{
+          width:min(92vw, 720px); text-align:center; background:#fff;
+          border-radius:20px; padding:clamp(22px,4vw,32px);
+          box-shadow:0 16px 40px rgba(0,0,0,.15); animation:fadeIn .25s ease;
+        }
+        .pc-closed__logo{
+          width:84px; height:84px; object-fit:cover; border-radius:14px; margin-bottom:8px;
+          box-shadow:0 6px 20px rgba(255,46,115,.25);
+        }
+        .pc-closed__emoji{ font-size:clamp(48px,9vw,84px); line-height:1; margin-bottom:6px; }
+        .pc-closed__title{
+          margin:6px 0 4px; font-size:clamp(22px,3.5vw,30px); line-height:1.15; font-weight:800;
+        }
+        .pc-closed__title span{ color:#ff2e73 }
+        .pc-closed__msg{ margin:8px 0 2px; font-size:16px }
+        .pc-closed__hint{ margin-top:6px; color:#666; font-size:12px }
+        @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+      `}</style>
+    </div>
+  );
+}
+
 
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
