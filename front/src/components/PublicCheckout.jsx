@@ -1246,12 +1246,12 @@ if (!appAccepting) {
     <div className="pc-page pc-closed">
       <div className="pc-closed__card" role="status" aria-live="polite">
         {/* Usa el logo… */}
-        <img src={logo} alt="MyCrushPizza" className="pc-closed__logo" />
+        <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
         {/* …o si prefieres emoji, cambia la línea anterior por:
             <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
         */}
         <h1 className="pc-closed__title">
-          Ahora mismo estamos <span>cerrados</span>
+          {/* Ahora mismo estamos <span>cerrados</span> */}
         </h1>
         <p className="pc-closed__msg">
           {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
