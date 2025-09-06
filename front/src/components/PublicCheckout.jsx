@@ -20,7 +20,7 @@ const DELIVERY_BLOCK = 5;
 const DELIVERY_MAX_KM = Number(
   process.env.REACT_APP_DELIVERY_MAX_KM || process.env.DELIVERY_MAX_KM || 7
 );
-const STATUS_POLL_MS = 8000; // ← refresco del estado de la app
+const STATUS_POLL_MS = 8000;
 
 // Utils
 const phoneDigits = (s) => (s || "").replace(/\D/g, "");
@@ -52,7 +52,7 @@ export default function PublicCheckout() {
   // pickup
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
-  const [mapCenter, setMapCenter] = useState({ lat: 40.4168, lng: -3.7038 }); // Madrid fallback
+  const [mapCenter, setMapCenter] = useState({ lat: 40.4168, lng: -3.7038 });
   const [mapZoom, setMapZoom] = useState(12);
 
   // cliente / carrito
@@ -74,10 +74,10 @@ export default function PublicCheckout() {
   const [showCookiesPolicy, setShowCookiesPolicy] = useState(false);
   const [showCookiePrefs, setShowCookiePrefs] = useState(false);
   const [consentTick, setConsentTick] = useState(0);
-const [appAccepting, setAppAccepting] = useState(true);
-const [appClosedMsg, setAppClosedMsg] = useState("");
+  const [appAccepting, setAppAccepting] = useState(true);
+  const [appClosedMsg, setAppClosedMsg] = useState("");
 
-  // === Estado de la app: polling + onFocus/visibility ===
+  // === Estado de la app ===
   useEffect(() => {
     let stop = false;
     let timer = null;
@@ -90,21 +90,17 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
         setAppAccepting(!!data.accepting);
         setAppClosedMsg(data.message || "");
       } catch {
-        // si falla, mantenemos el estado actual
+        // mantener estado anterior si falla
       }
     };
 
-    // 1) carga inicial
     fetchStatus();
-
-    // 2) loop de refresco
     const loop = async () => {
       await fetchStatus();
       if (!stop) timer = setTimeout(loop, STATUS_POLL_MS);
     };
     timer = setTimeout(loop, STATUS_POLL_MS);
 
-    // 3) refrescar al volver a foco / pestaña visible
     const onFocus = () => fetchStatus();
     const onVis = () => { if (!document.hidden) fetchStatus(); };
     window.addEventListener("focus", onFocus);
@@ -189,7 +185,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
 
   // ===== CUPÓN =====
   const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null); // { code, percent }
+  const [coupon, setCoupon] = useState(null);
   const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
@@ -238,7 +234,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
     }
   }, [couponCode]);
 
-  // ===== PICKUP: cargar tiendas activas con coordenadas =====
+  // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
     if (mode !== "pickupLocate") return;
     (async () => {
@@ -258,7 +254,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
     })();
   }, [mode]);
 
-  // ---- validaciones para “Siguiente → productos”
+  // ---- validaciones “Siguiente → productos”
   const addrOk =
     mode !== "deliveryLocate" ||
     (!!(query?.trim() || customer?.address_1?.trim()) && !!coords && !!nearest?.storeId && !outOfRange);
@@ -277,8 +273,8 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
 
   // =================== SWIPE NAV ===================
   const tStart = useRef({ x: 0, y: 0, at: 0, target: null });
-  const SWIPE_X = 70; // px
-  const SWIPE_Y_MAX = 40; // px vertical máximo
+  const SWIPE_X = 70;
+  const SWIPE_Y_MAX = 40;
 
   const isInteractive = (el) => {
     if (!el) return false;
@@ -340,7 +336,6 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
       else goBack();
     }
   };
-  // soporte teclado (desktop)
   const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
     if (e.key === "ArrowRight") goForward();
@@ -605,7 +600,6 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
               <tr><td>Técnicas de terceros (mapas)</td><td>NID, AEC (u otras)</td><td>Autocompletado/seguridad</td><td>según proveedor</td><td>Google</td></tr>
               <tr><td>Analíticas (opcionales)</td><td>_ga</td><td>Métricas de uso (Google Analytics)</td><td>24 meses</td><td>Google</td></tr>
               <tr><td>Analíticas (opcionales)</td><td>_gid</td><td>Métricas de uso (Google Analytics)</td><td>24 h</td><td>Google</td></tr>
-              {/* Publicidad opcional si se habilita: Meta/TikTok */}
             </tbody>
           </table>
 
@@ -754,26 +748,25 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
         </div>
       )}
 
-    <div className="pc-actions" style={{ marginTop: 10 }}>
-  <button
-    className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
-    onClick={() => setShowCus(true)}
-  >
-    Datos del cliente
-  </button>
+      <div className="pc-actions" style={{ marginTop: 10 }}>
+        <button
+          className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
+          onClick={() => setShowCus(true)}
+        >
+          Datos del cliente
+        </button>
 
-  <button
-    className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-    onClick={() => {
-      if (!nextGuard()) return;
-      setStep("order");
-    }}
-    disabled={outOfRange ? true : false}
-  >
-    Siguiente → productos
-  </button>
-</div>
-
+        <button
+          className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+          onClick={() => {
+            if (!nextGuard()) return;
+            setStep("order");
+          }}
+          disabled={outOfRange ? true : false}
+        >
+          Siguiente → productos
+        </button>
+      </div>
 
       {showCus && (
         <CustomerModal
@@ -898,7 +891,8 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
               Siguiente → productos
             </button>
           </div>
-
+        </div>
+      </div>
 
       {showCus && (
         <CustomerModal
@@ -950,13 +944,13 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
   const buildItemsForApi = (items) =>
     (items || [])
       .map((x) => {
-        const id   = Number(x.pizzaId ?? x.id);
+        const id = Number(x.pizzaId ?? x.id);
         const name = String(x.name ?? x.pizzaName ?? "").trim();
 
         const lineExtras = Array.isArray(x.extras)
           ? x.extras
               .map((e) => {
-                const code  = String(e.code ?? e.id ?? e.name ?? "EXTRA");
+                const code = String(e.code ?? e.id ?? e.name ?? "EXTRA");
                 const label = String(e.label ?? e.name ?? code);
                 const price = Number(e.price ?? e.amount ?? 0);
                 if (!Number.isFinite(price) || price <= 0) return null;
@@ -975,7 +969,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
       })
       .filter(Boolean);
 
-  // Paso 3: review + pagar — cálculo por bloques de 5 pizzas
+  // Paso 3: review + pagar — bloques de 5
   const isDelivery = mode === "deliveryLocate";
   const qtyTotal = pending?.items?.reduce((s, x) => s + Number(x.qty || 0), 0) || 0;
   const deliveryBlocks = isDelivery && qtyTotal > 0 ? Math.ceil(qtyTotal / DELIVERY_BLOCK) : 0;
@@ -1139,7 +1133,6 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
             <div className="pc-total">Total: €{reviewTotal.toFixed(2)}</div>
           </div>
 
-          {/* Aviso de pagos seguros */}
           <p className="pc-note" style={{ marginTop: 8 }}>
             Pagos seguros: el cobro se realiza a través de una pasarela certificada (p. ej., Stripe).
             MYCRUSHPIZZA no almacena ni conoce los datos completos de tu tarjeta.
@@ -1185,7 +1178,6 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
             Todos los derechos reservados.
           </p>
 
-          {/* Enlaces legales */}
           <p className="footer__links" style={{ marginTop: 8 }}>
             <button className="pc-link" onClick={() => setShowTermsPurchase(true)}>Términos y condiciones</button>
             {" · "}
@@ -1200,7 +1192,7 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
     );
   }
 
-  // === Toast Cupón (como variable JSX segura) ===
+  // === Toast Cupón ===
   const CouponToast = showCouponToast ? (
     <div
       className="pc-toast pc-toast--brand pc-toast--blink"
@@ -1241,52 +1233,39 @@ const [appClosedMsg, setAppClosedMsg] = useState("");
   );
 
   // ========== RENDER ==========
-if (!appAccepting) {
-  return (
-    <div className="pc-page pc-closed">
-      <div className="pc-closed__card" role="status" aria-live="polite">
-        {/* Usa el logo… */}
-        <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
-        {/* …o si prefieres emoji, cambia la línea anterior por:
-            <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
-        */}
-        <h1 className="pc-closed__title">
-          {/* Ahora mismo estamos <span>cerrados</span> */}
-        </h1>
-        <p className="pc-closed__msg">
-          {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
-        </p>
-        <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
+  if (!appAccepting) {
+    return (
+      <div className="pc-page pc-closed">
+        <div className="pc-closed__card" role="status" aria-live="polite">
+          <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
+          <h1 className="pc-closed__title"></h1>
+          <p className="pc-closed__msg">
+            {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
+          </p>
+          <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
+        </div>
+
+        <style>{`
+          .pc-closed{
+            min-height:100vh; display:flex; align-items:center; justify-content:center;
+            padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
+          }
+          .pc-closed__card{
+            width:min(86vw, 600px); text-align:center; background:#fff;
+            border-radius:20px; padding:clamp(22px,4vw,32px);
+            box-shadow:0 16px 40px rgba(0,0,0,.15); animation:fadeIn .25s ease;
+          }
+          .pc-closed__emoji{ font-size:clamp(48px,9vw,84px); line-height:1; margin-bottom:6px; }
+          .pc-closed__title{
+            margin:6px 0 4px; font-size:clamp(22px,3.5vw,30px); line-height:1.15; font-weight:800;
+          }
+          .pc-closed__msg{ margin:8px 0 2px; font-size:16px }
+          .pc-closed__hint{ margin-top:6px; color:#666; font-size:12px }
+          @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+        `}</style>
       </div>
-
-      {/* estilos scoped del gate cerrado */}
-      <style>{`
-        .pc-closed{
-          min-height:100vh; display:flex; align-items:center; justify-content:center;
-          padding:24px; background:linear-gradient(180deg,#ff2e73 0%, #ff4e90 100%);
-        }
-        .pc-closed__card{
-          width:min(86vw, 600px); text-align:center; background:#fff;
-          border-radius:20px; padding:clamp(22px,4vw,32px);
-          box-shadow:0 16px 40px rgba(0,0,0,.15); animation:fadeIn .25s ease;
-        }
-        .pc-closed__logo{
-          width:84px; height:84px; object-fit:cover; border-radius:14px; margin-bottom:8px;
-          box-shadow:0 6px 20px rgba(255,46,115,.25);
-        }
-        .pc-closed__emoji{ font-size:clamp(48px,9vw,84px); line-height:1; margin-bottom:6px; }
-        .pc-closed__title{
-          margin:6px 0 4px; font-size:clamp(22px,3.5vw,30px); line-height:1.15; font-weight:800;
-        }
-        .pc-closed__title span{ color:#ff2e73 }
-        .pc-closed__msg{ margin:8px 0 2px; font-size:16px }
-        .pc-closed__hint{ margin-top:6px; color:#666; font-size:12px }
-        @keyframes fadeIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
-      `}</style>
-    </div>
-  );
-}
-
+    );
+  }
 
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
