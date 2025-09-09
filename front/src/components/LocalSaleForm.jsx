@@ -11,7 +11,15 @@ import "../styles/LocalSaleForm.css";
 
 const categories = ["Pizza", "Sides", "Drinks", "Desserts"]; // ocultamos “Extras” al usuario
 const normalize = (c) => (c || "Pizza").trim().toLowerCase();
+const CATEGORY_LABELS = {
+  pizza: "Pizza",
+  sides: "Entradas",
+  drinks: "Bebidas",
+  desserts: "Postres",
+  extras: "Extras", // por si lo necesitas mostrar en algún sitio
+};
 
+const displayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";
 /* Toast vía portal */
 function Toast({ msg, onClose }) {
   if (!msg) return null;
@@ -260,14 +268,16 @@ export default function LocalSaleForm({
         )}
 
         {/* categoría */}
-        <div className="row">
-          {!compact && <label className="lbl">Category:</label>}
-          <select value={cat} onChange={(e) => setCat(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </div>
+      <div className="row">
+        {!compact && <label className="lbl">Categoría:</label>}
+        <select value={cat} onChange={(e) => setCat(e.target.value)}>
+          {categories.map((c) => (
+            <option key={c} value={c}>
+              {displayCategory(c)}
+            </option>
+          ))}
+        </select>
+      </div>
 
         {/* formulario de línea */}
         <div className="line lsf-line">
