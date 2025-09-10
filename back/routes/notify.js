@@ -62,7 +62,7 @@ module.exports = (prisma) => {
         .filter(c => !!c.phone);
 
       const target = testOnly
-        ? all.filter(c => [78, 81].includes(c.id))  
+        ? all.filter(c => [78].includes(c.id))  
         : all;
       const BATCH = Math.max(10, Math.min(Number(limitPerBatch) || 50, 500));
 
