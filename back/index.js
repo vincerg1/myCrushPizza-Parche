@@ -58,6 +58,7 @@ const publicRoutes          = require('./routes/public')(prisma);
 const ventaRouter           = require('./routes/venta')(prisma);
 const couponsRouter         = require('./routes/coupons')(prisma);
 const notifyRouter          = require('./routes/notify')(prisma);
+
 const appRouter = require('./routes/app')(prisma);
 
 

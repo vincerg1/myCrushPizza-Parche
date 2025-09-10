@@ -26,5 +26,8 @@
     "prisma": "^6.9.0",
     "stripe": "^18.4.0",
     "twilio": "^5.8.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^10.0.0"
   }
 }
