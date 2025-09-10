@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
 
+// En prod (dominio mycrushpizza.com) usa el backend de Railway.
+// En local deja vacío y funciona con el proxy a :8080.
+const API_BASE =
+  (typeof window !== "undefined" && window.location.hostname.includes("mycrushpizza.com"))
+    ? "https://mycrushpizza-parche-production.up.railway.app"
+    : "";
+
 export default function MyOffersPanel() {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState({ total: 0, sample: [] });
@@ -15,7 +22,8 @@ export default function MyOffersPanel() {
   const [limit, setLimit] = useState(50);         // límite por tanda
 
   // helper: fetch que soporta cookies y parsea texto->JSON con fallback
-  const fetchJson = async (url, opts = {}) => {
+  const fetchJson = async (path, opts = {}) => {
+    const url = `${API_BASE}${path}`;
     const res = await fetch(url, { credentials: "include", ...opts });
     const txt = await res.text();
     try {
