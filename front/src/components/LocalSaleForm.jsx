@@ -16,7 +16,7 @@ const CATEGORY_LABELS = {
   sides: "Entradas",
   drinks: "Bebidas",
   desserts: "Postres",
-  extras: "Extras", // por si lo necesitas mostrar en algún sitio
+  extras: "Extras", 
 };
 
 const displayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";

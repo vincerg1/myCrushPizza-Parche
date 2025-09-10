@@ -5,6 +5,7 @@ import PizzaCreator    from "./PizzaCreator";
 import StoreCreator    from "./StoreCreator";
 import IngredientForm  from "./IngredientForm";
 import MyOrdersGate    from "./MyOrders";
+import MyOffersPanel from "./MyOffersPanel";
 import { useAuth }     from "./AuthContext";
 import CustomerInfo from "./CustomerInfo";
 import "../styles/Backoffice.css";
@@ -26,7 +27,7 @@ export default function Backoffice() {
     { key:"pizzaCreator", label:"🍕  Pizza Creator", show:isAdmin },
     { key:"storeCreator", label:"🏪  Store Creator", show:isAdmin },
     { key:"myOrders"    , label:"🧾  My Orders"    , show:true    },
-    { key:"myAwards"    , label:"🏆  My Awards"    , show:isAdmin }
+    { key:"myOffers"    , label:"🏆  myOffers"    , show:isAdmin }
   ].filter(m=>m.show);
 
   const panel = (() => {
@@ -35,7 +36,7 @@ export default function Backoffice() {
       case "pizzaCreator": return <PizzaCreator   />;
       case "storeCreator": return <StoreCreator   />;
       case "myOrders":     return <MyOrdersGate   />;
-      case "myAwards":     return <h2>My Awards – coming soon</h2>;
+      case "myOffers":     return <MyOffersPanel />;
       default:             return null;
     }
   })();
