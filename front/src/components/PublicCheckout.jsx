@@ -196,6 +196,32 @@ export default function PublicCheckout() {
   const FP_VALUE_EUR = 9.99;
   const isFpCode = (code) => /^MCP-FP/i.test((code || "").trim());
 
+
+const [showCouponInfo, setShowCouponInfo] = useState(false);
+const [couponExpiresAt, setCouponExpiresAt] = useState(null);
+const [couponCountdown, setCouponCountdown] = useState("");
+
+
+useEffect(() => {
+  if (!couponExpiresAt) return;
+  let t = null;
+  const tick = () => {
+    const left = new Date(couponExpiresAt).getTime() - Date.now();
+    if (left <= 0) { setCouponCountdown("00:00:00"); clearInterval(t); return; }
+    const h = Math.floor(left / 3600000);
+    const m = Math.floor((left % 3600000) / 60000);
+    const s = Math.floor((left % 60000) / 1000);
+    setCouponCountdown(
+      `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+    );
+  };
+  tick();
+  t = setInterval(tick, 1000);
+  return () => clearInterval(t);
+}, [couponExpiresAt]);
+
+
+
   // HH:MM:SS
   const fmtHMS = (s) => {
     const sec = Math.max(0, Number(s || 0));
@@ -236,56 +262,35 @@ export default function PublicCheckout() {
     return parts.join("-");
   }, []);
 
-  const checkCoupon = useCallback(async () => {
-    const code = (couponCode || "").trim().toUpperCase();
-    if (!code) {
-      setCoupon(null);
-      setCouponOk(false);
-      setCouponMsg("Introduce un cupón.");
-      return;
-    }
-    try {
-      const { data } = await api.get("/api/coupons/validate", { params: { code } });
-      if (data?.valid) {
-        const kind = data.kind || (isFpCode(code) ? "FP" : "PERCENT");
-        const obj = {
-          code,
-          kind,
-          expiresAt: data.expiresAt || null
-        };
-        if (kind === "FP") {
-          obj.value = Number.isFinite(Number(data.value)) ? Number(data.value) : FP_VALUE_EUR;
-        } else {
-          obj.percent = Number(data.percent || 0);
-        }
-
-        setCoupon(obj);
-        setCouponOk(true);
-        if (Number.isFinite(Number(data.expiresInSec))) {
-          setCouponLeftSec(Number(data.expiresInSec));
-        }
-        setCouponMsg(
-          kind === "FP"
-            ? `Cupón aplicado: -€${(obj.value || FP_VALUE_EUR).toFixed(2)}`
-            : `Cupón aplicado: ${Number(obj.percent || 0)}%`
-        );
-        setShowCouponToast(true);
-        setTimeout(() => setShowCouponToast(false), 2600);
-      } else {
-        setCoupon(null);
-        setCouponOk(false);
-        setCouponMsg(
-          data?.reason === "used" ? "Cupón ya usado." :
-          data?.reason === "expired" ? "Cupón caducado." :
-          "Cupón inválido."
-        );
+    const checkCoupon = useCallback(async () => {
+      const code = (couponCode || "").trim().toUpperCase();
+      if (!code) {
+        setCoupon(null); setCouponOk(false); setCouponMsg("Introduce un cupón.");
+        return;
       }
-    } catch {
-      setCoupon(null);
-      setCouponOk(false);
-      setCouponMsg("No se pudo validar el cupón.");
-    }
-  }, [couponCode]);
+      try {
+        const { data } = await api.get("/api/coupons/validate", { params: { code } });
+        if (data?.valid) {
+          const fp = isFpCode(code) || data.kind === "FP";
+          if (fp) {
+            setCoupon({ code, kind: "FP", value: FP_VALUE_EUR });
+            setCouponMsg(`Cupón aplicado`);
+          } else {
+            const pct = Number(data.percent) || 0;
+            setCoupon({ code, kind: "PERCENT", percent: pct });
+            setCouponMsg(`Cupón aplicado`);
+          }
+          setCouponExpiresAt(data.expiresAt || null);
+          setCouponOk(true);
+          setShowCouponToast(false); // ya no mostramos el toast
+          setShowCouponInfo(true);   // ⟵ abre modal inmediatamente
+        } else {
+          setCoupon(null); setCouponOk(false); setCouponMsg("Cupón inválido o ya usado.");
+        }
+      } catch {
+        setCoupon(null); setCouponOk(false); setCouponMsg("No se pudo validar el cupón.");
+      }
+    }, [couponCode]);
 
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
@@ -670,6 +675,59 @@ export default function PublicCheckout() {
       </BaseModal>
     );
   }
+
+  function CouponInfoModal({ open, onClose, data }) {
+  if (!open || !data) return null;
+  const isFp = data.kind === "FP";
+  const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+
+  return (
+    <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
+      <div className="pc-content">
+        <p style={{marginBottom:6}}>
+          <b>Cupón:</b> <code>{data.code}</code>
+        </p>
+        <p style={{marginTop:0}}>
+          <b>Beneficio:</b>{" "}
+          {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
+                : `${Number(data.percent||0)}% de descuento`}
+        </p>
+
+        {expiresDate && (
+          <p>
+            <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+            {" · "}
+            <b>quedan:</b> {couponCountdown || "--:--:--"}
+          </p>
+        )}
+
+        <h4>Condiciones</h4>
+        <ul>
+          <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
+          <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
+          {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
+          <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
+          <li>El cupón se marca como usado al confirmar el pago.</li>
+        </ul>
+
+        <div className="pc-actions" style={{marginTop:12}}>
+          <button className="pc-btn" onClick={onClose}>Entendido</button>
+          <button
+            className="pc-btn pc-btn-ghost push"
+            onClick={() => {
+              // Quitar cupón
+              setCoupon(null); setCouponOk(false); setCouponCode("");
+              setCouponMsg(""); setCouponExpiresAt(null);
+              onClose();
+            }}
+          >
+            Quitar cupón
+          </button>
+        </div>
+      </div>
+    </BaseModal>
+  );
+}
 
   // Paso 0: escoger modo
   const chooseMode = (
@@ -1430,7 +1488,16 @@ export default function PublicCheckout() {
       <TermsPurchaseModal open={showTermsPurchase} onClose={() => setShowTermsPurchase(false)} />
       <PrivacyPolicyModal open={showPrivacyPolicy} onClose={() => setShowPrivacyPolicy(false)} />
       <CookiesPolicyModal open={showCookiesPolicy} onClose={() => setShowCookiesPolicy(false)} />
-
+        <CouponInfoModal
+          open={showCouponInfo}
+          onClose={() => setShowCouponInfo(false)}
+          data={coupon ? {
+            code: coupon.code,
+            kind: coupon.kind,
+            percent: coupon.percent,
+            expiresAt: coupon?.expiresAt || couponExpiresAt
+          } : null}
+        />
       <PublicFooter />
     </div>
   );
