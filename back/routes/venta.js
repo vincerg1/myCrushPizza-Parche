@@ -82,6 +82,10 @@ function buildPaidMsg({ name, code, storeName, isDelivery }) {
     : `${saludo}hemos recibido tu pago del pedido ${code}. Lo estamos preparando en ${storeName}. Te avisaremos cuando esté listo para recoger. ¡Gracias!`;
 }
 
+/* ───────── Free Pizza (FP) ───────── */
+const FP_VALUE_EUR = 9.99;
+const isFpCode = (code) => /^MCP-FP/i.test(String(code || ''));
+
 /* ───────── items: normalización/stock/total ───────── */
 async function normalizeItems(db, items){
   const src = Array.isArray(items) ? items : [];
@@ -317,17 +321,35 @@ if (appMeta && appMeta.acceptingOrders === false) {
       const couponCode = upper(rawCoupon || rawCouponCode || '');
       if (couponCode) {
         const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-        const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+        const now = new Date();
+        const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
         if (!coup || coup.used || expired) {
           throw new Error('Cupón inválido o ya usado/expirado');
         }
-        const percent = Number(coup.percent) || 0;
-        if (percent > 0) {
-          const discountAmount = round2(totalProducts * (percent/100));
+
+        if (isFpCode(couponCode)) {
+          const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
           discounts = discountAmount;
-          couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
-          await tx.coupon.update({ where: { id: coup.id }, data : { used: true, usedAt: new Date() } });
+          couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount: -discounts };
+        } else {
+          const percent = Number(coup.percent) || 0;
+          if (percent > 0) {
+            const discountAmount = round2(totalProducts * (percent/100));
+            discounts = discountAmount;
+            couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
+          }
         }
+
+        // 🔒 Concurrencia segura
+        const { count } = await tx.coupon.updateMany({
+          where: {
+            code: couponCode,
+            used: false,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+            data: { used: true, usedAt: now },
+        });
+        if (count === 0) throw new Error('Cupón inválido por concurrencia');
       }
 
       const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
@@ -448,7 +470,7 @@ router.post('/checkout-session', async (req, res) => {
             ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
             : unitCents;
 
-          return {
+        return {
             quantity: qty,
             price_data: {
               currency,
@@ -747,15 +769,28 @@ router.post('/checkout-session', async (req, res) => {
           const couponCode = upper(cart.coupon || '');
           if (couponCode){
             const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-            const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+            const now = new Date();
+            const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
             if (coup && !coup.used && !expired){
-              const percent = Number(coup.percent) || 0;
-              if (percent > 0){
-                const discountAmount = round2(totalProducts * (percent/100));
+              if (isFpCode(couponCode)) {
+                const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
                 discounts = discountAmount;
-                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
-                await tx.coupon.update({ where: { id:coup.id }, data : { used:true, usedAt:new Date() } });
+                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
+              } else {
+                const percent = Number(coup.percent) || 0;
+                if (percent > 0){
+                  const discountAmount = round2(totalProducts * (percent/100));
+                  discounts = discountAmount;
+                  extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                }
               }
+
+              // 🔒 Concurrencia segura
+              const { count } = await tx.coupon.updateMany({
+                where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+                data : { used:true, usedAt:new Date() }
+              });
+              if (count === 0) throw new Error('COUPON_RACE');
             }
           }
 
@@ -919,18 +954,28 @@ router.post('/checkout-session', async (req, res) => {
               const couponCode = upper(cart.coupon || '');
               if (couponCode){
                 const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-                const expired = !!(coup?.expiresAt && coup.expiresAt < new Date());
+                const now = new Date();
+                const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
                 if (coup && !coup.used && !expired){
-                  const percent = Number(coup.percent) || 0;
-                  if (percent > 0){
-                    const discountAmount = round2(totalProducts * (percent/100));
+                  if (isFpCode(couponCode)) {
+                    const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
                     discounts = discountAmount;
-                    extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
-                    await tx.coupon.update({
-                      where: { id:coup.id },
-                      data : { used:true, usedAt:new Date() }
-                    });
+                    extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
+                  } else {
+                    const percent = Number(coup.percent) || 0;
+                    if (percent > 0){
+                      const discountAmount = round2(totalProducts * (percent/100));
+                      discounts = discountAmount;
+                      extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                    }
                   }
+
+                  // 🔒 Concurrencia segura
+                  const { count } = await tx.coupon.updateMany({
+                    where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+                    data : { used:true, usedAt:new Date() }
+                  });
+                  if (count === 0) throw new Error('COUPON_RACE');
                 }
               }
 
