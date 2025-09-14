@@ -629,78 +629,83 @@ export default function PublicCheckout() {
     );
   }
 
-  // ===== Modal de cupón con countdown local (sin re-render global) =====
-  function CouponInfoModal({ open, onClose, data }) {
-    const [countdown, setCountdown] = React.useState("");
-    if (!open || !data) return null;
-    const isFp = data.kind === "FP";
-    const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+// ===== Modal de cupón con countdown local (orden correcto de hooks) =====
+function CouponInfoModal({ open, onClose, data }) {
+  // Hooks SIEMPRE primero
+  const [countdown, setCountdown] = useState("");
 
-    React.useEffect(() => {
-      if (!open || !data?.expiresAt) return;
-      let t = null;
-      const tick = () => {
-        const left = new Date(data.expiresAt).getTime() - Date.now();
-        if (left <= 0) { setCountdown("00:00:00"); clearInterval(t); return; }
-        const h = Math.floor(left / 3600000);
-        const m = Math.floor((left % 3600000) / 60000);
-        const s = Math.floor((left % 60000) / 1000);
-        setCountdown(
-          `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-        );
-      };
-      tick();
-      t = setInterval(tick, 1000);
-      return () => clearInterval(t);
-    }, [open, data?.expiresAt]);
+  useEffect(() => {
+    if (!open || !data?.expiresAt) return;
+    let t = null;
+    const tick = () => {
+      const left = new Date(data.expiresAt).getTime() - Date.now();
+      if (left <= 0) { setCountdown("00:00:00"); clearInterval(t); return; }
+      const h = Math.floor(left / 3600000);
+      const m = Math.floor((left % 3600000) / 60000);
+      const s = Math.floor((left % 60000) / 1000);
+      setCountdown(
+        `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+      );
+    };
+    tick();
+    t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [open, data?.expiresAt]);
 
-    return (
-      <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
-        <div className="pc-content">
-          <p style={{marginBottom:6}}>
-            <b>Cupón:</b> <code>{data.code}</code>
+  // Return condicional DESPUÉS de los hooks
+  if (!open || !data) return null;
+
+  const isFp = data.kind === "FP";
+  const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+
+  return (
+    <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
+      <div className="pc-content">
+        <p style={{marginBottom:6}}>
+          <b>Cupón:</b> <code>{data.code}</code>
+        </p>
+        <p style={{marginTop:0}}>
+          <b>Beneficio:</b>{" "}
+          {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
+                : `${Number(data.percent||0)}% de descuento`}
+        </p>
+
+        {expiresDate && (
+          <p>
+            <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+            {" · "}
+            <b>quedan:</b> {countdown || "--:--:--"}
           </p>
-          <p style={{marginTop:0}}>
-            <b>Beneficio:</b>{" "}
-            {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
-                  : `${Number(data.percent||0)}% de descuento`}
-          </p>
+        )}
 
-          {expiresDate && (
-            <p>
-              <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
-              {" · "}
-              <b>quedan:</b> {countdown || "--:--:--"}
-            </p>
-          )}
+        <h4>Condiciones</h4>
+        <ul>
+          <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
+          <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
+          {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
+          <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
+          <li>El cupón se marca como usado al confirmar el pago.</li>
+        </ul>
 
-          <h4>Condiciones</h4>
-          <ul>
-            <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
-            <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
-            {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
-            <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
-            <li>El cupón se marca como usado al confirmar el pago.</li>
-          </ul>
-
-          <div className="pc-actions" style={{marginTop:12}}>
-            <button className="pc-btn" onClick={onClose}>Entendido</button>
-            <button
-              className="pc-btn pc-btn-ghost push"
-              onClick={() => {
-                // Quitar cupón
-                setCoupon(null); setCouponOk(false); setCouponCode("");
-                setCouponMsg("");
-                onClose();
-              }}
-            >
-              Quitar cupón
-            </button>
-          </div>
+        <div className="pc-actions" style={{marginTop:12}}>
+          <button className="pc-btn" onClick={onClose}>Entendido</button>
+          <button
+            className="pc-btn pc-btn-ghost push"
+            onClick={() => {
+              // Quitar cupón
+              setCoupon(null); setCouponOk(false); setCouponCode("");
+              setCouponMsg("");
+              onClose();
+            }}
+          >
+            Quitar cupón
+          </button>
         </div>
-      </BaseModal>
-    );
-  }
+      </div>
+    </BaseModal>
+  );
+}
+
 
   // Paso 0: escoger modo
   const chooseMode = (
