@@ -185,11 +185,42 @@ export default function PublicCheckout() {
 
   // ===== CUPÓN =====
   const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null);
+  const [coupon, setCoupon] = useState(null); // { code, kind, percent?, value?, expiresAt? }
   const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
+  const [couponLeftSec, setCouponLeftSec] = useState(null); // ← countdown en segundos
   const COUPON_GROUPS = [3, 4, 4];
+
+  // FP fijo 9,99 € (fallback local si backend no manda value)
+  const FP_VALUE_EUR = 9.99;
+  const isFpCode = (code) => /^MCP-FP/i.test((code || "").trim());
+
+  // HH:MM:SS
+  const fmtHMS = (s) => {
+    const sec = Math.max(0, Number(s || 0));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const ss = sec % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  };
+
+  // Efecto: countdown si el cupón tiene expiresAt
+  useEffect(() => {
+    if (!couponOk || !coupon?.expiresAt) { setCouponLeftSec(null); return; }
+    const calc = () => Math.max(0, Math.floor((new Date(coupon.expiresAt).getTime() - Date.now()) / 1000));
+    setCouponLeftSec(calc());
+    const id = setInterval(() => {
+      const left = calc();
+      setCouponLeftSec(left);
+      if (left <= 0) {
+        setCouponOk(false);
+        setCouponMsg("Cupón caducado.");
+        clearInterval(id);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [couponOk, coupon?.expiresAt]);
 
   const formatCoupon = useCallback((v) => {
     const raw = (v || "")
@@ -216,16 +247,38 @@ export default function PublicCheckout() {
     try {
       const { data } = await api.get("/api/coupons/validate", { params: { code } });
       if (data?.valid) {
-        const pct = Number(data.percent) || 0;
-        setCoupon({ code, percent: pct });
+        const kind = data.kind || (isFpCode(code) ? "FP" : "PERCENT");
+        const obj = {
+          code,
+          kind,
+          expiresAt: data.expiresAt || null
+        };
+        if (kind === "FP") {
+          obj.value = Number.isFinite(Number(data.value)) ? Number(data.value) : FP_VALUE_EUR;
+        } else {
+          obj.percent = Number(data.percent || 0);
+        }
+
+        setCoupon(obj);
         setCouponOk(true);
-        setCouponMsg(`Cupón aplicado: ${pct}%`);
+        if (Number.isFinite(Number(data.expiresInSec))) {
+          setCouponLeftSec(Number(data.expiresInSec));
+        }
+        setCouponMsg(
+          kind === "FP"
+            ? `Cupón aplicado: -€${(obj.value || FP_VALUE_EUR).toFixed(2)}`
+            : `Cupón aplicado: ${Number(obj.percent || 0)}%`
+        );
         setShowCouponToast(true);
         setTimeout(() => setShowCouponToast(false), 2600);
       } else {
         setCoupon(null);
         setCouponOk(false);
-        setCouponMsg("Cupón inválido o ya usado.");
+        setCouponMsg(
+          data?.reason === "used" ? "Cupón ya usado." :
+          data?.reason === "expired" ? "Cupón caducado." :
+          "Cupón inválido."
+        );
       }
     } catch {
       setCoupon(null);
@@ -975,12 +1028,27 @@ export default function PublicCheckout() {
   const deliveryBlocks = isDelivery && qtyTotal > 0 ? Math.ceil(qtyTotal / DELIVERY_BLOCK) : 0;
   const deliveryFeeTotal = isDelivery ? deliveryBlocks * DELIVERY_FEE : 0;
 
-  const couponPct = Number(coupon?.percent || 0);
-  const couponDiscount = pending ? Math.round((Number(pending.total || 0) * (couponPct / 100)) * 100) / 100 : 0;
-  const reviewNetProducts = pending ? Number(pending.total || 0) - couponDiscount : 0;
+  // --- DESCUENTOS (FP fijo 9,99 o %)
+  const productsSubtotal = pending ? Number(pending.total || 0) : 0;
+  const isFp = !!(coupon && ((coupon.kind === "FP") || isFpCode(coupon?.code)));
+  const couponPct = !isFp ? Number(coupon?.percent || 0) : 0;
+
+  const percentDiscount = !isFp
+    ? Math.round(productsSubtotal * (couponPct / 100) * 100) / 100
+    : 0;
+
+  const fpDiscount = isFp
+    ? Math.min(Number(coupon?.value ?? FP_VALUE_EUR), productsSubtotal)
+    : 0;
+
+  const discountTotal = isFp ? fpDiscount : percentDiscount;
+
+  const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
-const fmtEur = (n) =>
-  Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+
+  const fmtEur = (n) =>
+    Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+
   const startPayment = useCallback(async () => {
     if (!pending || isPaying) return;
     setIsPaying(true);
@@ -991,6 +1059,24 @@ const fmtEur = (n) =>
         alert(app?.message || "La app está cerrada. Volvemos en breve.");
         setIsPaying(false);
         return;
+      }
+
+      // 🔁 Revalidar cupón justo antes de pagar
+      let validCouponCode = null;
+      if (couponOk && coupon?.code) {
+        try {
+          const { data: v } = await api.get("/api/coupons/validate", { params: { code: coupon.code } });
+          if (v?.valid) {
+            validCouponCode = coupon.code;
+          } else {
+            setCouponOk(false);
+            setCouponMsg(v?.reason === "expired" ? "Cupón caducado." : "Cupón inválido.");
+            alert("El cupón ha caducado o ya fue usado. Puedes continuar sin cupón.");
+          }
+        } catch {
+          // Si falla la revalidación, seguimos pero sin cupón por seguridad
+          setCouponOk(false);
+        }
       }
 
       const payload = {
@@ -1015,7 +1101,7 @@ const fmtEur = (n) =>
               amount: deliveryFeeTotal,
             }]
           : [],
-        ...(couponOk && coupon?.code ? { coupon: coupon.code } : {}),
+        ...(validCouponCode ? { coupon: validCouponCode } : {}),
         notes: "",
       };
 
@@ -1091,62 +1177,79 @@ const fmtEur = (n) =>
                 <th>€</th>
               </tr>
             </thead>
-   <tbody>
-  {pending.items.map((it, i) => {
-    const qty = Number(it.qty || 0);
+            <tbody>
+              {pending.items.map((it, i) => {
+                const qty = Number(it.qty || 0);
 
-    const unitBase = Number(
-      it.unitPrice ??
-      it.price ??
-      it.amount ??
-      it.base ??
-      0
-    );
+                const unitBase = Number(
+                  it.unitPrice ??
+                  it.price ??
+                  it.amount ??
+                  it.base ??
+                  0
+                );
 
-    const extras = Array.isArray(it.extras) ? it.extras : [];
+                const extras = Array.isArray(it.extras) ? it.extras : [];
 
-    const unitExtras = extras.reduce((s, e) => {
-      const extraPrice = Number(e.price ?? e.amount ?? 0);
-      return s + (Number.isFinite(extraPrice) ? extraPrice : 0);
-    }, 0);
+                const unitExtras = extras.reduce((s, e) => {
+                  const extraPrice = Number(e.price ?? e.amount ?? 0);
+                  return s + (Number.isFinite(extraPrice) ? extraPrice : 0);
+                }, 0);
 
-    const lineTotal = (unitBase + unitExtras) * qty;
+                const lineTotal = (unitBase + unitExtras) * qty;
 
-    const label =
-      (it.name && String(it.name).trim()) ? it.name :
-      (it.pizzaName && String(it.pizzaName).trim()) ? it.pizzaName :
-      (Number.isFinite(it.pizzaId) ? `#${it.pizzaId}` : "Producto");
+                const label =
+                  (it.name && String(it.name).trim()) ? it.name :
+                  (it.pizzaName && String(it.pizzaName).trim()) ? it.pizzaName :
+                  (Number.isFinite(it.pizzaId) ? `#${it.pizzaId}` : "Producto");
 
-    return (
-      <tr key={i}>
-        <td>
-          {label}
-          {extras.length > 0 && (
-            <div className="pc-note">
-              {extras.map((e, idx) => {
-                const n = String(e.name ?? e.label ?? e.code ?? "extra");
-                const p = Number(e.price ?? e.amount ?? 0);
-                return `${idx ? ", " : "+ "}${n} (+${fmtEur(p)})`;
-              }).join("")}
-            </div>
-          )}
-        </td>
-        <td>{it.size}</td>
-        <td style={{ textAlign: "center" }}>{qty}</td>
-        <td style={{ textAlign: "right" }}>{fmtEur(lineTotal)}</td>
-      </tr>
-    );
-  })}
-</tbody>
+                return (
+                  <tr key={i}>
+                    <td>
+                      {label}
+                      {extras.length > 0 && (
+                        <div className="pc-note">
+                          {extras.map((e, idx) => {
+                            const n = String(e.name ?? e.label ?? e.code ?? "extra");
+                            const p = Number(e.price ?? e.amount ?? 0);
+                            return `${idx ? ", " : "+ "}${n} (+${fmtEur(p)})`;
+                          }).join("")}
+                        </div>
+                      )}
+                    </td>
+                    <td>{it.size}</td>
+                    <td style={{ textAlign: "center" }}>{qty}</td>
+                    <td style={{ textAlign: "right" }}>{fmtEur(lineTotal)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
           </table>
 
           <div className="pc-totals">
-            <div>Subtotal: €{Number(pending.total).toFixed(2)}</div>
-            {couponPct > 0 && (
+            <div>Subtotal: €{productsSubtotal.toFixed(2)}</div>
+
+            {isFp && (
               <div>
-                Cupón {coupon?.code} ({couponPct}%): −€{couponDiscount.toFixed(2)}
+                Cupón {coupon?.code} (Pizza gratis): −€{fpDiscount.toFixed(2)}{" "}
+                {coupon?.expiresAt && couponOk && (
+                  <span className="pc-badge" style={{ marginLeft: 6 }}>
+                    Expira en {fmtHMS(couponLeftSec ?? 0)}
+                  </span>
+                )}
               </div>
             )}
+            {!isFp && couponPct > 0 && (
+              <div>
+                Cupón {coupon?.code} ({couponPct}%): −€{percentDiscount.toFixed(2)}{" "}
+                {coupon?.expiresAt && couponOk && (
+                  <span className="pc-badge" style={{ marginLeft: 6 }}>
+                    Expira en {fmtHMS(couponLeftSec ?? 0)}
+                  </span>
+                )}
+              </div>
+            )}
+
             {isDelivery && (
               <div>
                 Gastos de envío ({deliveryBlocks} envío{deliveryBlocks > 1 ? "s" : ""} · {DELIVERY_FEE.toFixed(2)} € cada {DELIVERY_BLOCK} pizzas): €{deliveryFeeTotal.toFixed(2)}
@@ -1221,7 +1324,7 @@ const fmtEur = (n) =>
       role="status"
       onClick={() => setShowCouponToast(false)}
     >
-      ✅ {coupon?.code} aplicado: {coupon?.percent}% de descuento
+      ✅ {coupon?.code} aplicado: {isFp ? `-€${Number(coupon?.value ?? FP_VALUE_EUR).toFixed(2)}` : `${coupon?.percent}% de descuento`}
     </div>
   ) : null;
 
@@ -1229,10 +1332,10 @@ const fmtEur = (n) =>
   const CouponCard = (
     <div className="pc-card" aria-label="Cupón de descuento">
       <h3 className="pc-title pc-title-center">¿Tienes un cupón?</h3>
-      <div className="pc-actions">
+      <div className="pc-actions" style={{ alignItems: "center", gap: 8 }}>
         <input
           className="pc-input"
-          placeholder="Escribe tu código (p. ej. MCP-XXXX-XXXX)"
+          placeholder="Escribe tu código (p. ej. MCP-FPXX-XXXX)"
           value={couponCode}
           onChange={(e) => setCouponCode(formatCoupon(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && checkCoupon()}
@@ -1245,9 +1348,16 @@ const fmtEur = (n) =>
         />
         <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
         {coupon && couponOk && (
-          <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
-            {couponMsg}
-          </span>
+          <>
+            <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
+              {couponMsg}
+            </span>
+            {coupon?.expiresAt && (
+              <span className="pc-badge" aria-live="polite" style={{ marginLeft: 6 }}>
+                Expira en {fmtHMS(couponLeftSec ?? 0)}
+              </span>
+            )}
+          </>
         )}
       </div>
       {!couponOk && couponMsg && <div className="pc-alert" style={{ marginTop: 8 }}>{couponMsg}</div>}
