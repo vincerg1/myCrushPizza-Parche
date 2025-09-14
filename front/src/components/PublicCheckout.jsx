@@ -631,11 +631,10 @@ export default function PublicCheckout() {
 
   // ===== Modal de cupón con countdown local (sin re-render global) =====
   function CouponInfoModal({ open, onClose, data }) {
+    const [countdown, setCountdown] = React.useState("");
     if (!open || !data) return null;
     const isFp = data.kind === "FP";
     const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
-
-    const [countdown, setCountdown] = React.useState("");
 
     React.useEffect(() => {
       if (!open || !data?.expiresAt) return;
