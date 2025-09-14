@@ -741,3 +741,39 @@
   .pc-modal__body .pc-table td:nth-child(4)::before{ content: "Duración: "; font-weight: 700; }
   .pc-modal__body .pc-table td:nth-child(5)::before{ content: "Titular: "; font-weight: 700; }
 }
+/* ===== Timer del cupón (modal) ===== */
+.pc-timer{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  background: linear-gradient(135deg,#ff2e73 0%, #ff4e90 100%);
+  color:#fff;
+  border-radius:16px;
+  padding:16px 20px;
+  margin: 6px auto 14px;
+  width:min(480px, 92%);
+  box-shadow:0 12px 28px rgba(0,0,0,.18);
+  text-align:center;
+}
+.pc-timer__label{
+  text-transform:uppercase;
+  letter-spacing:.14em;
+  font-weight:800;
+  font-size:12px;
+  opacity:.95;
+}
+.pc-timer__value{
+  font-variant-numeric: tabular-nums;
+  font-weight:900;
+  font-size: clamp(30px, 8.4vw, 48px);
+  line-height:1;
+}
+.pc-timer__value.is-soon{
+  animation: pcPulse 1s ease-in-out infinite;
+}
+@keyframes pcPulse{
+  0%,100% { transform: scale(1); filter:none; }
+  50%    { transform: scale(1.05); filter: drop-shadow(0 0 10px rgba(255,255,255,.3)); }
+}

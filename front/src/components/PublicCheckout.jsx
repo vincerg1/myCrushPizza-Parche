@@ -629,20 +629,24 @@ export default function PublicCheckout() {
     );
   }
 
-// ===== Modal de cupón con countdown local (orden correcto de hooks) =====
+
+// ===== Modal de cupón con contador destacado =====
 function CouponInfoModal({ open, onClose, data }) {
-  // Hooks SIEMPRE primero
+  // Hooks siempre al inicio
   const [countdown, setCountdown] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(null);
 
   useEffect(() => {
     if (!open || !data?.expiresAt) return;
     let t = null;
     const tick = () => {
-      const left = new Date(data.expiresAt).getTime() - Date.now();
-      if (left <= 0) { setCountdown("00:00:00"); clearInterval(t); return; }
-      const h = Math.floor(left / 3600000);
-      const m = Math.floor((left % 3600000) / 60000);
-      const s = Math.floor((left % 60000) / 1000);
+      const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
+      const sLeft = Math.floor(leftMs / 1000);
+      setSecondsLeft(sLeft);
+
+      const h = Math.floor(sLeft / 3600);
+      const m = Math.floor((sLeft % 3600) / 60);
+      const s = sLeft % 60;
       setCountdown(
         `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
       );
@@ -652,7 +656,6 @@ function CouponInfoModal({ open, onClose, data }) {
     return () => clearInterval(t);
   }, [open, data?.expiresAt]);
 
-  // Return condicional DESPUÉS de los hooks
   if (!open || !data) return null;
 
   const isFp = data.kind === "FP";
@@ -671,11 +674,19 @@ function CouponInfoModal({ open, onClose, data }) {
         </p>
 
         {expiresDate && (
-          <p>
-            <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
-            {" · "}
-            <b>quedan:</b> {countdown || "--:--:--"}
-          </p>
+          <>
+            <p style={{marginBottom:10}}>
+              <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+            </p>
+
+            {/* Caja grande centrada con el countdown */}
+            <div className="pc-timer" role="status" aria-live="polite">
+              <div className="pc-timer__label">Quedan</div>
+              <div className={`pc-timer__value ${secondsLeft !== null && secondsLeft <= 3600 ? "is-soon" : ""}`}>
+                {countdown || "--:--:--"}
+              </div>
+            </div>
+          </>
         )}
 
         <h4>Condiciones</h4>
@@ -692,7 +703,6 @@ function CouponInfoModal({ open, onClose, data }) {
           <button
             className="pc-btn pc-btn-ghost push"
             onClick={() => {
-              // Quitar cupón
               setCoupon(null); setCouponOk(false); setCouponCode("");
               setCouponMsg("");
               onClose();
@@ -705,6 +715,7 @@ function CouponInfoModal({ open, onClose, data }) {
     </BaseModal>
   );
 }
+
 
 
   // Paso 0: escoger modo
