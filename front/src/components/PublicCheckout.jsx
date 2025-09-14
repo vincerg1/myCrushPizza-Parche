@@ -643,7 +643,12 @@ function CouponInfoModal({ open, onClose, data }) {
       const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
       const sLeft = Math.floor(leftMs / 1000);
       setSecondsLeft(sLeft);
+      const severity =
+        secondsLeft == null ? "ok" :
+        secondsLeft <= 15 * 60 ? "critical" :
+        secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
 
+      const variant = secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
       const h = Math.floor(sLeft / 3600);
       const m = Math.floor((sLeft % 3600) / 60);
       const s = sLeft % 60;
@@ -680,12 +685,10 @@ function CouponInfoModal({ open, onClose, data }) {
             </p>
 
             {/* Caja grande centrada con el countdown */}
-            <div className="pc-timer" role="status" aria-live="polite">
-              <div className="pc-timer__label">Quedan</div>
-              <div className={`pc-timer__value ${secondsLeft !== null && secondsLeft <= 3600 ? "is-soon" : ""}`}>
-                {countdown || "--:--:--"}
-              </div>
-            </div>
+          <div className={`pc-timer pc-timer--${variant} pc-timer--${severity}`} role="status" aria-live="polite">
+            <div className="pc-timer__label">Quedan</div>
+            <div className="pc-timer__value">{countdown || "--:--:--"}</div>
+          </div>
           </>
         )}
 
