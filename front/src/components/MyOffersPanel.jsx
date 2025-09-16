@@ -13,9 +13,9 @@ export default function MyOffersPanel() {
 
   const [msg, setMsg] = useState(
     "📣 SOLO HOY\n" +
-    "🍕 Pizzas para recoger en Plaza Diario a solo 8 € 😍\n" +
-    "⚡ ¡Hay 20 unidades disponibles!\n" +
-    "🔑 Palabra clave: promo8\n\n"
+    "🍕 2 pizzas por 15eur 😍\n" +
+    "⚡ ¡Recogida en Plaza San Antonio!\n" +
+    "🔑 Palabra clave: =)\n\n"
   );
 
   const [testMode, setTestMode] = useState(true); // primero prueba con pocos
