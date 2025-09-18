@@ -18,10 +18,7 @@ export default function Ticket({ order }) {
   useEffect(() => {
     api.get("/api/pizzas")
        .then(r => setMenu(Array.isArray(r.data) ? r.data : []))
-       .catch(err => {
-         console.error(err);
-         setMenu([]);
-       });
+       .catch(err => { console.error(err); setMenu([]); });
   }, []);
 
   /* datos tienda */
@@ -35,7 +32,7 @@ export default function Ticket({ order }) {
   /* helpers */
   const nameById = useMemo(() => {
     const map = Object.create(null);
-    menu.forEach(p => { map[p.id] = p.name ?? p.nombre; });
+    (menu || []).forEach(p => { map[p.id] = p.name ?? p.nombre; });
     return map;
   }, [menu]);
 
@@ -50,16 +47,34 @@ export default function Ticket({ order }) {
     }
   }, [order.products]);
 
-  // etiqueta de extra según el formato real (items[].extras[])
+  // --- Normalizador de extras por línea (acepta array o string JSON) ---
+  const parseExtras = (v) => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === "string") {
+      try {
+        const parsed = JSON.parse(v);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    }
+    return [];
+  };
+
   const extraLabel = (e = {}) => {
-    const label =
-      e.label ??
-      e.name ??
-      e.code ??
-      "extra";
-    const price = Number(e.price ?? e.amount ?? 0);
-    // si quieres omitir precio en el ticket, quita la parte entre paréntesis
-    return price > 0 ? `${label}` : `${label}`;
+    // En la DB suele venir { code, label, amount } — mostramos el label.
+    const label = e.label ?? e.name ?? e.code ?? "extra";
+    return String(label);
+  };
+
+  // Desduplicado simple por texto de extra (por si el backend duplica registros)
+  const uniqLabels = (arr) => {
+    const seen = new Set();
+    const out = [];
+    for (const x of arr) {
+      const t = extraLabel(x);
+      if (!seen.has(t)) { seen.add(t); out.push(t); }
+    }
+    return out;
   };
 
   /* fecha formateada */
@@ -77,9 +92,7 @@ export default function Ticket({ order }) {
   const qrURL = `${window.location.origin}/customer/${orderCode}`;
 
   /* ─────────────── render ─────────────── */
-  const storeName = store?.storeName
-    ? `Pizzería ${store.storeName}`
-    : "Pizzería";
+  const storeName = store?.storeName ? `Pizzería ${store.storeName}` : "Pizzería";
 
   return (
     <div className="tkt">
@@ -93,24 +106,22 @@ export default function Ticket({ order }) {
       {/* ── Productos ── */}
       <table className="tkt-items"><tbody>
         {products.map((p, i) => {
-          const extras = Array.isArray(p.extras) ? p.extras : [];
+          const extras = uniqLabels(parseExtras(p.extras));
           return (
             <React.Fragment key={i}>
               <tr>
-                <td>{nameById[p.pizzaId] || p.name || `#${p.pizzaId}`}</td>
+                <td>{p.name || nameById[p.pizzaId] || `#${p.pizzaId}`}</td>
                 <td className="amt">{p.size} ×{p.qty ?? 1}</td>
               </tr>
 
-              {/* Extras del ítem (formato real: p.extras[]) */}
               {extras.length > 0 && (
                 <tr>
                   <td colSpan={2} className="extras">
-                    + {extras.map(extraLabel).join(", ")}
+                    + {extras.join(", ")}
                   </td>
                 </tr>
               )}
 
-              {/* Observaciones a nivel de producto (si existieran) */}
               {!!p.notes && (
                 <tr>
                   <td colSpan={2} className="p-notes">
@@ -134,11 +145,7 @@ export default function Ticket({ order }) {
 
       {/* ── QR principal ── */}
       <div className="tkt-qr">
-        <QRCode
-          value={qrURL}
-          size={120}
-          style={{ background: "#fff", padding: 4 }}
-        />
+        <QRCode value={qrURL} size={120} style={{ background: "#fff", padding: 4 }} />
       </div>
 
       {/* Observaciones opcionales del pedido */}

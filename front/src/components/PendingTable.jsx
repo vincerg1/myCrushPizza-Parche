@@ -411,13 +411,13 @@ export default function PendingTable() {
         </div>
       )}
 
+      {/* ÚNICO modal de confirmación (el duplicado fue eliminado) */}
       {confirmOrderId != null && (
         <div className="pt-modal-back" onClick={handleCancelReady}>
           <div className="pt-modal-card" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Confirmar listo</h3>
             <p>
-              ¿Estás seguro de que quieres marcar este pedido como listo? Esto
-              notificará al cliente.
+              ¿Estás seguro de que quieres marcar este pedido como listo? Esto notificará al cliente.
             </p>
             <div className="pt-buttons">
               <button onClick={handleConfirmReady}>Sí, marcar listo</button>
@@ -454,23 +454,6 @@ export default function PendingTable() {
               <button onClick={() => setAlertOrders([])}>
                 Aceptar y silenciar
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation modal for marking an order as ready */}
-      {confirmOrderId != null && (
-        <div className="pt-modal-back" onClick={handleCancelReady}>
-          <div className="pt-modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3>¿Marcar pedido como listo?</h3>
-            <p>
-              Esta acción notificará al cliente y sacará el pedido de la lista.
-              ¿Estás seguro de que quieres continuar?
-            </p>
-            <div className="pt-buttons">
-              <button onClick={handleConfirmReady}>Sí, confirmar</button>
-              <button onClick={handleCancelReady}>Cancelar</button>
             </div>
           </div>
         </div>

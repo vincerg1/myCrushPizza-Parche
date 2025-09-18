@@ -126,11 +126,19 @@ export default function PublicCheckout() {
   const hasConsent = () => !!getConsent();
 
   // ===== helpers tienda =====
+  const parseOnce = (v) => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v; }
+  };
+  const arrFrom = (v) => {
+    const a = parseOnce(v);
+    const b = parseOnce(a);
+    return Array.isArray(b) ? b : [];
+  };
   const getStoreById = useCallback(
     (id) => stores.find((s) => Number(s.id) === Number(id)),
     [stores]
   );
-
   const ensureStoreAddress = useCallback(
     async (id) => {
       const s = getStoreById(id);
@@ -1048,33 +1056,32 @@ function CouponInfoModal({ open, onClose, data }) {
   );
 
   // ---------- helper: construir items válidos para la API ----------
-  const buildItemsForApi = (items) =>
-    (items || [])
-      .map((x) => {
-        const id = Number(x.pizzaId ?? x.id);
-        const name = String(x.name ?? x.pizzaName ?? "").trim();
+const buildItemsForApi = (items) =>
+  (items || [])
+    .map((x) => {
+      const id   = Number(x.pizzaId ?? x.id);
+      const name = String(x.name ?? x.pizzaName ?? "").trim();
 
-        const lineExtras = Array.isArray(x.extras)
-          ? x.extras
-              .map((e) => {
-                const code = String(e.code ?? e.id ?? e.name ?? "EXTRA");
-                const label = String(e.label ?? e.name ?? code);
-                const price = Number(e.price ?? e.amount ?? 0);
-                if (!Number.isFinite(price) || price <= 0) return null;
-                return { code, label, price, amount: price };
-              })
-              .filter(Boolean)
-          : [];
+      // ← ahora sí: leer extras aunque vengan como string
+      const extrasRaw = arrFrom(x.extras);
+      const lineExtras = extrasRaw
+        .map((e) => {
+          const code  = String(e.code  ?? e.id   ?? e.name ?? "EXTRA");
+          const label = String(e.label ?? e.name ?? code);
+          const price = Number(e.price ?? e.amount ?? 0);
+          return Number.isFinite(price) && price > 0
+            ? { code, label, amount: price }
+            : null;
+        })
+        .filter(Boolean);
 
-        if (Number.isFinite(id) && id > 0) {
-          return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
-        }
-        if (name) {
-          return { name, size: x.size, qty: x.qty, extras: lineExtras };
-        }
-        return null;
-      })
-      .filter(Boolean);
+      if (Number.isFinite(id) && id > 0)
+        return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
+      if (name)
+        return { name, size: x.size, qty: x.qty, extras: lineExtras };
+      return null;
+    })
+    .filter(Boolean);
 
   // Paso 3: review + pagar — bloques de 5
   const isDelivery = mode === "deliveryLocate";
@@ -1243,7 +1250,7 @@ function CouponInfoModal({ open, onClose, data }) {
                   0
                 );
 
-                const extras = Array.isArray(it.extras) ? it.extras : [];
+                const extras = arrFrom(it.extras);
 
                 const unitExtras = extras.reduce((s, e) => {
                   const extraPrice = Number(e.price ?? e.amount ?? 0);
