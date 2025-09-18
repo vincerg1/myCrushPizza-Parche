@@ -39,6 +39,7 @@ export default function Ticket({ order }) {
     return map;
   }, [menu]);
 
+  // products puede venir como JSON o array
   const products = useMemo(() => {
     try {
       return Array.isArray(order.products)
@@ -48,6 +49,18 @@ export default function Ticket({ order }) {
       return [];
     }
   }, [order.products]);
+
+  // etiqueta de extra según el formato real (items[].extras[])
+  const extraLabel = (e = {}) => {
+    const label =
+      e.label ??
+      e.name ??
+      e.code ??
+      "extra";
+    const price = Number(e.price ?? e.amount ?? 0);
+    // si quieres omitir precio en el ticket, quita la parte entre paréntesis
+    return price > 0 ? `${label}` : `${label}`;
+  };
 
   /* fecha formateada */
   const f     = moment(order.date).locale("es");
@@ -79,17 +92,40 @@ export default function Ticket({ order }) {
 
       {/* ── Productos ── */}
       <table className="tkt-items"><tbody>
-        {products.map((p, i) => (
-          <tr key={i}>
-            <td>{nameById[p.pizzaId] || `#${p.pizzaId}`}</td>
-            <td className="amt">{p.size} ×{p.qty}</td>
-          </tr>
-        ))}
+        {products.map((p, i) => {
+          const extras = Array.isArray(p.extras) ? p.extras : [];
+          return (
+            <React.Fragment key={i}>
+              <tr>
+                <td>{nameById[p.pizzaId] || p.name || `#${p.pizzaId}`}</td>
+                <td className="amt">{p.size} ×{p.qty ?? 1}</td>
+              </tr>
+
+              {/* Extras del ítem (formato real: p.extras[]) */}
+              {extras.length > 0 && (
+                <tr>
+                  <td colSpan={2} className="extras">
+                    + {extras.map(extraLabel).join(", ")}
+                  </td>
+                </tr>
+              )}
+
+              {/* Observaciones a nivel de producto (si existieran) */}
+              {!!p.notes && (
+                <tr>
+                  <td colSpan={2} className="p-notes">
+                    Obs.: {p.notes}
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          );
+        })}
       </tbody></table>
 
       {/* ── Total ── */}
       <div className="tkt-total">
-        Total:&nbsp;{Number(order.total).toFixed(2)}&nbsp;€
+        Total:&nbsp;{Number(order.total ?? 0).toFixed(2)}&nbsp;€
       </div>
       <div className="tkt-sep" />
 
@@ -105,7 +141,7 @@ export default function Ticket({ order }) {
         />
       </div>
 
-      {/* Observaciones opcionales */}
+      {/* Observaciones opcionales del pedido */}
       {order.notes && (
         <div className="tkt-notes">
           <strong>Obs.:</strong> {order.notes}
@@ -130,6 +166,9 @@ export default function Ticket({ order }) {
         .tkt-items{width:100%;border-top:1px dashed #000;margin:4px 0}
         .tkt-items td{padding:2px 0}
         .tkt-items .amt{text-align:right}
+        /* extras y notas bajo cada producto */
+        .tkt-items .extras{font-size:10px;text-align:left;opacity:.95;padding-top:0}
+        .tkt-items .p-notes{font-size:10px;text-align:left;opacity:.9;padding-top:0}
         .tkt-total{border-top:1px dashed #000;margin-top:4px;padding-top:2px;text-align:right}
         .tkt-sep{border-top:1px dashed #000;margin:2px 0}
         .tkt-type{margin:6px 0}

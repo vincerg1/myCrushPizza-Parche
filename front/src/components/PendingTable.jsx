@@ -5,33 +5,10 @@ import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 import api from "../setupAxios";
 
-//
-// Refresher strategy for pending orders.
-//
-// This component originally relied on a long‑interval polling mechanism to refresh
-// the list of pending orders every minute. While simple, that strategy could
-// miss events if the network hung or the tab was in the background for an
-// extended period. The updated version below introduces a more robust
-// approach combining three techniques:
-//   1. **Initial fetch** to populate the table on mount.
-//   2. **Server‑sent events (SSE)**: if the backend exposes an endpoint
-//      `/api/sales/pending/stream` that emits updates whenever a new order is
-//      created, an `EventSource` is opened and updates the local state
-//      immediately. This provides near real‑time notifications without
-//      continuous polling. If SSE fails (because the endpoint does not exist
-//      or the browser doesn’t support it), the component falls back to
-//      incremental polling.
-//   3. **Incremental polling fallback**: instead of reloading the entire list
-//      every minute, the fallback polls more frequently (every 10 seconds)
-//      and requests only orders created since the last successful fetch.
-//
-// The component retains the ringing sound alert when new orders arrive and
-// preserves all existing UI behaviour.
-
 const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
 
 export default function PendingTable() {
-  const ENABLE_SSE = false; 
+  const ENABLE_SSE = false;
   const [rows, setRows] = useState([]);
   const [menu, setMenu] = useState([]);
   const [stores, setStores] = useState([]);
@@ -46,14 +23,7 @@ export default function PendingTable() {
   const [isRinging, setIsRinging] = useState(false);
   const [needSoundUnlock, setNeedSoundUnlock] = useState(false);
 
-  // ID of the order awaiting confirmation for the "Ready" action.
-  // When this is non-null, a confirmation modal is shown to the user.
   const [confirmOrderId, setConfirmOrderId] = useState(null);
-
-  // Keep track of the timestamp of the last successful fetch.
-  // This is used by the incremental polling fallback to request only newer
-  // orders. If the backend does not support incremental fetch, this value is
-  // ignored and the entire list is reloaded.
   const lastFetchAtRef = useRef(null);
 
   /* ---------- sound control ---------- */
@@ -90,9 +60,7 @@ export default function PendingTable() {
       audioRef.current.currentTime = 0;
       setNeedSoundUnlock(false);
       if (alertOrders.length > 0) ringStart();
-    } catch {
-      /* no‑op */
-    }
+    } catch { /* no-op */ }
   }, [alertOrders.length, ringStart]);
 
   useEffect(() => {
@@ -109,11 +77,6 @@ export default function PendingTable() {
   /* ---------- load pending orders ---------- */
   const loadPending = useCallback(
     async (since = null) => {
-      // This function fetches pending orders. If `since` is provided and the
-      // backend supports incremental fetch (accepting a `since` query param
-      // in ISO string or millisecond timestamp), it will return only orders
-      // created after that. Otherwise, the backend will ignore the param and
-      // return all pending orders.
       setLoading(true);
       try {
         const params = {};
@@ -121,15 +84,12 @@ export default function PendingTable() {
         const { data } = await api.get("/api/sales/pending", { params });
         const arr = Array.isArray(data) ? data : [];
 
-        // Update last fetch time to now.
         lastFetchAtRef.current = new Date().toISOString();
 
         const idsNow = new Set(arr.map((s) => s.id));
         const newOnes = arr.filter((s) => !prevIdsRef.current.has(s.id));
 
         setRows((prev) => {
-          // If this is incremental, append new orders; else replace entire list.
-          // We detect incremental vs full by whether a `since` was used.
           if (since && prev.length > 0) {
             const merged = [...prev];
             newOnes.forEach((s) => merged.push(s));
@@ -137,7 +97,7 @@ export default function PendingTable() {
           }
           return arr;
         });
-        // Save the set of seen IDs (for new order detection)
+
         prevIdsRef.current = new Set([...prevIdsRef.current, ...idsNow]);
 
         if (newOnes.length > 0) {
@@ -147,7 +107,7 @@ export default function PendingTable() {
       } catch (e) {
         if (e?.response?.status === 401) {
           console.warn("Unauthorized en /api/sales/pending. Rehaz login.");
-          return; // no retriggerear error
+          return;
         }
         console.error("load pending", e);
       } finally {
@@ -194,7 +154,6 @@ export default function PendingTable() {
 
     const init = async () => {
       await Promise.all([loadPending(), loadMenu(), loadStores()]);
-      // 🔕 Desactivamos SSE por ahora
       startFallbackPolling();
     };
 
@@ -247,23 +206,34 @@ export default function PendingTable() {
     return m;
   }, [stores]);
 
+  // ==== NUEVO: helpers mínimos para leer products y extras (array o string) ====
+  const parseOnce = (v) => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v; }
+  };
+  const arrFrom = (v) => {
+    const a = parseOnce(v);
+    const b = parseOnce(a);         // tolera doble stringificación
+    return Array.isArray(b) ? b : [];
+  };
+  const extraText = (e) => (e?.label ?? e?.name ?? e?.code ?? "extra").toString();
+
+  // Muestra: "Marguerita M×1 [+ pesto, barbacoa]"
   const fmtProducts = (sale) => {
-    let list = [];
-    try {
-      const raw = sale.products ?? "[]";
-      list = Array.isArray(raw) ? raw : JSON.parse(raw);
-    } catch {
-      /* ignore */
-    }
-    if (!Array.isArray(list)) list = [];
-    return list
-      .map(
-        (p) =>
-          `${nameById[p.pizzaId] || `#${p.pizzaId}`} ${p.size}×${
-            p.qty ?? p.cantidad ?? 1
-          }`
-      )
-      .join(", ");
+    const list = arrFrom(sale?.products);
+    return list.map((p) => {
+      const baseName =
+        (p?.name && String(p.name).trim()) ||
+        (p?.pizzaName && String(p.pizzaName).trim()) ||
+        (p?.pizzaId ? (nameById[p.pizzaId] || `#${p.pizzaId}`) : "Producto");
+
+      const size = p?.size || "";
+      const qty  = Number(p?.qty ?? p?.cantidad ?? 1);
+
+      const extras = Array.from(new Set(arrFrom(p?.extras).map(extraText))); // desdup opcional
+      const base = `${baseName} ${size}×${qty}`;
+      return extras.length ? `${base} [+ ${extras.join(", ")}]` : base;
+    }).join(", ");
   };
 
   const markReady = async (id) => {
@@ -277,26 +247,12 @@ export default function PendingTable() {
     }
   };
 
-  // When the user clicks the Ready button, we ask for confirmation by
-  // setting confirmOrderId. The modal will be shown until the user
-  // confirms or cancels.
-  const requestConfirmReady = (id) => {
-    setConfirmOrderId(id);
-  };
-
-  // Called when the user confirms they want to mark the order as ready.
-  // This invokes markReady and closes the modal.
+  const requestConfirmReady = (id) => setConfirmOrderId(id);
   const handleConfirmReady = async () => {
-    if (confirmOrderId != null) {
-      await markReady(confirmOrderId);
-    }
+    if (confirmOrderId != null) await markReady(confirmOrderId);
     setConfirmOrderId(null);
   };
-
-  // Called when the user cancels the confirmation.
-  const handleCancelReady = () => {
-    setConfirmOrderId(null);
-  };
+  const handleCancelReady = () => setConfirmOrderId(null);
 
   const printTicket = () => {
     const html = document.getElementById("ticket-content")?.innerHTML;
@@ -484,7 +440,7 @@ export default function PendingTable() {
             <ul className="alert-list">
               {alertOrders.slice(0, 5).map((o) => (
                 <li key={o.id}>
-                  <b>{o.code}</b> — {moment(o.date).format("HH:mm")} · {o.type} ·{' '}
+                  <b>{o.code}</b> — {moment(o.date).format("HH:mm")} · {o.type} ·{" "}
                   {storeById[o.storeId] || o.storeName || "-"}
                   <br />
                   <small>{fmtProducts(o)}</small>
