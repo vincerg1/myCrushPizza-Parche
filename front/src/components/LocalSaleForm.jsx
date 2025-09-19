@@ -455,6 +455,8 @@ export default function LocalSaleForm({
                       name: c.name,
                       size: c.size,
                       qty: c.qty,
+                      price   : c.price,
+                      subtotal: c.subtotal, 
                       extras: extrasArrayForItem(c),
                       extrasMap: extrasMapForItem(c),
                     })),

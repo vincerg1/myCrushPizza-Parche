@@ -89,9 +89,7 @@ export default function PublicCheckout() {
         });
         setAppAccepting(!!data.accepting);
         setAppClosedMsg(data.message || "");
-      } catch {
-        // mantener estado anterior si falla
-      }
+      } catch {}
     };
 
     fetchStatus();
@@ -205,7 +203,6 @@ export default function PublicCheckout() {
 
   const [showCouponInfo, setShowCouponInfo] = useState(false);
 
-  // Abre el modal cuando el cupón queda aplicado de forma estable
   useEffect(() => {
     if (couponOk && coupon) setShowCouponInfo(true);
   }, [couponOk, coupon]);
@@ -243,8 +240,7 @@ export default function PublicCheckout() {
           setCouponMsg(`Cupón aplicado`);
         }
         setCouponOk(true);
-        setShowCouponToast(false); // sin toast
-        // NO abrimos el modal aquí; lo abre el useEffect superior
+        setShowCouponToast(false);
       } else {
         setCoupon(null); setCouponOk(false); setCouponMsg("Cupón inválido o ya usado.");
       }
@@ -575,7 +571,7 @@ export default function PublicCheckout() {
             <li><b>Pasarela de pago</b> (p. ej., Stripe Payments Europe, Ltd.).</li>
             <li><b>Alojamiento y proveedores IT</b> (hosting, backups, correo, mensajería transaccional).</li>
             <li><b>Mensajería/Comunicación</b> (WhatsApp Business si se usa).</li>
-            <li><b>Servicios de mapas</b> (Google Maps/Places) para autocompletar/ubicación.</li>
+            <li><b>Servicios de mapas</b> (Google Maps/Places) para autocompletar/ubicación).</li>
             <li><b>Tiendas propias y/o repartidores</b> para preparar/entregar el pedido.</li>
             <li>Administraciones y FCSE cuando exista obligación legal.</li>
           </ul>
@@ -637,101 +633,94 @@ export default function PublicCheckout() {
     );
   }
 
-// ===== Modal de cupón con contador destacado =====
-function CouponInfoModal({ open, onClose, data }) {
-  // Hooks siempre al inicio
-  const [countdown, setCountdown] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(null);
+  // ===== Modal de cupón con contador destacado =====
+  function CouponInfoModal({ open, onClose, data }) {
+    const [countdown, setCountdown] = useState("");
+    const [secondsLeft, setSecondsLeft] = useState(null);
 
-  useEffect(() => {
-    if (!open || !data?.expiresAt) return;
-    let t = null;
-    const tick = () => {
-      const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
-      const sLeft = Math.floor(leftMs / 1000);
-      setSecondsLeft(sLeft);
+    useEffect(() => {
+      if (!open || !data?.expiresAt) return;
+      let t = null;
+      const tick = () => {
+        const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
+        const sLeft = Math.floor(leftMs / 1000);
+        setSecondsLeft(sLeft);
 
-      const h = Math.floor(sLeft / 3600);
-      const m = Math.floor((sLeft % 3600) / 60);
-      const s = sLeft % 60;
-      setCountdown(
-        `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-      );
-    };
-    tick();
-    t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [open, data?.expiresAt]);
+        const h = Math.floor(sLeft / 3600);
+        const m = Math.floor((sLeft % 3600) / 60);
+        const s = sLeft % 60;
+        setCountdown(
+          `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
+        );
+      };
+      tick();
+      t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }, [open, data?.expiresAt]);
 
-  if (!open || !data) return null;
+    if (!open || !data) return null;
 
-  // ➜ Ahora sí: derivados del estado y visibles para el render
-  const severity =
-    secondsLeft == null ? "ok" :
-    secondsLeft <= 15 * 60 ? "critical" :
-    secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
+    const severity =
+      secondsLeft == null ? "ok" :
+      secondsLeft <= 15 * 60 ? "critical" :
+      secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
 
-  const variant =
-    secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
+    const variant =
+      secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
 
-  const isFp = data.kind === "FP";
-  const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+    const isFp = data.kind === "FP";
+    const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
 
-  return (
-    <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
-      <div className="pc-content">
-        <p style={{marginBottom:6}}>
-          <b>Cupón:</b> <code>{data.code}</code>
-        </p>
-        <p style={{marginTop:0}}>
-          <b>Beneficio:</b>{" "}
-          {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
-                : `${Number(data.percent||0)}% de descuento`}
-        </p>
+    return (
+      <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
+        <div className="pc-content">
+          <p style={{marginBottom:6}}>
+            <b>Cupón:</b> <code>{data.code}</code>
+          </p>
+          <p style={{marginTop:0}}>
+            <b>Beneficio:</b>{" "}
+            {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
+                  : `${Number(data.percent||0)}% de descuento`}
+          </p>
 
-        {expiresDate && (
-          <>
-            <p style={{marginBottom:10}}>
-              <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
-            </p>
+          {expiresDate && (
+            <>
+              <p style={{marginBottom:10}}>
+                <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+              </p>
+              <div className={`pc-timer pc-timer--${variant} pc-timer--${severity}`} role="status" aria-live="polite">
+                <div className="pc-timer__label">Quedan</div>
+                <div className="pc-timer__value">{countdown || "--:--:--"}</div>
+              </div>
+            </>
+          )}
 
-            {/* Caja grande centrada con el countdown */}
-            <div className={`pc-timer pc-timer--${variant} pc-timer--${severity}`} role="status" aria-live="polite">
-              <div className="pc-timer__label">Quedan</div>
-              <div className="pc-timer__value">{countdown || "--:--:--"}</div>
-            </div>
-          </>
-        )}
+          <h4>Condiciones</h4>
+          <ul>
+            <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
+            <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
+            {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
+            <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
+            <li>El cupón se marca como usado al confirmar el pago.</li>
+          </ul>
 
-        <h4>Condiciones</h4>
-        <ul>
-          <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
-          <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
-          {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
-          <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
-          <li>El cupón se marca como usado al confirmar el pago.</li>
-        </ul>
-
-        <div className="pc-actions" style={{marginTop:12}}>
-          <button className="pc-btn" onClick={onClose}>Entendido</button>
-          <button
-            className="pc-btn pc-btn-ghost push"
-            onClick={() => {
-              setCoupon(null); setCouponOk(false); setCouponCode("");
-              setCouponMsg("");
-              onClose();
-            }}
-          >
-            Quitar cupón
-          </button>
+          <div className="pc-actions" style={{marginTop:12}}>
+            <button className="pc-btn" onClick={onClose}>Entendido</button>
+            <button
+              className="pc-btn pc-btn-ghost push"
+              onClick={() => {
+                setCoupon(null); setCouponOk(false); setCouponCode("");
+                setCouponMsg("");
+                onClose();
+              }}
+            >
+              Quitar cupón
+            </button>
+          </div>
         </div>
-      </div>
-    </BaseModal>
-  );
-}
-
-
-
+      </BaseModal>
+    );
+  }
 
   // Paso 0: escoger modo
   const chooseMode = (
@@ -1055,33 +1044,45 @@ function CouponInfoModal({ open, onClose, data }) {
     </div>
   );
 
-  // ---------- helper: construir items válidos para la API ----------
-const buildItemsForApi = (items) =>
-  (items || [])
+
+const parseJsonMaybe = (v) => {
+  if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
+  return v;
+};
+const toArray = (v) => {
+  if (Array.isArray(v)) return v;
+  if (v == null) return [];
+  const p = parseJsonMaybe(v);
+  if (Array.isArray(p)) return p;
+  if (p && typeof p === "object") return Object.values(p).length ? Object.values(p) : [p];
+  return [p];
+};
+const normalizeExtra = (e, i = 0) => ({
+  code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
+  label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
+  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio del extra (0 permitido)
+});
+
+const buildItemsForApi = (lines = []) =>
+  (Array.isArray(lines) ? lines : [])
     .map((x) => {
-      const id   = Number(x.pizzaId ?? x.id);
-      const name = String(x.name ?? x.pizzaName ?? "").trim();
+      const pizzaId = Number(x?.pizzaId ?? x?.id ?? x?.productId);
+      const name = String(x?.name ?? x?.pizzaName ?? "").trim();
+      const size = String(x?.size ?? x?.tamano ?? "").trim();
+      const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
+      const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
+      const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
+      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
 
-      // ← ahora sí: leer extras aunque vengan como string
-      const extrasRaw = arrFrom(x.extras);
-      const lineExtras = extrasRaw
-        .map((e) => {
-          const code  = String(e.code  ?? e.id   ?? e.name ?? "EXTRA");
-          const label = String(e.label ?? e.name ?? code);
-          const price = Number(e.price ?? e.amount ?? 0);
-          return Number.isFinite(price) && price > 0
-            ? { code, label, amount: price }
-            : null;
-        })
-        .filter(Boolean);
+      const item = { size, qty, extras };
+      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
+      else if (name) item.name = name;
+      if (Number.isFinite(price)) item.price = price;
 
-      if (Number.isFinite(id) && id > 0)
-        return { pizzaId: id, size: x.size, qty: x.qty, extras: lineExtras };
-      if (name)
-        return { name, size: x.size, qty: x.qty, extras: lineExtras };
-      return null;
+      return (item.pizzaId || item.name) ? item : null;
     })
     .filter(Boolean);
+
 
   // Paso 3: review + pagar — bloques de 5
   const isDelivery = mode === "deliveryLocate";
@@ -1135,13 +1136,28 @@ const buildItemsForApi = (items) =>
             alert("El cupón ha caducado o ya fue usado. Puedes continuar sin cupón.");
           }
         } catch {
-          // Si falla la revalidación, seguimos pero sin cupón por seguridad
           setCouponOk(false);
         }
       }
 
+      // 👉 items con EXTRAS embebidos
+      const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
+        ...it,
+        size: String(it.size || "M").trim(),
+        qty: Number(it.qty) || 1,
+        extras: Array.isArray(it.extras) ? it.extras : [],
+      }));
+
+      if (!itemsForApi.length) {
+        console.warn("pending.items →", pending?.items);
+        console.warn("itemsForApi →", itemsForApi);
+        alert("No hay productos en el carrito.");
+        setIsPaying(false);
+        return;
+      }
+
       const payload = {
-        storeId: pending.storeId,
+        storeId: Number(pending.storeId),
         type: isDelivery ? "DELIVERY" : "LOCAL",
         delivery: isDelivery ? "COURIER" : "PICKUP",
         channel: "WHATSAPP",
@@ -1154,17 +1170,24 @@ const buildItemsForApi = (items) =>
               lng: coords?.lng,
             }
           : { phone: customer?.phone, name: customer?.name },
-        items: buildItemsForApi(pending.items),
+
+        // ⬇ productos con extras DENTRO
+        items: itemsForApi,
+
+        // extra de envío por bloques (fuera de cada item)
         extras: isDelivery
           ? [{
               code: "DELIVERY_FEE",
               label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-              amount: deliveryFeeTotal,
+              amount: Number(deliveryFeeTotal) || 0,
             }]
           : [],
+
         ...(validCouponCode ? { coupon: validCouponCode } : {}),
         notes: "",
       };
+
+      console.log("PAYLOAD ENVIADO →", JSON.parse(JSON.stringify(payload)));
 
       // 1) Crear venta (AWAITING_PAYMENT)
       const { data: created } = await api.post("/api/venta/pedido", payload);
@@ -1241,23 +1264,16 @@ const buildItemsForApi = (items) =>
             <tbody>
               {pending.items.map((it, i) => {
                 const qty = Number(it.qty || 0);
-
-                const unitBase = Number(
-                  it.unitPrice ??
-                  it.price ??
-                  it.amount ??
-                  it.base ??
-                  0
-                );
-
-                const extras = arrFrom(it.extras);
-
+                const unitBase  = Number(it.price ?? it.unitPrice ?? 0);
+                const pOnce = (v) => (typeof v === "string" ? (()=>{ try{return JSON.parse(v)}catch{return v} })() : v);
+                const extras = Array.isArray(pOnce(it.extras)) ? pOnce(it.extras) : [];
                 const unitExtras = extras.reduce((s, e) => {
                   const extraPrice = Number(e.price ?? e.amount ?? 0);
                   return s + (Number.isFinite(extraPrice) ? extraPrice : 0);
                 }, 0);
-
-                const lineTotal = (unitBase + unitExtras) * qty;
+                const lineTotal = Number.isFinite(Number(it.subtotal))
+                  ? Number(it.subtotal)
+                  : (unitBase + unitExtras) * qty;
 
                 const label =
                   (it.name && String(it.name).trim()) ? it.name :
