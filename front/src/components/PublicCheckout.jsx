@@ -1058,10 +1058,9 @@ const toArray = (v) => {
   return [p];
 };
 const normalizeExtra = (e, i = 0) => ({
-  id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
-  code: "EXTRA",
+  code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
   label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
-  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
+  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio del extra (0 permitido)
 });
 
 const buildItemsForApi = (lines = []) =>
@@ -1072,12 +1071,12 @@ const buildItemsForApi = (lines = []) =>
       const size = String(x?.size ?? x?.tamano ?? "").trim();
       const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
       const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
-
       const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
-      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i)); // <- ya trae {id, code:"EXTRA", ...}
+      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
 
       const item = { size, qty, extras };
-      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId; else if (name) item.name = name;
+      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
+      else if (name) item.name = name;
       if (Number.isFinite(price)) item.price = price;
 
       return (item.pizzaId || item.name) ? item : null;
@@ -1142,11 +1141,18 @@ const buildItemsForApi = (lines = []) =>
       }
 
       // 👉 items con EXTRAS embebidos
-      const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
+      const itemsForApi = buildItemsForApi(pending.items).map((it, idx) => ({
         ...it,
         size: String(it.size || "M").trim(),
         qty: Number(it.qty) || 1,
-        extras: Array.isArray(it.extras) ? it.extras : [],
+        extras: Array.isArray(it.extras)
+          ? it.extras.map((e, i) => ({
+              id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
+              code: "EXTRA",
+              label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
+              amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio unitario
+            }))
+          : [],
       }));
 
       if (!itemsForApi.length) {
@@ -1173,14 +1179,16 @@ const buildItemsForApi = (lines = []) =>
           : { phone: customer?.phone, name: customer?.name },
 
         // ⬇ productos con extras DENTRO
-        products: itemsForApi,
+        items: itemsForApi,
 
         // extra de envío por bloques (fuera de cada item)
-        extras: isDelivery ? [{
-          code: "DELIVERY_FEE",
-          label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-          amount: Number(deliveryFeeTotal) || 0,
-        }] : [],
+        extras: isDelivery
+          ? [{
+              code: "DELIVERY_FEE",
+              label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+              amount: Number(deliveryFeeTotal) || 0,
+            }]
+          : [],
 
         ...(validCouponCode ? { coupon: validCouponCode } : {}),
         notes: "",
