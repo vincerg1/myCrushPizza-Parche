@@ -1058,9 +1058,10 @@ const toArray = (v) => {
   return [p];
 };
 const normalizeExtra = (e, i = 0) => ({
-  code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
+  id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
+  code: "EXTRA",
   label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
-  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio del extra (0 permitido)
+  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
 });
 
 const buildItemsForApi = (lines = []) =>
@@ -1071,12 +1072,12 @@ const buildItemsForApi = (lines = []) =>
       const size = String(x?.size ?? x?.tamano ?? "").trim();
       const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
       const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
+
       const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
-      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
+      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i)); // <- ya trae {id, code:"EXTRA", ...}
 
       const item = { size, qty, extras };
-      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
-      else if (name) item.name = name;
+      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId; else if (name) item.name = name;
       if (Number.isFinite(price)) item.price = price;
 
       return (item.pizzaId || item.name) ? item : null;
@@ -1172,16 +1173,14 @@ const buildItemsForApi = (lines = []) =>
           : { phone: customer?.phone, name: customer?.name },
 
         // ⬇ productos con extras DENTRO
-        items: itemsForApi,
+        products: itemsForApi,
 
         // extra de envío por bloques (fuera de cada item)
-        extras: isDelivery
-          ? [{
-              code: "DELIVERY_FEE",
-              label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-              amount: Number(deliveryFeeTotal) || 0,
-            }]
-          : [],
+        extras: isDelivery ? [{
+          code: "DELIVERY_FEE",
+          label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+          amount: Number(deliveryFeeTotal) || 0,
+        }] : [],
 
         ...(validCouponCode ? { coupon: validCouponCode } : {}),
         notes: "",
