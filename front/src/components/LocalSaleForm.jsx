@@ -16,10 +16,10 @@ const CATEGORY_LABELS = {
   sides: "Entradas",
   drinks: "Bebidas",
   desserts: "Postres",
-  extras: "Extras", 
+  extras: "Extras",
 };
-
 const displayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";
+
 /* Toast vía portal */
 function Toast({ msg, onClose }) {
   if (!msg) return null;
@@ -64,6 +64,9 @@ const coerceRow = (row) => ({
   priceBySize: parseMaybeJSON(row.priceBySize, {}) || {},
   stock      : row.stock ?? null,
 });
+
+// detectar "Margarita/Marguerita" con variantes
+const isMargarita = (name = "") => /marg[ua]r?ita/i.test(String(name));
 
 export default function LocalSaleForm({
   forcedStoreId = null,
@@ -123,7 +126,6 @@ export default function LocalSaleForm({
     if (sel.pizzaId) setErrors(e => ({ ...e, item: false }));
     setTriedAdd(false);
   }, [sel.pizzaId]);
-
   useEffect(() => {
     if (sel.size) setErrors(e => ({ ...e, size: false }));
     setTriedAdd(false);
@@ -151,20 +153,40 @@ export default function LocalSaleForm({
     });
   }, [current]);
 
+  // 🔸 Auto-seleccionar “Marguerita” (o 1ª pizza) cuando la categoría sea Pizza
+  useEffect(() => {
+    if (normalize(cat) !== "pizza") return;
+    const pizzas = menu.filter(
+      (m) => normalize(m.category) === "pizza" && (m.stock == null || m.stock > 0)
+    );
+    if (!pizzas.length) return;
+    const def = pizzas.find((p) => isMargarita(p.name)) || pizzas[0];
+    setSel((s) => {
+      const idStr = String(def.pizzaId);
+      if (s.pizzaId === idStr) return s;
+      return { ...s, pizzaId: idStr, size: "", extras: {} };
+    });
+  }, [cat, menu]);
+
   // Extras (de la misma respuesta, category='Extras')
-  const extrasAvail = useMemo(
-    () => menu.filter(m => normalize(m.category) === "extras" && (m.stock == null || m.stock > 0)),
-    [menu]
-  );
+const extrasAvail = useMemo(
+  () => menu.filter(m => normalize(m.category) === "extras" && (m.stock == null || m.stock > 0)),
+  [menu]
+);
 
   const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
-  const extrasUnitTotal = useMemo(() => {
-    const ids = Object.keys(sel.extras).filter(id => sel.extras[id]);
-    return ids.reduce((sum, idStr) => {
-      const ex = extrasAvail.find(x => x.pizzaId === Number(idStr));
-      return sum + (ex ? priceForSize(ex.priceBySize, sel.size || "M") : 0);
-    }, 0);
-  }, [sel.extras, sel.size, extrasAvail]);
+const extrasUnitTotal = useMemo(() => {
+  // lista de precios de extras seleccionados en orden estable (extrasAvail)
+  const selectedPrices = extrasAvail
+    .filter(ex => !!sel.extras[ex.pizzaId])
+    .map(ex => priceForSize(ex.priceBySize, sel.size || "M"));
+
+  if (selectedPrices.length === 0) return 0;
+
+  // resta el primero (gratis)
+  const sum = selectedPrices.reduce((s, p) => s + (Number(p) || 0), 0);
+  return Math.max(0, sum - (Number(selectedPrices[0]) || 0));
+}, [sel.extras, sel.size, extrasAvail]);
 
   const linePreview = (baseUnitPrice + extrasUnitTotal) * Number(sel.qty || 1);
 
@@ -203,31 +225,35 @@ export default function LocalSaleForm({
     if (price == null) return alert("Price not set");
     if (current.stock != null && current.stock < sel.qty) return alert("Not enough stock");
 
-    const chosenIds = Object.keys(sel.extras).filter(id => sel.extras[id]);
-    const chosenExtras = chosenIds
-      .map(idStr => {
-        const ex = extrasAvail.find(x => x.pizzaId === Number(idStr));
-        return ex ? {
-          id: ex.pizzaId,
-          name: ex.name,
-          price: priceForSize(ex.priceBySize, sel.size),
-        } : null;
-      })
-      .filter(Boolean);
+  const chosenIds = extrasAvail
+  .filter(x => sel.extras[x.pizzaId])       // orden estable por extrasAvail
+  .map(x => String(x.pizzaId));
+let chosenExtras = chosenIds
+  .map(idStr => {
+    const ex = extrasAvail.find(x => x.pizzaId === Number(idStr));
+    return ex ? {
+      id: ex.pizzaId,
+      name: ex.name,
+      price: priceForSize(ex.priceBySize, sel.size || "M"),
+    } : null;
+  })
+  .filter(Boolean);
+if (chosenExtras.length > 0) {
+  chosenExtras = [{ ...chosenExtras[0], price: 0 }, ...chosenExtras.slice(1)];
+}
+const extrasPerUnit = chosenExtras.reduce((a, b) => a + num(b.price), 0);
+const subtotal = (price + extrasPerUnit) * sel.qty;
 
-    const extrasPerUnit = chosenExtras.reduce((a, b) => a + num(b.price), 0);
-    const subtotal = (price + extrasPerUnit) * sel.qty;
-
-    setCart(c => [...c, {
-      pizzaId : current.pizzaId,
-      name    : current.name,
-      category: current.category,
-      size    : sel.size,
-      qty     : sel.qty,
-      price,                 // base unit
-      extras  : chosenExtras, // detalles de extras
-      subtotal,              // incluye extras
-    }]);
+setCart(c => [...c, {
+  pizzaId : current.pizzaId,
+  name    : current.name,
+  category: current.category,
+  size    : sel.size,
+  qty     : sel.qty,
+  price,                 // base unit
+  extras  : chosenExtras, // ← ya incluye el primero con precio 0
+  subtotal,              // incluye extras (con el 1º gratis)
+}]);
 
     setSel({ pizzaId: "", size: "", qty: 1, extras: {} });
     setTriedAdd(false);
@@ -268,16 +294,16 @@ export default function LocalSaleForm({
         )}
 
         {/* categoría */}
-      <div className="row">
-        {!compact && <label className="lbl">Categoría:</label>}
-        <select value={cat} onChange={(e) => setCat(e.target.value)}>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {displayCategory(c)}
-            </option>
-          ))}
-        </select>
-      </div>
+        <div className="row">
+          {!compact && <label className="lbl">Categoría:</label>}
+          <select value={cat} onChange={(e) => setCat(e.target.value)}>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {displayCategory(c)}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* formulario de línea */}
         <div className="line lsf-line">
@@ -285,25 +311,34 @@ export default function LocalSaleForm({
           {/* Producto */}
           <div className="lsf-box">
             <label className="lsf-label">Producto</label>
-            <select
-              className={`lsf-field ${triedAdd && errors.item ? "is-error" : ""}`}
-              value={sel.pizzaId}
-              onChange={(e) =>
-                setSel({
-                  ...sel,
-                  pizzaId: e.target.value,
-                  size: "",
-                  extras: {},
-                })
-              }
-            >
-              <option value="">– item –</option>
-              {itemsAvail.map(it => (
-                <option key={it.pizzaId} value={it.pizzaId}>
-                  {it.name}
-                </option>
-              ))}
-            </select>
+
+            {normalize(cat) === "pizza" ? (
+              // Pizza: fijo a Marguerita (o 1ª disponible), sin selector
+              <div className="lsf-field lsf-field--static" aria-live="polite">
+                {current?.name || "Marguerita"}
+              </div>
+            ) : (
+              // Otras categorías: selector normal
+              <select
+                className={`lsf-field ${triedAdd && errors.item ? "is-error" : ""}`}
+                value={sel.pizzaId}
+                onChange={(e) =>
+                  setSel({
+                    ...sel,
+                    pizzaId: e.target.value,
+                    size: "",
+                    extras: {},
+                  })
+                }
+              >
+                <option value="">– item –</option>
+                {itemsAvail.map(it => (
+                  <option key={it.pizzaId} value={it.pizzaId}>
+                    {it.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Size + Cantidad (50/50) */}
@@ -347,9 +382,9 @@ export default function LocalSaleForm({
           {current && normalize(current.category) === "pizza" && (
             <details className="lsf-extras" open>
               <summary className="lsf-extras__summary">
-                <span className="lsf-extras__title">Extras</span>
-                <span className="lsf-extras__opt">(opcional)</span>
-              </summary>
+            <span className="lsf-extras__title">Extras</span>
+            <span className="lsf-extras__opt lsf-opt-bounce">(1º Gratis)</span>
+          </summary>
               {extrasAvail.length === 0 ? (
                 <div className="lsf-extras__empty">No hay extras para este producto.</div>
               ) : (
@@ -456,7 +491,7 @@ export default function LocalSaleForm({
                       size: c.size,
                       qty: c.qty,
                       price   : c.price,
-                      subtotal: c.subtotal, 
+                      subtotal: c.subtotal,
                       extras: extrasArrayForItem(c),
                       extrasMap: extrasMapForItem(c),
                     })),

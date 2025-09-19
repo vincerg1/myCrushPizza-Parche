@@ -237,3 +237,35 @@
   .btn-confirm, .ADDBTN{ width:100%; }
 }
 .lsf-field--qty { max-width: 120px; }
+
+/* Pill bonito + bounce sutil para “(1º Gratis)” */
+.lsf-extras__opt {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(255, 46, 115, 0.10);
+  border: 1px solid rgba(255, 46, 115, 0.35);
+  color: #ff2e73;
+}
+
+/* Animación (desactivada si el usuario prefiere menos movimiento) */
+@keyframes lsfBounce {
+  0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 0 0 rgba(255,46,115,0); }
+  40%      { transform: translateY(-2px) scale(1.04); box-shadow: 0 6px 14px rgba(255,46,115,0.14); }
+  60%      { transform: translateY(0) scale(1); }
+}
+
+.lsf-opt-bounce {
+  display: inline-flex;
+  align-items: center;
+  transform-origin: center bottom;
+  animation: lsfBounce 2.2s ease-in-out infinite;
+}
+
+/* Respeto a “reduce motion” */
+@media (prefers-reduced-motion: reduce) {
+  .lsf-opt-bounce { animation: none; }
+}
+
