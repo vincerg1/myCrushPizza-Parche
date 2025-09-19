@@ -170,13 +170,14 @@ module.exports = (prisma) => {
   /* ============================================================
    *  A) CREA LA VENTA (AWAITING_PAYMENT)  →  Checkout
    * ============================================================ */
+// POST /api/venta/pedido
 router.post('/pedido', async (req, res) => {
-  
   const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
-if (appMeta && appMeta.acceptingOrders === false) {
-  const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
-  return res.status(503).json({ error: msg });
-}
+  if (appMeta && appMeta.acceptingOrders === false) {
+    const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
+    return res.status(503).json({ error: msg });
+  }
+
   const {
     storeId,
     type = 'DELIVERY',
@@ -195,25 +196,25 @@ if (appMeta && appMeta.acceptingOrders === false) {
     if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
 
     // Cobertura (solo delivery)
-    if (String(delivery).toUpperCase() === 'COURIER'){
+    if (String(delivery).toUpperCase() === 'COURIER') {
       const lat = Number(customer?.lat), lng = Number(customer?.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)){
-        return res.status(400).json({ error:'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
       }
       const activeStores = await prisma.store.findMany({
-        where: { active:true, latitude:{ not:null }, longitude:{ not:null } },
-        select:{ id:true, latitude:true, longitude:true }
+        where: { active: true, latitude: { not: null }, longitude: { not: null } },
+        select: { id: true, latitude: true, longitude: true }
       });
-      if (!activeStores.length) return res.status(400).json({ error:'No hay tiendas activas configuradas con ubicación.' });
+      if (!activeStores.length) return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
 
-      let nearest = { id:null, km:Infinity };
-      for (const s of activeStores){
+      let nearest = { id: null, km: Infinity };
+      for (const s of activeStores) {
         const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
-        if (km < nearest.km) nearest = { id:s.id, km };
+        if (km < nearest.km) nearest = { id: s.id, km };
       }
-      if (!nearest || nearest.km > DELIVERY_MAX_KM){
-        logW('Pedido fuera de cobertura', { lat, lng, nearestKm:Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm:DELIVERY_MAX_KM, nearestStoreId:nearest?.id || null });
-        return res.status(400).json({ error:`Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
+      if (!nearest || nearest.km > DELIVERY_MAX_KM) {
+        logW('Pedido fuera de cobertura', { lat, lng, nearestKm: Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm: DELIVERY_MAX_KM, nearestStoreId: nearest?.id || null });
+        return res.status(400).json({ error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
       }
     }
 
@@ -223,9 +224,9 @@ if (appMeta && appMeta.acceptingOrders === false) {
       String(type).toUpperCase() === 'DELIVERY' ||
       String(delivery).toUpperCase() === 'COURIER';
 
-    if (customer?.phone?.trim()){
+    if (customer?.phone?.trim()) {
       const phone = onlyDigits(customer.phone);
-      const name  = (customer.name || '').trim();
+      const name = (customer.name || '').trim();
 
       const createAddress = isDelivery
         ? (customer.address_1 || 'SIN DIRECCIÓN')
@@ -266,7 +267,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
     // Ítems (solo pizzas base/size/qty/precio)
     const normItems = await normalizeItems(prisma, items);
 
-    // Helper: recoger extras adjuntos a cada ítem y multiplicarlos por qty
+    // Helper: recoger extras adjuntos a cada ítem y multiplicarlos por qty (para totales)
     const collectExtrasFromItems = (rawItems = []) => {
       const out = [];
       for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
@@ -283,7 +284,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
         for (const ex of pools) {
           const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
           if (!Number.isFinite(parsed) || parsed <= 0) continue;
-          const code  = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
+          const code = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
           const label = String(ex?.label || ex?.name || ex?.title || code);
           out.push({ code, label, amount: round2(parsed * qty) });
         }
@@ -291,12 +292,40 @@ if (appMeta && appMeta.acceptingOrders === false) {
       return out;
     };
 
+    // 🔸 NUEVO: extras por unidad para embeder en cada línea (sin multiplicar por qty)
+    const unitExtrasForItem = (it = {}) => {
+      const pools = []
+        .concat(it?.extras || [])
+        .concat(it?.toppings || [])
+        .concat(it?.addOns || it?.addons || [])
+        .concat(it?.options || [])
+        .concat(it?.modifiers || [])
+        .concat(it?.ingredients || [])
+        .concat(it?.complements || [])
+        .concat(it?.sides || []);
+      return pools
+        .map((ex) => {
+          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
+          if (!Number.isFinite(parsed) || parsed <= 0) return null;
+          const id = Number(ex?.id ?? ex?.pizzaId ?? ex?.productId ?? 0) || undefined;
+          const label = String(ex?.label || ex?.name || ex?.title || 'Extra');
+          return { id, code: 'EXTRA', label, amount: round2(parsed) };
+        })
+        .filter(Boolean);
+    };
+
     const created = await prisma.$transaction(async (tx) => {
       await assertStock(tx, Number(storeId), normItems);
       const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-      // a) extras desde cada ítem
+      // a) extras desde cada ítem (aplanados para totales)
       const itemExtras = collectExtrasFromItems(items);
+
+      // a.2) 🔸 Embeder extras por línea para ticket/tablas (como en /api/sales)
+      const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
+        ...li,
+        extras: unitExtrasForItem(items[idx]) || [],
+      }));
 
       // b) extras a nivel pedido (ya vienen sumados/individuales)
       const orderLevelExtras = (Array.isArray(extras) ? extras : [])
@@ -305,7 +334,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
           const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
           if (!Number.isFinite(amount)) return null;
           return {
-            code : String(ex?.code || 'EXTRA'),
+            code: String(ex?.code || 'EXTRA'),
             label: String(ex?.label || 'Extra'),
             amount
           };
@@ -334,7 +363,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
         } else {
           const percent = Number(coup.percent) || 0;
           if (percent > 0) {
-            const discountAmount = round2(totalProducts * (percent/100));
+            const discountAmount = round2(totalProducts * (percent / 100));
             discounts = discountAmount;
             couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
           }
@@ -347,7 +376,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
             used: false,
             OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
-            data: { used: true, usedAt: now },
+          data: { used: true, usedAt: now },
         });
         if (count === 0) throw new Error('Cupón inválido por concurrencia');
       }
@@ -378,11 +407,11 @@ if (appMeta && appMeta.acceptingOrders === false) {
           type,
           delivery,
           customerData: snapshot,
-          products: lineItems,
+          products: lineItemsWithExtras,       // ⬅️ ahora con extras por línea
           totalProducts,
           discounts,
           total: saleTotal,
-          extras: extrasFinal,
+          extras: extrasFinal,                 // aplanados para totales/contabilidad
           notes,
           channel,
           status: 'AWAITING_PAYMENT',
@@ -390,13 +419,14 @@ if (appMeta && appMeta.acceptingOrders === false) {
           lat: snapshot?.lat ?? null,
           lng: snapshot?.lng ?? null,
         },
-        select: { id:true, code:true, total:true, currency:true, discounts:true },
+        select: { id: true, code: true, total: true, currency: true, discounts: true },
       });
       return sale;
     });
+
     const storeRow = await prisma.store.findUnique({
-  where: { id: Number(storeId) },
-  select: { id: true, acceptingOrders: true, storeName: true }
+      where: { id: Number(storeId) },
+      select: { id: true, acceptingOrders: true, storeName: true }
     });
     if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
     if (!storeRow.acceptingOrders) {
@@ -410,6 +440,7 @@ if (appMeta && appMeta.acceptingOrders === false) {
     res.status(400).json({ error: e.message });
   }
 });
+
 
 
 
