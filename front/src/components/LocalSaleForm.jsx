@@ -18,7 +18,8 @@ const CATEGORY_LABELS = {
   desserts: "Postres",
   extras: "Extras", 
 };
-const dislayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";
+
+const displayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";
 /* Toast vía portal */
 function Toast({ msg, onClose }) {
   if (!msg) return null;
