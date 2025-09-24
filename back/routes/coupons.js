@@ -3,9 +3,26 @@
 
 const express = require('express');
 const router = express.Router();
+const sendSMS = require('../utils/sendSMS'); // usa Messaging Service SID
 
 const FP_VALUE_EUR = 9.99;
 const isFpCode = (code) => /^MCP-FP/i.test(String(code || ''));
+
+// helper: fecha dd/mm hh:mm en TZ deseada
+function fmtExpiry(d) {
+  try {
+    return new Date(d).toLocaleString('es-ES', {
+      timeZone: process.env.TIMEZONE || 'Europe/Madrid',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  } catch (_) {
+    return new Date(d).toISOString();
+  }
+}
 
 // --- API Key SOLO para endpoints internos (issue/assign). validate/redeem son públicos desde el checkout.
 function requireApiKey(req, res, next) {
@@ -45,12 +62,69 @@ module.exports = (prisma) => {
         data : { expiresAt },
       });
 
+      // ===== Notificaciones SMS (usuario + admin) =====
+      const contact     = String(req.body.contact || '').trim();
+      const gameNumber  = req.body.gameNumber ?? null;
+      const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+      const adminPhone  = process.env.ADMIN_PHONE || '';
+      const whenTxt     = fmtExpiry(expiresAt);
+      const code        = row.code;
+
+      const notify = { user: { tried: false }, admin: { tried: false } };
+
+      // Usuario
+      if (contact) {
+        notify.user.tried = true;
+        const userMsg =
+          `Felicidades 🎉 Has ganado una pizza gratis.\n` +
+          `Canjéala en ${siteUrl} con el cupón FP: ${code}\n` +
+          `Vence ${whenTxt}.`;
+        try {
+          console.log('[sms][user] intentando enviar a', contact);
+          const resp = await sendSMS(contact, userMsg);
+          notify.user.ok  = true;
+          notify.user.sid = resp.sid;
+          console.log('[sms][user] enviado ok sid=', resp.sid);
+        } catch (err) {
+          notify.user.ok = false;
+          notify.user.error = err.message;
+          console.error('[sms][user] error:', err.message);
+        }
+      } else {
+        console.log('[sms][user] omitido: no hay contact en payload');
+      }
+
+      // Admin
+      if (adminPhone) {
+        notify.admin.tried = true;
+        const adminMsg =
+          `ALERTA MCP 🎯 Cupón FP emitido\n` +
+          `Code: ${code} (vence ${whenTxt})\n` +
+          `Tel cliente: ${contact || '-'}\n` +
+          `Game#: ${gameNumber ?? '-'}`;
+        try {
+          console.log('[sms][admin] intentando enviar a', adminPhone);
+          const resp = await sendSMS(adminPhone, adminMsg);
+          notify.admin.ok  = true;
+          notify.admin.sid = resp.sid;
+          console.log('[sms][admin] enviado ok sid=', resp.sid);
+        } catch (err) {
+          notify.admin.ok = false;
+          notify.admin.error = err.message;
+          console.error('[sms][admin] error:', err.message);
+        }
+      } else {
+        console.log('[sms][admin] omitido: falta ADMIN_PHONE');
+      }
+      // ===== /Notificaciones =====
+
       return res.json({
         ok: true,
-        code: row.code,
-        kind: isFpCode(row.code) ? 'FP' : 'PERCENT',
-        value: isFpCode(row.code) ? FP_VALUE_EUR : 0,
+        code,
+        kind: isFpCode(code) ? 'FP' : 'PERCENT',
+        value: isFpCode(code) ? FP_VALUE_EUR : 0,
         expiresAt,
+        notify
       });
     } catch (e) {
       console.error('[coupons.issue] error', e);
