@@ -97,7 +97,7 @@ async function normalizeItems(db, items){
 
   for (const i of src){
     const raw = i.pizzaId ?? i.id ?? i.name ?? i.pizzaName;
-    the key = String(raw ?? '').trim();
+    const key = String(raw ?? '').trim();
     const size = upper(i.size || 'M');
     const qty  = Math.max(1, Number(i.qty || 1));
     if (!key) throw new Error('Ítem inválido: id/nombre vacío');
@@ -381,6 +381,7 @@ router.post('/pedido', async (req, res) => {
         }
 
         // ❌ IMPORTANTE: NO marcar used aquí. Se marcará en el webhook si el pago es OK.
+        // (eliminar cualquier updateMany que hubiera antes)
       }
 
       const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
@@ -447,6 +448,7 @@ router.post('/pedido', async (req, res) => {
 
 
 
+
 /* ============================================================
  *  B) CHECKOUT SESSION
  *     - Con venta previa (orderId/code)  → flujo clásico
@@ -503,7 +505,7 @@ router.post('/checkout-session', async (req, res) => {
             ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
             : unitCents;
 
-          return {
+        return {
             quantity: qty,
             price_data: {
               currency,
@@ -560,6 +562,21 @@ router.post('/checkout-session', async (req, res) => {
           });
         }
 
+        const pmTypes = ['card'];
+        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+
+        const shippingOptions =
+          shippingAmountCents > 0
+            ? [{
+                shipping_rate_data:{
+                  display_name:'Gastos de envío',
+                  type:'fixed_amount',
+                  fixed_amount:{ amount:shippingAmountCents, currency }
+                }
+              }]
+            : undefined;
+
         // -------- FALLBACK (si faltan extras) ----------
         const productsCentsSent = productLines.reduce((s,li) => s + (Number(li.price_data?.unit_amount||0) * Number(li.quantity||0)), 0);
         const itemsAlreadyCentsNoShipping = productsCentsSent + extrasOtherCents;
@@ -583,43 +600,7 @@ router.post('/checkout-session', async (req, res) => {
           logW('Añadido fallback de extras', { missingExtrasCents, declaredNoShippingCents, itemsAlreadyCentsNoShipping });
         }
 
-        // -------- TOTAL REAL A COBRAR ----------
-        const totalForDb = (productsCentsSent + extrasOtherCents + shippingAmountCents) / 100;
-
-        // ⚡ Fast-path 0€: marcar PAID y saltar al success
-        if (totalForDb <= 0) {
-          await tx.sale.update({
-            where: { id: sale.id },
-            data : {
-              total: 0,
-              status: 'PAID',
-              paidAt: new Date(),
-              stripeCheckoutSessionId: null,
-              stripePaymentIntentId: null,
-              processed: false
-            }
-          });
-          logI('→ fast-path 0€: marcado PAID sin Stripe', { saleId: sale.id, code: sale.code });
-          sessionUrl = `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}`;
-          return; // salimos del tx; respondemos fuera
-        }
-
         // -------- Crear sesión Stripe ----------
-        const pmTypes = ['card'];
-        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
-        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
-
-        const shippingOptions =
-          shippingAmountCents > 0
-            ? [{
-                shipping_rate_data:{
-                  display_name:'Gastos de envío',
-                  type:'fixed_amount',
-                  fixed_amount:{ amount:shippingAmountCents, currency }
-                }
-              }]
-            : undefined;
-
         const session = await stripe.checkout.sessions.create({
           mode: 'payment',
           payment_method_types: pmTypes,
@@ -633,11 +614,11 @@ router.post('/checkout-session', async (req, res) => {
           ...(shippingOptions ? { shipping_options: shippingOptions } : {}),
           success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-          client_reference_id: sale.code, // ⬅️ NUEVO: fallback de enlace en webhook
           metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
         });
 
-        // Guardar total real y checkoutId
+        // total final en BD (lo que REALMENTE mandamos a Stripe)
+        const totalForDb = (productsCentsSent + extrasOtherCents + (shippingOptions ? shippingAmountCents : 0)) / 100;
         await tx.sale.update({
           where:{ id:sale.id },
           data : {
@@ -653,7 +634,7 @@ router.post('/checkout-session', async (req, res) => {
           declaredSaleCents,
           productsCentsSent,
           extrasOtherCents,
-          shippingAmountCentsSent: shippingAmountCents
+          shippingAmountCentsSent: shippingOptions ? shippingAmountCents : 0
         });
 
         sessionUrl = session.url; // ← guardamos y respondemos FUERA del tx
@@ -681,7 +662,7 @@ router.post('/checkout-session', async (req, res) => {
         price_data: {
           currency: 'eur',
           product_data: { name: 'Pedido MyCrushPizza' },
-          unit_amount: totalCents
+        unit_amount: totalCents
         },
         quantity: 1
       }],
@@ -711,6 +692,7 @@ router.post('/checkout-session', async (req, res) => {
     res.status(400).json({ error:e.message });
   }
 });
+
 
 
 
