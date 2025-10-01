@@ -97,7 +97,7 @@ async function normalizeItems(db, items){
 
   for (const i of src){
     const raw = i.pizzaId ?? i.id ?? i.name ?? i.pizzaName;
-    const key = String(raw ?? '').trim();
+    the key = String(raw ?? '').trim();
     const size = upper(i.size || 'M');
     const qty  = Math.max(1, Number(i.qty || 1));
     if (!key) throw new Error('Ítem inválido: id/nombre vacío');
@@ -292,7 +292,7 @@ router.post('/pedido', async (req, res) => {
       return out;
     };
 
-    // 🔸 NUEVO: extras por unidad para embeder en cada línea (sin multiplicar por qty)
+    // 🔸 extras por unidad para embeder en cada línea (sin multiplicar por qty)
     const unitExtrasForItem = (it = {}) => {
       const pools = []
         .concat(it?.extras || [])
@@ -321,13 +321,13 @@ router.post('/pedido', async (req, res) => {
       // a) extras desde cada ítem (aplanados para totales)
       const itemExtras = collectExtrasFromItems(items);
 
-      // a.2) 🔸 Embeder extras por línea para ticket/tablas (como en /api/sales)
+      // a.2) embeder extras por línea
       const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
         ...li,
         extras: unitExtrasForItem(items[idx]) || [],
       }));
 
-      // b) extras a nivel pedido (ya vienen sumados/individuales)
+      // b) extras a nivel pedido
       const orderLevelExtras = (Array.isArray(extras) ? extras : [])
         .map(ex => {
           const amountNum = toPrice(ex?.amount);
@@ -341,10 +341,10 @@ router.post('/pedido', async (req, res) => {
         })
         .filter(Boolean);
 
-      // c) unión final (excepto cupón que se añade aparte)
+      // c) unión final (EXCLUYE cupón; se añade después)
       const extrasSanitized = [...itemExtras, ...orderLevelExtras];
 
-      // Cupón (aplica solo sobre productos)
+      // Cupón (aplica solo sobre productos) — NO marcar used aquí
       let discounts = 0;
       let couponEntry = null;
       const couponCode = upper(rawCoupon || rawCouponCode || '');
@@ -359,26 +359,28 @@ router.post('/pedido', async (req, res) => {
         if (isFpCode(couponCode)) {
           const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
           discounts = discountAmount;
-          couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount: -discounts };
+          couponEntry = {
+            code: 'COUPON',
+            label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`,
+            amount: -discounts,
+            // ⬇️ guardamos el código para marcarlo en el webhook (C2)
+            couponCode
+          };
         } else {
           const percent = Number(coup.percent) || 0;
           if (percent > 0) {
             const discountAmount = round2(totalProducts * (percent / 100));
             discounts = discountAmount;
-            couponEntry = { code: 'COUPON', label: `Cupón ${couponCode} (-${percent}%)`, amount: -discounts };
+            couponEntry = {
+              code: 'COUPON',
+              label: `Cupón ${couponCode} (-${percent}%)`,
+              amount: -discounts,
+              couponCode
+            };
           }
         }
 
-        // 🔒 Concurrencia segura
-        const { count } = await tx.coupon.updateMany({
-          where: {
-            code: couponCode,
-            used: false,
-            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-          },
-          data: { used: true, usedAt: now },
-        });
-        if (count === 0) throw new Error('Cupón inválido por concurrencia');
+        // ❌ IMPORTANTE: NO marcar used aquí. Se marcará en el webhook si el pago es OK.
       }
 
       const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
@@ -407,11 +409,11 @@ router.post('/pedido', async (req, res) => {
           type,
           delivery,
           customerData: snapshot,
-          products: lineItemsWithExtras,       // ⬅️ ahora con extras por línea
+          products: lineItemsWithExtras,
           totalProducts,
           discounts,
           total: saleTotal,
-          extras: extrasFinal,                 // aplanados para totales/contabilidad
+          extras: extrasFinal,
           notes,
           channel,
           status: 'AWAITING_PAYMENT',
@@ -501,7 +503,7 @@ router.post('/checkout-session', async (req, res) => {
             ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
             : unitCents;
 
-        return {
+          return {
             quantity: qty,
             price_data: {
               currency,
@@ -558,21 +560,6 @@ router.post('/checkout-session', async (req, res) => {
           });
         }
 
-        const pmTypes = ['card'];
-        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
-        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
-
-        const shippingOptions =
-          shippingAmountCents > 0
-            ? [{
-                shipping_rate_data:{
-                  display_name:'Gastos de envío',
-                  type:'fixed_amount',
-                  fixed_amount:{ amount:shippingAmountCents, currency }
-                }
-              }]
-            : undefined;
-
         // -------- FALLBACK (si faltan extras) ----------
         const productsCentsSent = productLines.reduce((s,li) => s + (Number(li.price_data?.unit_amount||0) * Number(li.quantity||0)), 0);
         const itemsAlreadyCentsNoShipping = productsCentsSent + extrasOtherCents;
@@ -596,7 +583,43 @@ router.post('/checkout-session', async (req, res) => {
           logW('Añadido fallback de extras', { missingExtrasCents, declaredNoShippingCents, itemsAlreadyCentsNoShipping });
         }
 
+        // -------- TOTAL REAL A COBRAR ----------
+        const totalForDb = (productsCentsSent + extrasOtherCents + shippingAmountCents) / 100;
+
+        // ⚡ Fast-path 0€: marcar PAID y saltar al success
+        if (totalForDb <= 0) {
+          await tx.sale.update({
+            where: { id: sale.id },
+            data : {
+              total: 0,
+              status: 'PAID',
+              paidAt: new Date(),
+              stripeCheckoutSessionId: null,
+              stripePaymentIntentId: null,
+              processed: false
+            }
+          });
+          logI('→ fast-path 0€: marcado PAID sin Stripe', { saleId: sale.id, code: sale.code });
+          sessionUrl = `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}`;
+          return; // salimos del tx; respondemos fuera
+        }
+
         // -------- Crear sesión Stripe ----------
+        const pmTypes = ['card'];
+        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+
+        const shippingOptions =
+          shippingAmountCents > 0
+            ? [{
+                shipping_rate_data:{
+                  display_name:'Gastos de envío',
+                  type:'fixed_amount',
+                  fixed_amount:{ amount:shippingAmountCents, currency }
+                }
+              }]
+            : undefined;
+
         const session = await stripe.checkout.sessions.create({
           mode: 'payment',
           payment_method_types: pmTypes,
@@ -610,11 +633,11 @@ router.post('/checkout-session', async (req, res) => {
           ...(shippingOptions ? { shipping_options: shippingOptions } : {}),
           success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+          client_reference_id: sale.code, // ⬅️ NUEVO: fallback de enlace en webhook
           metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
         });
 
-        // total final en BD (lo que REALMENTE mandamos a Stripe)
-        const totalForDb = (productsCentsSent + extrasOtherCents + (shippingOptions ? shippingAmountCents : 0)) / 100;
+        // Guardar total real y checkoutId
         await tx.sale.update({
           where:{ id:sale.id },
           data : {
@@ -630,7 +653,7 @@ router.post('/checkout-session', async (req, res) => {
           declaredSaleCents,
           productsCentsSent,
           extrasOtherCents,
-          shippingAmountCentsSent: shippingOptions ? shippingAmountCents : 0
+          shippingAmountCentsSent: shippingAmountCents
         });
 
         sessionUrl = session.url; // ← guardamos y respondemos FUERA del tx
@@ -658,7 +681,7 @@ router.post('/checkout-session', async (req, res) => {
         price_data: {
           currency: 'eur',
           product_data: { name: 'Pedido MyCrushPizza' },
-        unit_amount: totalCents
+          unit_amount: totalCents
         },
         quantity: 1
       }],
@@ -688,7 +711,6 @@ router.post('/checkout-session', async (req, res) => {
     res.status(400).json({ error:e.message });
   }
 });
-
 
 
 
@@ -898,12 +920,24 @@ router.post('/checkout-session', async (req, res) => {
    *     - Si viene saleId: marcar pagada + bajar stock
    *     - Si viene cart  : crear venta ahora, bajar stock, marcar cupón
    * ============================================================ */
-  router.post('/stripe/webhook', express.raw({ type:'application/json' }), async (req, res) => {
-    if (!stripeReady) { logW('webhook recibido pero Stripe no está listo'); return res.status(503).send('Stripe not configured'); }
+// ⚠️ Montar ANTES de app.use(express.json())
+router.post(
+  '/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!stripeReady) {
+      logW('webhook recibido pero Stripe no está listo');
+      return res.status(503).send('Stripe not configured');
+    }
+
     let event;
     try {
       const sig = req.headers['stripe-signature'];
-      event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
     } catch (err) {
       logE('⚠️  Webhook signature verification failed.', err);
       return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -911,34 +945,39 @@ router.post('/checkout-session', async (req, res) => {
 
     logI('Webhook recibido', { type: event.type });
 
-    if (event.type === 'checkout.session.completed'){
-      const session = event.data.object;
-      const checkoutId = session.id;
-      const paymentIntent = session.payment_intent;
+    if (event.type === 'checkout.session.completed') {
+      const session        = event.data.object;
+      const checkoutId     = session.id;
+      const paymentIntent  = session.payment_intent || null;
+      const payStatus      = session.payment_status; // 'paid' | 'no_payment_required' | ...
+      const payOk          = payStatus === 'paid' || payStatus === 'no_payment_required';
 
-      // Acumulador para SMS: llenaremos phone, name, code, storeName e isDelivery y enviaremos
-      // fuera de la transacción.
+      logI('session.completed', { checkoutId, payStatus, paymentIntent });
+
+      // Para SMS tras pago confirmado
       let paidNotify = null;
 
       try {
         /* ---------- C1) Modo carrito: crear venta ahora ---------- */
-        if (session.metadata?.cart){
+        if (session.metadata?.cart) {
           let cart = null;
           try { cart = JSON.parse(session.metadata.cart); } catch {}
-          if (cart){
+
+          if (cart) {
             await prisma.$transaction(async (tx) => {
-              // Normalizar items y recalcular precios
+              // 1) Normalizar + totales
               const normItems = await normalizeItems(tx, cart.items || []);
               await assertStock(tx, Number(cart.storeId), normItems);
-              const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
+              const { lineItems, totalProducts } =
+                await recalcTotals(tx, Number(cart.storeId), normItems);
 
-              // Cliente (si hay teléfono)
+              // 2) Cliente
               let customerId = null, snapshot = null;
               const isDelivery =
                 String(cart.type).toUpperCase() === 'DELIVERY' ||
                 String(cart.delivery).toUpperCase() === 'COURIER';
 
-              if (cart?.customer?.phone?.trim()){
+              if (cart?.customer?.phone?.trim()) {
                 const phone = onlyDigits(cart.customer.phone);
                 const name  = (cart.customer.name || '').trim();
 
@@ -947,10 +986,9 @@ router.post('/checkout-session', async (req, res) => {
                   : `(PICKUP) ${phone}`;
 
                 const c = await tx.customer.upsert({
-                  where: { phone },
+                  where:  { phone },
                   update: {
-                    phone,
-                    name,
+                    phone, name,
                     ...(isDelivery && {
                       address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
                       lat: clean(cart.customer.lat),
@@ -961,8 +999,7 @@ router.post('/checkout-session', async (req, res) => {
                   },
                   create: {
                     code: await genCustomerCode(tx),
-                    phone,
-                    name,
+                    phone, name,
                     address_1: createAddress,
                     portal: clean(cart.customer.portal),
                     observations: clean(cart.customer.observations),
@@ -970,6 +1007,7 @@ router.post('/checkout-session', async (req, res) => {
                     lng: isDelivery ? clean(cart.customer.lng) : null,
                   },
                 });
+
                 customerId = c.id;
                 snapshot = {
                   phone: c.phone, name: c.name,
@@ -978,38 +1016,54 @@ router.post('/checkout-session', async (req, res) => {
                 };
               }
 
-              // Extras + cupón (marcar usado AHORA)
+              // 3) Extras + cupón (aplicar y marcar USED solo si payOk)
               const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
               let discounts = 0;
 
               const couponCode = upper(cart.coupon || '');
-              if (couponCode){
-                const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-                const now = new Date();
+              if (couponCode) {
+                const coup    = await tx.coupon.findUnique({ where: { code: couponCode } });
+                const now     = new Date();
                 const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
-                if (coup && !coup.used && !expired){
+
+                if (coup && !coup.used && !expired) {
                   if (isFpCode(couponCode)) {
                     const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
                     discounts = discountAmount;
-                    extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
+                    extrasFinal.push({
+                      code: 'COUPON',
+                      label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`,
+                      amount: -discounts
+                    });
                   } else {
                     const percent = Number(coup.percent) || 0;
-                    if (percent > 0){
-                      const discountAmount = round2(totalProducts * (percent/100));
+                    if (percent > 0) {
+                      const discountAmount = round2(totalProducts * (percent / 100));
                       discounts = discountAmount;
-                      extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                      extrasFinal.push({
+                        code: 'COUPON',
+                        label: `Cupón ${couponCode} (-${percent}%)`,
+                        amount: -discounts
+                      });
                     }
                   }
 
-                  // 🔒 Concurrencia segura
-                  const { count } = await tx.coupon.updateMany({
-                    where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-                    data : { used:true, usedAt:new Date() }
-                  });
-                  if (count === 0) throw new Error('COUPON_RACE');
+                  // 🔒 Marca usado SOLO si el pago es OK
+                  if (payOk) {
+                    const { count } = await tx.coupon.updateMany({
+                      where: {
+                        code: couponCode,
+                        used: false,
+                        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+                      },
+                      data: { used: true, usedAt: now }
+                    });
+                    if (count === 0) throw new Error('COUPON_RACE');
+                  }
                 }
               }
 
+              // 4) Crear venta (status según payOk)
               const sale = await tx.sale.create({
                 data: {
                   code: await genOrderCode(tx),
@@ -1021,103 +1075,133 @@ router.post('/checkout-session', async (req, res) => {
                   products: lineItems,
                   totalProducts,
                   discounts,
-                  total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
+                  total:
+                    round2(totalProducts - discounts) +
+                    (Array.isArray(extrasFinal)
+                      ? extrasFinal.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+                      : 0),
                   extras: extrasFinal,
                   notes: cart.notes || '',
                   channel: cart.channel || 'WEB',
-                  status: 'PAID',
+                  status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
-                  stripePaymentIntentId: String(paymentIntent),
+                  stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
                   address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-                  lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
-                  lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+                  lat:       snapshot?.lat       ?? cart?.customer?.lat       ?? null,
+                  lng:       snapshot?.lng       ?? cart?.customer?.lng       ?? null,
                 }
               });
 
-              // Bajar stock
-              for (const p of lineItems){
-                await tx.storePizzaStock.update({
-                  where:{ storeId_pizzaId:{ storeId:sale.storeId, pizzaId:Number(p.pizzaId) } },
-                  data :{ stock:{ decrement:Number(p.qty) } }
-                });
+              // 5) Bajar stock solo si pago OK
+              if (payOk) {
+                for (const p of lineItems) {
+                  await tx.storePizzaStock.update({
+                    where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
+                    data:  { stock: { decrement: Number(p.qty) } }
+                  });
+                }
               }
 
-              // Obtener nombre de la tienda para el SMS
-              const store = await tx.store.findUnique({
-                where: { id: sale.storeId },
-                select: { storeName: true }
+              // 6) Preparar SMS si pago OK
+              if (payOk) {
+                const store = await tx.store.findUnique({
+                  where: { id: sale.storeId },
+                  select: { storeName: true }
+                });
+                paidNotify = {
+                  phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
+                  name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
+                  code : sale.code,
+                  storeName: store?.storeName || 'myCrushPizza',
+                  isDelivery:
+                    String(sale.delivery).toUpperCase() === 'COURIER' ||
+                    String(sale.type).toUpperCase() === 'DELIVERY'
+                };
+              }
+
+              logI('Venta creada desde webhook (cart)', {
+                saleId: sale.id, code: sale.code, payStatus
               });
-
-              // Preparar notificación para enviar fuera de la transacción
-              paidNotify = {
-                phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
-                name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
-                code : sale.code,
-                storeName: store?.storeName || 'myCrushPizza',
-                isDelivery: String(sale.delivery).toUpperCase() === 'COURIER' || String(sale.type).toUpperCase() === 'DELIVERY'
-              };
-
-              logI('Venta creada desde webhook (cart)', { saleId:sale.id, code:sale.code });
             });
 
-            // Enviar SMS de pago confirmado (fuera de la transacción)
-            if (paidNotify?.phone) {
+            // Enviar SMS fuera de la transacción
+            if (payOk && paidNotify?.phone) {
               const body = buildPaidMsg(paidNotify);
               sendSMS(paidNotify.phone, body).catch(err =>
                 console.error('[Twilio SMS error PAID(cart)]', { err: err.message, code: paidNotify.code })
               );
             }
 
-            return res.json({ received:true });
+            return res.json({ received: true });
           }
         }
 
-        /* ---------- C2) Venta previa: marcar pagada y bajar stock ---------- */
+        /* ---------- C2) Venta previa: marcar pagada ---------- */
         await prisma.$transaction(async (tx) => {
-          // Traer venta incluyendo storeName y customerData para el SMS
-          const sale = await tx.sale.findFirst({
-            where:{ stripeCheckoutSessionId: checkoutId },
+          // buscar por checkoutId; fallback por client_reference_id
+          let sale = await tx.sale.findFirst({
+            where: { stripeCheckoutSessionId: checkoutId },
             select: {
               id: true, code: true, type: true, delivery: true, status: true,
-              storeId: true,
-              products: true,
-              customerData: true,
+              storeId: true, products: true, customerData: true,
               store: { select: { storeName: true } }
             }
           });
-          if (!sale){ logW('Webhook session sin venta asociada', { checkoutId }); return; }
-          if (sale.status === 'PAID'){ logI('Webhook idempotente (ya pagado)', { saleId:sale.id }); return; }
 
-          const items = Array.isArray(sale.products) ? sale.products : JSON.parse(sale.products || '[]');
-          for (const p of items){
-            await tx.storePizzaStock.update({
-              where:{ storeId_pizzaId:{ storeId:sale.storeId, pizzaId:Number(p.pizzaId) } },
-              data :{ stock:{ decrement:Number(p.qty) } }
+          if (!sale && session.client_reference_id) {
+            sale = await tx.sale.findFirst({
+              where: { code: session.client_reference_id },
+              select: {
+                id: true, code: true, type: true, delivery: true, status: true,
+                storeId: true, products: true, customerData: true,
+                store: { select: { storeName: true } }
+              }
             });
           }
 
+          if (!sale) { logW('Webhook session sin venta asociada', { checkoutId }); return; }
+          if (sale.status === 'PAID') { logI('Webhook idempotente (ya pagado)', { saleId: sale.id }); return; }
+
+          // Bajar stock solo si pago OK
+          if (payOk) {
+            const items = Array.isArray(sale.products)
+              ? sale.products
+              : JSON.parse(sale.products || '[]');
+            for (const p of items) {
+              await tx.storePizzaStock.update({
+                where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
+                data:  { stock: { decrement: Number(p.qty) } }
+              });
+            }
+          }
+
           await tx.sale.update({
-            where:{ id:sale.id },
-            data :{ status:'PAID', stripePaymentIntentId:String(paymentIntent), processed:false }
+            where: { id: sale.id },
+            data: {
+              status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+              paidAt: payOk ? new Date() : null,
+              stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+              processed: false
+            }
           });
 
-          // Preparar notificación para enviar fuera de la transacción
-          paidNotify = {
-            phone: (sale.customerData?.phone || '').trim(),
-            name : (sale.customerData?.name  || '').trim(),
-            code : sale.code,
-            storeName: sale.store?.storeName || 'myCrushPizza',
-            isDelivery:
-              String(sale.delivery).toUpperCase() === 'COURIER' ||
-              String(sale.type || '').toUpperCase() === 'DELIVERY' ||
-              sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
-          };
+          if (payOk) {
+            paidNotify = {
+              phone: (sale.customerData?.phone || '').trim(),
+              name : (sale.customerData?.name  || '').trim(),
+              code : sale.code,
+              storeName: sale.store?.storeName || 'myCrushPizza',
+              isDelivery:
+                String(sale.delivery).toUpperCase() === 'COURIER' ||
+                String(sale.type || '').toUpperCase() === 'DELIVERY' ||
+                sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
+            };
+          }
 
-          logI('Venta marcada como PAID', { saleId:sale.id });
+          logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
         });
 
-        // Enviar SMS de pago confirmado (fuera de la transacción)
-        if (paidNotify?.phone) {
+        if (payOk && paidNotify?.phone) {
           const body = buildPaidMsg(paidNotify);
           sendSMS(paidNotify.phone, body).catch(err =>
             console.error('[Twilio SMS error PAID(update)]', { err: err.message, code: paidNotify.code })
@@ -1129,8 +1213,10 @@ router.post('/checkout-session', async (req, res) => {
       }
     }
 
-    res.json({ received:true });
-  });
+    return res.json({ received: true });
+  }
+);
+
 
   // Estado rápido por código
   router.get('/status/:code', async (req, res) => {
