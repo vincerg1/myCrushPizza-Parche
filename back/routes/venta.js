@@ -700,202 +700,205 @@ router.post('/checkout-session', async (req, res) => {
    *  B.1) Confirmación manual (doble seguro)
    *       Verifica session y marca PAID / crea venta (modo cart)
    * ============================================================ */
-  router.post('/checkout/confirm', async (req, res) => {
-    if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
+router.post('/checkout/confirm', async (req, res) => {
+  if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
 
-    try {
-      const { sessionId, orderCode } = req.body || {};
-      if (!sessionId && !orderCode) {
-        return res.status(400).json({ error: 'sessionId u orderCode requerido' });
+  try {
+    const { sessionId, orderCode } = req.body || {};
+    if (!sessionId && !orderCode) {
+      return res.status(400).json({ error: 'sessionId u orderCode requerido' });
+    }
+
+    // Recuperar sesión (si tenemos sessionId)
+    let session = null;
+    if (sessionId) {
+      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+    }
+
+    // Intentar localizar la venta existente
+    let sale = null;
+    if (session?.metadata?.saleId) {
+      sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
+    }
+    if (!sale && session?.id) {
+      sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+    }
+    if (!sale && orderCode) {
+      sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
+    }
+
+    // ¿Está pagado?
+    const payStatus = session?.payment_status || null; // 'paid' | 'no_payment_required' | ...
+    let pi = null;
+    let stripePiId = null;
+    if (session?.payment_intent) {
+      if (typeof session.payment_intent === 'string') {
+        stripePiId = session.payment_intent; // id del PI
+        pi = await stripe.paymentIntents.retrieve(session.payment_intent);
+      } else {
+        pi = session.payment_intent;
+        stripePiId = pi?.id ?? null;
       }
+    }
+    const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
+    const paidByPI = pi?.status === 'succeeded';
+    const isPaid = paidBySession || paidByPI;
 
-      // Recuperar sesión (si tenemos sessionId)
-      let session = null;
-      if (sessionId) {
-        session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+    // Modo carrito: no hay venta aún, pero existe cart en metadata → crear ahora
+    if (!sale && session?.metadata?.cart) {
+      let cart = null;
+      try { cart = JSON.parse(session.metadata.cart); } catch {}
+      if (!cart) return res.status(404).json({ error: 'No hay venta ni carrito asociado a la sesión' });
+      if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
+
+      // Idempotencia por checkoutId
+      const already = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+      if (already) {
+        return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
       }
-
-      // Intentar localizar la venta existente
-      let sale = null;
-      if (session?.metadata?.saleId) {
-        sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
-      }
-      if (!sale && session?.id) {
-        sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
-      }
-      if (!sale && orderCode) {
-        sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
-      }
-
-      // ¿Está pagado?
-      const paidBySession = session?.payment_status === 'paid';
-      let pi = null;
-      if (session?.payment_intent) {
-        pi = typeof session.payment_intent === 'string'
-          ? await stripe.paymentIntents.retrieve(session.payment_intent)
-          : session.payment_intent;
-      }
-      const paidByPI = pi?.status === 'succeeded';
-      const isPaid = paidBySession || paidByPI;
-
-      // Modo carrito: no hay venta aún, pero existe cart en metadata → crear ahora
-      if (!sale && session?.metadata?.cart) {
-        let cart = null;
-        try { cart = JSON.parse(session.metadata.cart); } catch {}
-        if (!cart) return res.status(404).json({ error: 'No hay venta ni carrito asociado a la sesión' });
-        if (!isPaid) return res.json({ ok:true, paid:false, status:'AWAITING_PAYMENT' });
-
-        // Idempotencia por checkoutId
-        const already = await prisma.sale.findFirst({ where:{ stripeCheckoutSessionId: session.id } });
-        if (already) {
-          return res.json({ ok:true, paid: already.status === 'PAID', status: already.status });
-        }
-
-        await prisma.$transaction(async (tx) => {
-          const normItems = await normalizeItems(tx, cart.items || []);
-          await assertStock(tx, Number(cart.storeId), normItems);
-          const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
-
-          // Cliente
-          let customerId = null, snapshot = null;
-          const isDelivery =
-            String(cart.type).toUpperCase() === 'DELIVERY' ||
-            String(cart.delivery).toUpperCase() === 'COURIER';
-
-          if (cart?.customer?.phone?.trim()){
-            const phone = onlyDigits(cart.customer.phone);
-            const name  = (cart.customer.name || '').trim();
-            const createAddress = isDelivery ? (cart.customer.address_1 || 'SIN DIRECCIÓN') : `(PICKUP) ${phone}`;
-
-            const c = await tx.customer.upsert({
-              where: { phone },
-              update: {
-                phone, name,
-                ...(isDelivery && {
-                  address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-                  lat: clean(cart.customer.lat),
-                  lng: clean(cart.customer.lng),
-                }),
-                portal: clean(cart.customer.portal),
-                observations: clean(cart.customer.observations),
-              },
-              create: {
-                code: await genCustomerCode(tx),
-                phone, name,
-                address_1: createAddress,
-                portal: clean(cart.customer.portal),
-                observations: clean(cart.customer.observations),
-                lat: isDelivery ? clean(cart.customer.lat) : null,
-                lng: isDelivery ? clean(cart.customer.lng) : null,
-              },
-            });
-            customerId = c.id;
-            snapshot = {
-              phone: c.phone, name: c.name,
-              address_1: c.address_1, portal: c.portal, observations: c.observations,
-              lat: c.lat, lng: c.lng
-            };
-          }
-
-          // Extras + cupón (marcar usado aquí)
-          const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
-          let discounts = 0;
-
-          const couponCode = upper(cart.coupon || '');
-          if (couponCode){
-            const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-            const now = new Date();
-            const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
-            if (coup && !coup.used && !expired){
-              if (isFpCode(couponCode)) {
-                const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
-                discounts = discountAmount;
-                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
-              } else {
-                const percent = Number(coup.percent) || 0;
-                if (percent > 0){
-                  const discountAmount = round2(totalProducts * (percent/100));
-                  discounts = discountAmount;
-                  extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
-                }
-              }
-
-              // 🔒 Concurrencia segura
-              const { count } = await tx.coupon.updateMany({
-                where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-                data : { used:true, usedAt:new Date() }
-              });
-              if (count === 0) throw new Error('COUPON_RACE');
-            }
-          }
-
-          const newSale = await tx.sale.create({
-            data: {
-              code: await genOrderCode(tx),
-              storeId: Number(cart.storeId),
-              customerId,
-              type: cart.type || 'LOCAL',
-              delivery: cart.delivery || 'PICKUP',
-              customerData: snapshot || cart.customer || {},
-              products: lineItems,
-              totalProducts,
-              discounts,
-              total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
-              extras: extrasFinal,
-              notes: cart.notes || '',
-              channel: cart.channel || 'WEB',
-              status: 'PAID',
-              stripeCheckoutSessionId: session.id,
-              stripePaymentIntentId: String(pi?.id || session.payment_intent || ''),
-              address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-              lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
-              lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
-            }
-          });
-
-          // Bajar stock
-          for (const p of lineItems){
-            await tx.storePizzaStock.update({
-              where:{ storeId_pizzaId:{ storeId:newSale.storeId, pizzaId:Number(p.pizzaId) } },
-              data :{ stock:{ decrement:Number(p.qty) } }
-            });
-          }
-        });
-
-        return res.json({ ok:true, paid:true, status:'PAID' });
-      }
-
-      // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
-      if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
-      if (!isPaid) return res.json({ ok:true, paid:false, status:sale.status });
 
       await prisma.$transaction(async (tx) => {
-        const fresh = await tx.sale.findUnique({ where:{ id:sale.id } });
-        if (fresh.status === 'PAID') return; // idempotente
+        const normItems = await normalizeItems(tx, cart.items || []);
+        await assertStock(tx, Number(cart.storeId), normItems);
+        const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
 
-        const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
-        for (const p of items){
-          await tx.storePizzaStock.update({
-            where:{ storeId_pizzaId:{ storeId:fresh.storeId, pizzaId:Number(p.pizzaId) } },
-            data :{ stock:{ decrement:Number(p.qty) } }
+        // Cliente
+        let customerId = null, snapshot = null;
+        const isDelivery =
+          String(cart.type).toUpperCase() === 'DELIVERY' ||
+          String(cart.delivery).toUpperCase() === 'COURIER';
+
+        if (cart?.customer?.phone?.trim()) {
+          const phone = onlyDigits(cart.customer.phone);
+          const name  = (cart.customer.name || '').trim();
+          const createAddress = isDelivery ? (cart.customer.address_1 || 'SIN DIRECCIÓN') : `(PICKUP) ${phone}`;
+
+          const c = await tx.customer.upsert({
+            where: { phone },
+            update: {
+              phone, name,
+              ...(isDelivery && {
+                address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                lat: clean(cart.customer.lat),
+                lng: clean(cart.customer.lng),
+              }),
+              portal: clean(cart.customer.portal),
+              observations: clean(cart.customer.observations),
+            },
+            create: {
+              code: await genCustomerCode(tx),
+              phone, name,
+              address_1: createAddress,
+              portal: clean(cart.customer.portal),
+              observations: clean(cart.customer.observations),
+              lat: isDelivery ? clean(cart.customer.lat) : null,
+              lng: isDelivery ? clean(cart.customer.lng) : null,
+            },
           });
+          customerId = c.id;
+          snapshot = {
+            phone: c.phone, name: c.name,
+            address_1: c.address_1, portal: c.portal, observations: c.observations,
+            lat: c.lat, lng: c.lng
+          };
         }
 
-        await tx.sale.update({
-          where:{ id:fresh.id },
-          data :{
-            status:'PAID',
-            stripePaymentIntentId: String(pi?.id || session?.payment_intent || fresh.stripePaymentIntentId || ''),
+        // Extras + cupón (marcar usado aquí)
+        const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+        let discounts = 0;
+
+        const couponCode = upper(cart.coupon || '');
+        if (couponCode) {
+          const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+          const now = new Date();
+          const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
+          if (coup && !coup.used && !expired) {
+            if (isFpCode(couponCode)) {
+              const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
+              discounts = discountAmount;
+              extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
+            } else {
+              const percent = Number(coup.percent) || 0;
+              if (percent > 0){
+                const discountAmount = round2(totalProducts * (percent/100));
+                discounts = discountAmount;
+                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+              }
+            }
+
+            // 🔒 Concurrencia segura
+            const { count } = await tx.coupon.updateMany({
+              where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+              data : { used:true, usedAt:new Date() }
+            });
+            if (count === 0) throw new Error('COUPON_RACE');
+          }
+        }
+
+        await tx.sale.create({
+          data: {
+            code: await genOrderCode(tx),
+            storeId: Number(cart.storeId),
+            customerId,
+            type: cart.type || 'LOCAL',
+            delivery: cart.delivery || 'PICKUP',
+            customerData: snapshot || cart.customer || {},
+            products: lineItems,
+            totalProducts,
+            discounts,
+            total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
+            extras: extrasFinal,
+            notes: cart.notes || '',
+            channel: cart.channel || 'WEB',
+            status: 'PAID',
+            stripeCheckoutSessionId: session.id,
+            // ✅ FIX: nunca guardar '' en campo UNIQUE
+            stripePaymentIntentId: stripePiId || null,
+            address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+            lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+            lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
           }
         });
       });
 
-      res.json({ ok:true, paid:true, status:'PAID' });
-    } catch (e) {
-      logE('[POST /api/venta/checkout/confirm] error', e);
-      res.status(400).json({ error: e.message });
+      return res.json({ ok: true, paid: true, status: 'PAID' });
     }
-  });
+
+    // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
+    if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
+    if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
+
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
+      if (fresh.status === 'PAID') return; // idempotente
+
+      const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
+      for (const p of items) {
+        await tx.storePizzaStock.update({
+          where: { storeId_pizzaId: { storeId: fresh.storeId, pizzaId: Number(p.pizzaId) } },
+          data : { stock: { decrement: Number(p.qty) } }
+        });
+      }
+
+      // ✅ FIX: no persistir cadenas vacías en el UNIQUE
+      const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
+
+      await tx.sale.update({
+        where: { id: fresh.id },
+        data : {
+          status: 'PAID',
+          stripePaymentIntentId: stripePiIdUpdate
+        }
+      });
+    });
+
+    res.json({ ok: true, paid: true, status: 'PAID' });
+  } catch (e) {
+    logE('[POST /api/venta/checkout/confirm] error', e);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 
   /* ============================================================
    *  C) Webhook Stripe
