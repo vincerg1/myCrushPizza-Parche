@@ -41,7 +41,7 @@ function LoginForm() {
 
 /* ───────────────── Dash ───────────────── */
 function Dashboard() {
-  const { auth } = useAuth();
+  const { auth, logout } = useAuth();   // <- añadimos logout
   const isAdmin = auth?.role === "admin";
 
   // vista nivel-1: "pending" | "newsale"
@@ -50,105 +50,131 @@ function Dashboard() {
   const [sub , setSub ] = useState("local");
 
   // Switch global de la app (solo admin)
-const [appAccepting, setAppAccepting] = useState(true);
-const [saving, setSaving] = useState(false);
-const [err, setErr] = useState("");
+  const [appAccepting, setAppAccepting] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
 
-useEffect(() => {
-  if (auth?.role !== "admin") return;
-  (async () => {
+  useEffect(() => {
+    if (auth?.role !== "admin") return;
+    (async () => {
+      try {
+        const { data } = await api.get("/api/app/status");
+        setAppAccepting(!!data.accepting);
+      } catch {}
+    })();
+  }, [auth?.role]);
+
+  const toggleGlobal = async () => {
+    if (auth?.role !== "admin" || saving) return;  // evita spam de clicks
+    const next = !appAccepting;
+    setSaving(true);
     try {
+      await api.patch("/api/app/status", { accepting: next });
       const { data } = await api.get("/api/app/status");
       setAppAccepting(!!data.accepting);
-    } catch {}
-  })();
-}, [auth?.role]);
-
-const toggleGlobal = async () => {
-  if (auth?.role !== "admin" || saving) return;  // evita spam de clicks
-  const next = !appAccepting;
-  setSaving(true);
-  try {
-    await api.patch("/api/app/status", { accepting: next });
-    const { data } = await api.get("/api/app/status");
-    setAppAccepting(!!data.accepting);
-    setErr("");
-  } catch (e) {
-    if (e?.response?.status === 401) setErr("Sesión inválida/expirada. Sal y entra de nuevo como Admin.");
-    else if (e?.response?.status === 403) setErr("Solo un Admin puede usar este interruptor.");
-    else setErr(e?.response?.data?.error || "No se pudo cambiar el estado");
-  } finally {
-    setSaving(false);
-  }
-};
-
+      setErr("");
+    } catch (e) {
+      if (e?.response?.status === 401) setErr("Sesión inválida/expirada. Sal y entra de nuevo como Admin.");
+      else if (e?.response?.status === 403) setErr("Solo un Admin puede usar este interruptor.");
+      else setErr(e?.response?.data?.error || "No se pudo cambiar el estado");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // estilos switch inline
-const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10, zIndex: 2000 };
-const swBtn  = {
-  position:"relative",
-  width:54, height:28, borderRadius:999, border:"none", padding:0,
-  cursor:"pointer",                        // <- siempre pointer
-  background: appAccepting ? "#16a34a" : "#9ca3af",
-  transition:"background .15s ease"
-};
-const swKnob = {
-  position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
-  transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
-  transition:"transform .2s ease", boxShadow:"0 1px 2px rgba(0,0,0,.25)"
-};
- return (
-  <div className="orders-dashboard">
-    <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
-      <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
+  const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10, zIndex:2000 };
+  const swBtn  = {
+    position:"relative",
+    width:54, height:28, borderRadius:999, border:"none", padding:0,
+    cursor:"pointer",
+    background: appAccepting ? "#16a34a" : "#9ca3af",
+    transition:"background .15s ease"
+  };
+  const swKnob = {
+    position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
+    transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
+    transition:"transform .2s ease", boxShadow:"0 1px 2px rgba(0,0,0,.25)"
+  };
 
-      {/* Switch global solo admin */}
-      {isAdmin && (
-        <div style={swWrap}>
-          <span className="pc-note" style={{ fontSize:14 }}>App online</span>
-          <button
-            type="button"
-            style={swBtn}
-            onClick={toggleGlobal}               // <- sin disabled; el guard está dentro
-            aria-pressed={appAccepting}
-            aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
-            title={appAccepting ? "ON" : "OFF"}
-          >
-            <span style={swKnob} />
-          </button>
-        </div>
-      )}
-    </header>
+  // estilo del botón logout (compacto para móvil)
+  const logoutBtn = {
+    marginLeft: 8,
+    padding: "6px 10px",
+    border: "none",
+    borderRadius: 10,
+    background: "#ff6b6b",
+    color: "#fff",
+    fontWeight: 600,
+    cursor: "pointer",
+    boxShadow: "0 2px 6px #0001"
+  };
 
-    {err && <div className="pc-alert" style={{ margin:"8px 0" }}>{err}</div>}
+  return (
+    <div className="orders-dashboard">
+      <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
+        <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
 
-    <div style={{ marginBottom:12 }}>
-      <button id="pending-tab" className="level1-btn" onClick={() => setView("pending")} disabled={view === "pending"}>
-        Pending orders
-      </button>
-      <button onClick={() => setView("newsale")} disabled={view === "newsale"} className="level1-btn" style={{ marginLeft:8 }}>
-        New sale
-      </button>
-    </div>
+        {/* Logout siempre visible (desktop y móvil) */}
+        <button
+          type="button"
+          className="logout-btn"
+          style={logoutBtn}
+          onClick={logout}
+          aria-label="Logout"
+          title="Logout"
+        >
+          Logout
+        </button>
 
-    {view === "pending" && <PendingTable />}
-    {view === "newsale" && (
-      <>
+        {/* Switch global solo admin (anclado a la derecha) */}
         {isAdmin && (
-          <div style={{ marginBottom:8 }}>
-            <button onClick={() => setSub("local")} disabled={sub === "local"}>Local</button>
-            <button onClick={() => setSub("delivery")} disabled={sub === "delivery"} style={{ marginLeft:8 }}>
-              Delivery
+          <div style={swWrap}>
+            <span className="pc-note" style={{ fontSize:14 }}>App online</span>
+            <button
+              type="button"
+              style={swBtn}
+              onClick={toggleGlobal}
+              aria-pressed={appAccepting}
+              aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
+              title={appAccepting ? "ON" : "OFF"}
+            >
+              <span style={swKnob} />
             </button>
           </div>
         )}
-        {sub === "local"    && <LocalSaleForm    onDone={() => setView("pending")} />}
-        {sub === "delivery" && <DeliverySaleForm onDone={() => setView("pending")} />}
-      </>
-    )}
-  </div>
-);
+      </header>
+
+      {err && <div className="pc-alert" style={{ margin:"8px 0" }}>{err}</div>}
+
+      <div style={{ marginBottom:12 }}>
+        <button id="pending-tab" className="level1-btn" onClick={() => setView("pending")} disabled={view === "pending"}>
+          Pending orders
+        </button>
+        <button onClick={() => setView("newsale")} disabled={view === "newsale"} className="level1-btn" style={{ marginLeft:8 }}>
+          New sale
+        </button>
+      </div>
+
+      {view === "pending" && <PendingTable />}
+      {view === "newsale" && (
+        <>
+          {isAdmin && (
+            <div style={{ marginBottom:8 }}>
+              <button onClick={() => setSub("local")} disabled={sub === "local"}>Local</button>
+              <button onClick={() => setSub("delivery")} disabled={sub === "delivery"} style={{ marginLeft:8 }}>
+                Delivery
+              </button>
+            </div>
+          )}
+          {sub === "local"    && <LocalSaleForm    onDone={() => setView("pending")} />}
+          {sub === "delivery" && <DeliverySaleForm onDone={() => setView("pending")} />}
+        </>
+      )}
+    </div>
+  );
 }
+
 
 /* ─────────── Gate ─────────── */
 export default function MyOrdersGate() {
