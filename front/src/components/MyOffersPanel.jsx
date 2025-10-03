@@ -12,10 +12,7 @@ export default function MyOffersPanel() {
   const [preview, setPreview] = useState({ total: 0, sample: [] });
 
   const [msg, setMsg] = useState(
-    "📣 SOLO HOY\n" +
-    "🍕 2 pizzas por 15eur 😍\n" +
-    "⚡ ¡Recogida en Plaza San Antonio!\n" +
-    "🔑 Palabra clave: =)\n\n"
+    "📣 Escribe tu msj =)\n\n"
   );
 
   const [testMode, setTestMode] = useState(true); // primero prueba con pocos
