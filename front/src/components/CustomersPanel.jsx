@@ -1,172 +1,284 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
-// ─── Service (puedes reemplazar rápidamente por tus endpoints reales) ───
+async function httpJSON(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    ...opts,
+  });
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  return res.json();
+}
+
 const CustomersAPI = {
-  async list({ q = "" } = {}) {
-    // 👉 reemplaza por: const res = await fetch(`/api/customers?q=${encodeURIComponent(q)}`);
-    // return await res.json();
-    // Mock:
-    const mock = [
-      { id:"c1", name:"Ana Pérez", phone:"+34634122992", email:"ana@email.com", tags:["vip"], isRestricted:false, notes:"Recoge siempre en tienda" },
-      { id:"c2", name:"Luis Ramos", phone:"+34604080502", email:"", tags:["promo-sms"], isRestricted:true, notes:"Reporte: no recogió 2 veces" },
-      { id:"c3", name:"Marta V.", phone:"+34640245553", email:"marta@email.com", tags:[], isRestricted:false, notes:"" },
-    ];
-    if (!q) return mock;
-    const k = q.toLowerCase();
-    return mock.filter(c =>
-      [c.name, c.phone, c.email, (c.tags||[]).join(",")].some(v => (v||"").toLowerCase().includes(k))
-    );
+  async list({ q = "", take = 5, skip = 0 } = {}) {
+    const u = new URL(`/api/customers/admin`, window.location.origin);
+    if (q) u.searchParams.set("q", q);
+    u.searchParams.set("take", take);
+    u.searchParams.set("skip", skip);
+    return httpJSON(u.toString());
   },
   async create(payload) {
-    // 👉 POST real:
-    // const res = await fetch("/api/customers", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(payload) });
-    // return await res.json();
-    return { ...payload, id: crypto.randomUUID(), isRestricted:false, tags: payload.tags || [], notes: payload.notes || "" };
+    return httpJSON(`/api/customers`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
   async update(id, payload) {
-    // 👉 PATCH real a `/api/customers/${id}`
-    return { id, ...payload };
+    return httpJSON(`/api/customers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
   },
-  async toggleRestrict(id, flag) {
-    // 👉 PATCH real
-    return { id, isRestricted: !!flag };
-  }
+  async remove(id) {
+    return httpJSON(`/api/customers/${id}`, { method: "DELETE" });
+  },
+  async toggleRestrict(id, flag, reason = "") {
+    return httpJSON(`/api/customers/${id}/restrict`, {
+      method: "PATCH",
+      body: JSON.stringify({ isRestricted: flag, reason }),
+    });
+  },
 };
 
-// ─── Helpers ───
-function normalizePhone(s="") {
-  return s.replace(/[^\d+]/g,"");
+function normalizePhone(s = "") {
+  return s.replace(/[^\d+]/g, "");
 }
 
 export default function CustomersPanel() {
   const [loading, setLoading] = useState(true);
-  const [error  , setError]   = useState("");
-  const [query  , setQuery]   = useState("");
-  const [rows   , setRows]    = useState([]);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState({ total: 0 });
 
   const [showForm, setShowForm] = useState(false);
-  const [editing , setEditing]  = useState(null); // customer being edited or null
+  const [editing, setEditing] = useState(null);
 
-  // Cargar lista
-  const load = async (q="") => {
+  // carga inicial: últimos 5
+  const loadLatest = async () => {
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true);
-      setError("");
-      const data = await CustomersAPI.list({ q });
-      setRows(data);
-    } catch (err) {
-      console.error(err);
-      setError("Could not load customers.");
+      const { items, total } = await CustomersAPI.list({ take: 5 });
+      setRows(items);
+      setMeta({ total });
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo cargar clientes.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
-
-  // Búsqueda con debounce ligero
   useEffect(() => {
-    const t = setTimeout(() => load(query), 250);
+    loadLatest();
+  }, []);
+
+  // búsqueda (usa el mismo endpoint pero con take 50)
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!query.trim()) return loadLatest();
+      setLoading(true);
+      setError("");
+      try {
+        const { items, total } = await CustomersAPI.list({
+          q: query,
+          take: 50,
+        });
+        setRows(items);
+        setMeta({ total });
+      } catch (e) {
+        console.error(e);
+        setError("Error al buscar clientes.");
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
     return () => clearTimeout(t);
   }, [query]);
 
+  const startCreate = () => {
+    setEditing(null);
+    setShowForm(true);
+  };
+  const startEdit = (c) => {
+    setEditing(c);
+    setShowForm(true);
+  };
+
   const onSubmitForm = async (form) => {
+    setLoading(true);
+    setError("");
     try {
-      setLoading(true);
-      setError("");
       if (editing?.id) {
-        const updated = await CustomersAPI.update(editing.id, { ...editing, ...form });
-        setRows(prev => prev.map(r => (r.id === editing.id ? { ...r, ...updated } : r)));
+        const updated = await CustomersAPI.update(editing.id, form);
+        setRows((prev) =>
+          prev.map((r) => (r.id === editing.id ? { ...r, ...updated } : r))
+        );
       } else {
-        const created = await CustomersAPI.create(form);
-        setRows(prev => [created, ...prev]);
+        await CustomersAPI.create(form);
+        // refrescamos lista de “últimos 5”
+        await loadLatest();
       }
       setShowForm(false);
       setEditing(null);
-    } catch (err) {
-      console.error(err);
-      setError("Could not save customer.");
+    } catch (e) {
+      console.error(e);
+      const msg = e.message || "";
+      const conflict =
+        msg.includes("Unique") ||
+        /unique|duplicad[oa]|constraint/i.test(msg);
+      setError(
+        conflict
+          ? "Conflicto de datos únicos (teléfono, email o dirección ya existen)."
+          : "No se pudo guardar."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleRestrict = async (cust) => {
-    const flag = !cust.isRestricted;
-    if (!window.confirm(`${flag ? "Restrict" : "Unrestrict"} ${cust.name || cust.phone}?`)) return;
-    try {
-      const res = await CustomersAPI.toggleRestrict(cust.id, flag);
-      setRows(prev => prev.map(r => (r.id === cust.id ? { ...r, isRestricted: res.isRestricted } : r)));
-    } catch (err) {
-      console.error(err);
-      setError("Could not change restriction status.");
-    }
-  };
-
-  const startEdit = (cust) => {
-    setEditing(cust);
-    setShowForm(true);
-  };
-
   return (
-    <div className="customers-panel" style={{ maxWidth: 980, margin: "0 auto" }}>
-      <header style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
-        <h2 style={{ margin:0 }}>Customers</h2>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="btn">
-          + Add customer
-        </button>
-        <div style={{ marginLeft:"auto" }}>
+    <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>Customers</h2>
+        <button onClick={startCreate} className="btn">+ Add customer</button>
+        <div style={{ marginLeft: "auto" }}>
           <input
             value={query}
-            onChange={e=>setQuery(e.target.value)}
-            placeholder="Search by name, phone, email, tag…"
-            style={{ padding:"8px 10px", minWidth:280 }}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, phone, email, code, address…"
+            style={{ padding: "8px 10px", minWidth: 320 }}
           />
         </div>
       </header>
 
-      {error && <div style={{ color:"crimson", marginBottom:8 }}>{error}</div>}
+      <div className="small" style={{ marginBottom: 8 }}>
+        {query ? `Matches: ${meta.total}` : "Showing latest 5 customers"}
+      </div>
+      {error && <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>}
       {loading && <div className="small">Loading…</div>}
 
       {/* Tabla */}
-      <div className="table-like" style={{ border:"1px solid #e5e7eb", borderRadius:12, overflow:"hidden" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 1.4fr 1fr 0.9fr 180px", background:"#fafafa", padding:"10px 12px", fontWeight:600 }}>
+      <div
+        className="table-like"
+        style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "120px 1fr 140px 220px 1.2fr 120px 200px", // Code, Name, Phone, Email, Address, Status, Actions
+            background: "#fafafa",
+            padding: "10px 12px",
+            fontWeight: 600,
+          }}
+        >
+          <div>Code</div>
           <div>Name</div>
           <div>Phone</div>
           <div>Email</div>
-          <div>Tags</div>
+          <div>Address</div>
           <div>Status</div>
           <div>Actions</div>
         </div>
-        {rows.map(c => (
-          <div key={c.id} style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr 1.4fr 1fr 0.9fr 180px", padding:"10px 12px", borderTop:"1px solid #eee", alignItems:"center" }}>
-            <div title={c.notes || ""}>
-              <div style={{ fontWeight:600 }}>{c.name || "—"}</div>
-              {c.notes ? <div className="small" style={{ opacity:.7 }}>{c.notes}</div> : null}
+
+        {rows.map((c) => (
+          <div
+            key={c.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "120px 1fr 140px 220px 1.2fr 120px 200px",
+              padding: "10px 12px",
+              borderTop: "1px solid #eee",
+              alignItems: "center",
+            }}
+          >
+            <div>{c.code}</div>
+            <div title={c.observations || ""}>
+              <div style={{ fontWeight: 600 }}>{c.name || "—"}</div>
+              {c.observations ? (
+                <div className="small" style={{ opacity: 0.7 }}>
+                  {c.observations}
+                </div>
+              ) : null}
             </div>
             <div>{c.phone || "—"}</div>
             <div>{c.email || "—"}</div>
-            <div>{(c.tags && c.tags.length) ? c.tags.join(", ") : "—"}</div>
-            <div style={{ fontWeight:600, color: c.isRestricted ? "#b45309" : "#059669" }}>
+            <div>
+              <div>{c.address_1}</div>
+              {c.portal ? (
+                <div className="small" style={{ opacity: 0.7 }}>{c.portal}</div>
+              ) : null}
+            </div>
+            <div
+              style={{
+                fontWeight: 600,
+                color: c.isRestricted ? "#b45309" : "#059669",
+              }}
+            >
               {c.isRestricted ? "Restricted" : "Active"}
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="btn btn-sm" onClick={() => startEdit(c)}>Edit</button>
-              <button className="btn btn-sm" onClick={() => toggleRestrict(c)}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-sm" onClick={() => startEdit(c)}>
+                Edit
+              </button>
+              <button
+                className="btn btn-sm"
+                onClick={async () => {
+                  const flag = !c.isRestricted;
+                  const reason = flag
+                    ? (prompt("Reason for restriction (optional):") || "")
+                    : "";
+                  try {
+                    const up = await CustomersAPI.toggleRestrict(
+                      c.id,
+                      flag,
+                      reason
+                    );
+                    setRows((prev) =>
+                      prev.map((r) => (r.id === c.id ? { ...r, ...up } : r))
+                    );
+                  } catch (e) {
+                    console.error(e);
+                    alert("No se pudo cambiar el estado de restricción.");
+                  }
+                }}
+              >
                 {c.isRestricted ? "Unrestrict" : "Restrict"}
               </button>
+              {/* Si quieres permitir borrar:
+              <button
+                className="btn btn-sm"
+                onClick={async () => {
+                  if (!window.confirm(`Delete ${c.code}?`)) return;
+                  await CustomersAPI.remove(c.id);
+                  await loadLatest();
+                }}
+              >
+                Delete
+              </button>
+              */}
             </div>
           </div>
         ))}
+
         {!rows.length && !loading && (
-          <div style={{ padding:16, textAlign:"center", color:"#6b7280" }}>No customers found.</div>
+          <div style={{ padding: 16, textAlign: "center", color: "#6b7280" }}>
+            No customers.
+          </div>
         )}
       </div>
 
       {showForm && (
         <CustomerFormModal
           initial={editing || {}}
-          onClose={() => { setShowForm(false); setEditing(null); }}
+          onClose={() => {
+            setShowForm(false);
+            setEditing(null);
+          }}
           onSubmit={onSubmitForm}
         />
       )}
@@ -174,69 +286,128 @@ export default function CustomersPanel() {
   );
 }
 
-// ─── Modal de Alta/Edición ───
-function CustomerFormModal({ initial={}, onClose, onSubmit }) {
-  const [name , setName ] = useState(initial.name  || "");
+function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
+  const [name, setName] = useState(initial.name || "");
   const [phone, setPhone] = useState(initial.phone || "");
-  const [email, setEmail] = useState(initial.email || "");
-  const [tags , setTags ] = useState((initial.tags||[]).join(", "));
-  const [notes, setNotes] = useState(initial.notes || "");
+  const [email, setEmail] = useState(initial.email || ""); // nuevo
+  const [address, setAddress] = useState(initial.address_1 || "");
+  const [portal, setPortal] = useState(initial.portal || "");
+  const [obs, setObs] = useState(initial.observations || "");
 
   const submit = (e) => {
     e.preventDefault();
     const payload = {
-      name: name.trim(),
-      phone: normalizePhone(phone),
-      email: email.trim(),
-      tags: tags.split(",").map(s => s.trim()).filter(Boolean),
-      notes: notes.trim(),
+      name: name.trim() || null,
+      phone: normalizePhone(phone) || null,
+      email: email.trim() || null,
+      address_1: address.trim(),
+      portal: portal.trim() || null,
+      observations: obs.trim() || null,
     };
     onSubmit(payload);
   };
 
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(0,0,0,.35)",
-      display:"grid", placeItems:"center", zIndex:50
-    }}>
-      <form onSubmit={submit} style={{
-        background:"#fff", borderRadius:14, width:520, maxWidth:"92vw",
-        boxShadow:"0 10px 30px rgba(0,0,0,.15)", padding:18, display:"grid", gap:12
-      }}>
-        <div style={{ display:"flex", alignItems:"center" }}>
-          <h3 style={{ margin:0 }}>{initial?.id ? "Edit customer" : "Add customer"}</h3>
-          <button type="button" onClick={onClose} style={{ marginLeft:"auto" }} className="btn btn-ghost">✕</button>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,.35)",
+        display: "grid",
+        placeItems: "center",
+        zIndex: 50,
+      }}
+    >
+      <form
+        onSubmit={submit}
+        style={{
+          background: "#fff",
+          borderRadius: 14,
+          width: 560,
+          maxWidth: "92vw",
+          boxShadow: "0 10px 30px rgba(0,0,0,.15)",
+          padding: 18,
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <h3 style={{ margin: 0 }}>
+            {initial?.id ? "Edit customer" : "Add customer"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ marginLeft: "auto" }}
+            className="btn btn-ghost"
+          >
+            ✕
+          </button>
         </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label className="fld">
             <span>Name</span>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder="John Doe" />
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="John Doe"
+            />
           </label>
           <label className="fld">
             <span>Phone</span>
-            <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+34…" />
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+34…"
+            />
           </label>
         </div>
 
         <label className="fld">
           <span>Email</span>
-          <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="john@acme.com" />
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="john@acme.com"
+          />
         </label>
 
         <label className="fld">
-          <span>Tags (comma separated)</span>
-          <input value={tags} onChange={e=>setTags(e.target.value)} placeholder="vip, promo-sms" />
+          <span>Address (address_1)</span>
+          <input
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Calle, número, ciudad…"
+          />
         </label>
 
-        <label className="fld">
-          <span>Notes</span>
-          <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder="Internal notes…" />
-        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <label className="fld">
+            <span>Portal</span>
+            <input
+              value={portal}
+              onChange={(e) => setPortal(e.target.value)}
+              placeholder="Portal / piso / puerta"
+            />
+          </label>
+          <label className="fld">
+            <span>Observations</span>
+            <input
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+              placeholder="Notas internas…"
+            />
+          </label>
+        </div>
 
-        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn" type="submit">{initial?.id ? "Save" : "Create"}</button>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn" type="submit">
+            {initial?.id ? "Save" : "Create"}
+          </button>
         </div>
       </form>
     </div>
