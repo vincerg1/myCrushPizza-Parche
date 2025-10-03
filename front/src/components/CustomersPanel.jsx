@@ -1,22 +1,53 @@
 import React, { useEffect, useState } from "react";
 
-async function httpJSON(url, opts = {}) {
+/** ===== Config base de API =====
+ * - Usa REACT_APP_API_BASE o window.__API_BASE__ si existe.
+ * - Si no, usa el mismo origen (válido cuando backend y front comparten dominio).
+ */
+const API_BASE =
+  (window.__API_BASE__ || process.env.REACT_APP_API_BASE || "").replace(/\/$/, "");
+
+const buildURL = (path) => {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE}${path}`;
+};
+
+async function httpJSON(path, opts = {}) {
+  const url = buildURL(path);
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     credentials: "include",
     ...opts,
   });
-  if (!res.ok) throw new Error((await res.text()) || res.statusText);
-  return res.json();
+
+  // Leemos siempre como texto primero para poder diagnosticar errores
+  const raw = await res.text();
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+  if (!res.ok) {
+    // Mensaje útil con el inicio del body
+    const snippet = raw.slice(0, 200);
+    throw new Error(`${res.status} ${res.statusText} – ${snippet}`);
+  }
+  if (!ct.includes("application/json")) {
+    const snippet = raw.slice(0, 200);
+    throw new Error(`Respuesta no-JSON (${ct || "desconocido"}). Body: ${snippet}`);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`JSON inválido: ${e.message}. Body: ${raw.slice(0, 200)}`);
+  }
 }
 
 const CustomersAPI = {
   async list({ q = "", take = 5, skip = 0 } = {}) {
-    const u = new URL(`/api/customers/admin`, window.location.origin);
+    const u = new URL("/api/customers/admin", window.location.origin);
     if (q) u.searchParams.set("q", q);
     u.searchParams.set("take", take);
     u.searchParams.set("skip", skip);
-    return httpJSON(u.toString());
+    // Usamos sólo el pathname+search al pasar a httpJSON, para que buildURL funcione bien
+    return httpJSON(`/api/customers/admin?${u.searchParams.toString()}`);
   },
   async create(payload) {
     return httpJSON(`/api/customers`, {
@@ -65,7 +96,7 @@ export default function CustomersPanel() {
       setMeta({ total });
     } catch (e) {
       console.error(e);
-      setError("No se pudo cargar clientes.");
+      setError("No se pudo cargar clientes. " + e.message);
     } finally {
       setLoading(false);
     }
@@ -82,15 +113,12 @@ export default function CustomersPanel() {
       setLoading(true);
       setError("");
       try {
-        const { items, total } = await CustomersAPI.list({
-          q: query,
-          take: 50,
-        });
+        const { items, total } = await CustomersAPI.list({ q: query, take: 50 });
         setRows(items);
         setMeta({ total });
       } catch (e) {
         console.error(e);
-        setError("Error al buscar clientes.");
+        setError("Error al buscar clientes. " + e.message);
       } finally {
         setLoading(false);
       }
@@ -118,8 +146,7 @@ export default function CustomersPanel() {
         );
       } else {
         await CustomersAPI.create(form);
-        // refrescamos lista de “últimos 5”
-        await loadLatest();
+        await loadLatest(); // refrescar “últimos 5”
       }
       setShowForm(false);
       setEditing(null);
@@ -127,12 +154,11 @@ export default function CustomersPanel() {
       console.error(e);
       const msg = e.message || "";
       const conflict =
-        msg.includes("Unique") ||
-        /unique|duplicad[oa]|constraint/i.test(msg);
+        msg.includes("Unique") || /unique|duplicad[oa]|constraint/i.test(msg);
       setError(
         conflict
           ? "Conflicto de datos únicos (teléfono, email o dirección ya existen)."
-          : "No se pudo guardar."
+          : "No se pudo guardar. " + msg
       );
     } finally {
       setLoading(false);
@@ -160,16 +186,11 @@ export default function CustomersPanel() {
       {error && <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>}
       {loading && <div className="small">Loading…</div>}
 
-      {/* Tabla */}
-      <div
-        className="table-like"
-        style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}
-      >
+      <div className="table-like" style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "120px 1fr 140px 220px 1.2fr 120px 200px", // Code, Name, Phone, Email, Address, Status, Actions
+            gridTemplateColumns: "120px 1fr 140px 220px 1.2fr 120px 200px",
             background: "#fafafa",
             padding: "10px 12px",
             fontWeight: 600,
@@ -189,8 +210,7 @@ export default function CustomersPanel() {
             key={c.id}
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "120px 1fr 140px 220px 1.2fr 120px 200px",
+              gridTemplateColumns: "120px 1fr 140px 220px 1.2fr 120px 200px",
               padding: "10px 12px",
               borderTop: "1px solid #eee",
               alignItems: "center",
@@ -200,47 +220,28 @@ export default function CustomersPanel() {
             <div title={c.observations || ""}>
               <div style={{ fontWeight: 600 }}>{c.name || "—"}</div>
               {c.observations ? (
-                <div className="small" style={{ opacity: 0.7 }}>
-                  {c.observations}
-                </div>
+                <div className="small" style={{ opacity: 0.7 }}>{c.observations}</div>
               ) : null}
             </div>
             <div>{c.phone || "—"}</div>
             <div>{c.email || "—"}</div>
             <div>
               <div>{c.address_1}</div>
-              {c.portal ? (
-                <div className="small" style={{ opacity: 0.7 }}>{c.portal}</div>
-              ) : null}
+              {c.portal ? <div className="small" style={{ opacity: 0.7 }}>{c.portal}</div> : null}
             </div>
-            <div
-              style={{
-                fontWeight: 600,
-                color: c.isRestricted ? "#b45309" : "#059669",
-              }}
-            >
+            <div style={{ fontWeight: 600, color: c.isRestricted ? "#b45309" : "#059669" }}>
               {c.isRestricted ? "Restricted" : "Active"}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn btn-sm" onClick={() => startEdit(c)}>
-                Edit
-              </button>
+              <button className="btn btn-sm" onClick={() => startEdit(c)}>Edit</button>
               <button
                 className="btn btn-sm"
                 onClick={async () => {
                   const flag = !c.isRestricted;
-                  const reason = flag
-                    ? (prompt("Reason for restriction (optional):") || "")
-                    : "";
+                  const reason = flag ? (prompt("Reason for restriction (optional):") || "") : "";
                   try {
-                    const up = await CustomersAPI.toggleRestrict(
-                      c.id,
-                      flag,
-                      reason
-                    );
-                    setRows((prev) =>
-                      prev.map((r) => (r.id === c.id ? { ...r, ...up } : r))
-                    );
+                    const up = await CustomersAPI.toggleRestrict(c.id, flag, reason);
+                    setRows((prev) => prev.map((r) => (r.id === c.id ? { ...r, ...up } : r)));
                   } catch (e) {
                     console.error(e);
                     alert("No se pudo cambiar el estado de restricción.");
@@ -249,18 +250,6 @@ export default function CustomersPanel() {
               >
                 {c.isRestricted ? "Unrestrict" : "Restrict"}
               </button>
-              {/* Si quieres permitir borrar:
-              <button
-                className="btn btn-sm"
-                onClick={async () => {
-                  if (!window.confirm(`Delete ${c.code}?`)) return;
-                  await CustomersAPI.remove(c.id);
-                  await loadLatest();
-                }}
-              >
-                Delete
-              </button>
-              */}
             </div>
           </div>
         ))}
@@ -275,10 +264,7 @@ export default function CustomersPanel() {
       {showForm && (
         <CustomerFormModal
           initial={editing || {}}
-          onClose={() => {
-            setShowForm(false);
-            setEditing(null);
-          }}
+          onClose={() => { setShowForm(false); setEditing(null); }}
           onSubmit={onSubmitForm}
         />
       )}
@@ -289,7 +275,7 @@ export default function CustomersPanel() {
 function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
   const [name, setName] = useState(initial.name || "");
   const [phone, setPhone] = useState(initial.phone || "");
-  const [email, setEmail] = useState(initial.email || ""); // nuevo
+  const [email, setEmail] = useState(initial.email || "");
   const [address, setAddress] = useState(initial.address_1 || "");
   const [portal, setPortal] = useState(initial.portal || "");
   const [obs, setObs] = useState(initial.observations || "");
@@ -308,106 +294,51 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,.35)",
-        display: "grid",
-        placeItems: "center",
-        zIndex: 50,
-      }}
-    >
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", zIndex: 50 }}>
       <form
         onSubmit={submit}
-        style={{
-          background: "#fff",
-          borderRadius: 14,
-          width: 560,
-          maxWidth: "92vw",
-          boxShadow: "0 10px 30px rgba(0,0,0,.15)",
-          padding: 18,
-          display: "grid",
-          gap: 12,
-        }}
+        style={{ background: "#fff", borderRadius: 14, width: 560, maxWidth: "92vw", boxShadow: "0 10px 30px rgba(0,0,0,.15)", padding: 18, display: "grid", gap: 12 }}
       >
         <div style={{ display: "flex", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>
-            {initial?.id ? "Edit customer" : "Add customer"}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{ marginLeft: "auto" }}
-            className="btn btn-ghost"
-          >
-            ✕
-          </button>
+          <h3 style={{ margin: 0 }}>{initial?.id ? "Edit customer" : "Add customer"}</h3>
+          <button type="button" onClick={onClose} style={{ marginLeft: "auto" }} className="btn btn-ghost">✕</button>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label className="fld">
             <span>Name</span>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="John Doe"
-            />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" />
           </label>
           <label className="fld">
             <span>Phone</span>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+34…"
-            />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+34…" />
           </label>
         </div>
 
         <label className="fld">
           <span>Email</span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="john@acme.com"
-          />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@acme.com" />
         </label>
 
         <label className="fld">
           <span>Address (address_1)</span>
-          <input
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            placeholder="Calle, número, ciudad…"
-          />
+          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Calle, número, ciudad…" />
         </label>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <label className="fld">
             <span>Portal</span>
-            <input
-              value={portal}
-              onChange={(e) => setPortal(e.target.value)}
-              placeholder="Portal / piso / puerta"
-            />
+            <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="Portal / piso / puerta" />
           </label>
           <label className="fld">
             <span>Observations</span>
-            <input
-              value={obs}
-              onChange={(e) => setObs(e.target.value)}
-              placeholder="Notas internas…"
-            />
+            <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Notas internas…" />
           </label>
         </div>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn" type="submit">
-            {initial?.id ? "Save" : "Create"}
-          </button>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn" type="submit">{initial?.id ? "Save" : "Create"}</button>
         </div>
       </form>
     </div>
