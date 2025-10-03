@@ -166,7 +166,6 @@ model Sale {
   processed     Boolean        @default(false)
   notes         String?
   createdAt     DateTime       @default(now())
-
   status                  OrderStatus @default(PENDING)
   channel                 Channel     @default(WHATSAPP)
   currency                String      @default("EUR")

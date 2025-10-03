@@ -283,7 +283,7 @@ router.post('/pedido', async (req, res) => {
           .concat(it?.sides || []);
         for (const ex of pools) {
           const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-          if (!Number.isFinite(parsed) || parsed <= 0) continue;
+          if (!Number.isFinite(parsed) || parsed < 0) continue;
           const code = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
           const label = String(ex?.label || ex?.name || ex?.title || code);
           out.push({ code, label, amount: round2(parsed * qty) });
@@ -306,7 +306,7 @@ router.post('/pedido', async (req, res) => {
       return pools
         .map((ex) => {
           const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-          if (!Number.isFinite(parsed) || parsed <= 0) return null;
+          if (!Number.isFinite(parsed) || parsed < 0) return null;
           const id = Number(ex?.id ?? ex?.pizzaId ?? ex?.productId ?? 0) || undefined;
           const label = String(ex?.label || ex?.name || ex?.title || 'Extra');
           return { id, code: 'EXTRA', label, amount: round2(parsed) };
@@ -700,204 +700,204 @@ router.post('/checkout-session', async (req, res) => {
    *  B.1) Confirmación manual (doble seguro)
    *       Verifica session y marca PAID / crea venta (modo cart)
    * ============================================================ */
-router.post('/checkout/confirm', async (req, res) => {
-  if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
+    router.post('/checkout/confirm', async (req, res) => {
+      if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
 
-  try {
-    const { sessionId, orderCode } = req.body || {};
-    if (!sessionId && !orderCode) {
-      return res.status(400).json({ error: 'sessionId u orderCode requerido' });
-    }
-
-    // Recuperar sesión (si tenemos sessionId)
-    let session = null;
-    if (sessionId) {
-      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
-    }
-
-    // Intentar localizar la venta existente
-    let sale = null;
-    if (session?.metadata?.saleId) {
-      sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
-    }
-    if (!sale && session?.id) {
-      sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
-    }
-    if (!sale && orderCode) {
-      sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
-    }
-
-    // ¿Está pagado?
-    const payStatus = session?.payment_status || null; // 'paid' | 'no_payment_required' | ...
-    let pi = null;
-    let stripePiId = null;
-    if (session?.payment_intent) {
-      if (typeof session.payment_intent === 'string') {
-        stripePiId = session.payment_intent; // id del PI
-        pi = await stripe.paymentIntents.retrieve(session.payment_intent);
-      } else {
-        pi = session.payment_intent;
-        stripePiId = pi?.id ?? null;
-      }
-    }
-    const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
-    const paidByPI = pi?.status === 'succeeded';
-    const isPaid = paidBySession || paidByPI;
-
-    // Modo carrito: no hay venta aún, pero existe cart en metadata → crear ahora
-    if (!sale && session?.metadata?.cart) {
-      let cart = null;
-      try { cart = JSON.parse(session.metadata.cart); } catch {}
-      if (!cart) return res.status(404).json({ error: 'No hay venta ni carrito asociado a la sesión' });
-      if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
-
-      // Idempotencia por checkoutId
-      const already = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
-      if (already) {
-        return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
-      }
-
-      await prisma.$transaction(async (tx) => {
-        const normItems = await normalizeItems(tx, cart.items || []);
-        await assertStock(tx, Number(cart.storeId), normItems);
-        const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
-
-        // Cliente
-        let customerId = null, snapshot = null;
-        const isDelivery =
-          String(cart.type).toUpperCase() === 'DELIVERY' ||
-          String(cart.delivery).toUpperCase() === 'COURIER';
-
-        if (cart?.customer?.phone?.trim()) {
-          const phone = onlyDigits(cart.customer.phone);
-          const name  = (cart.customer.name || '').trim();
-          const createAddress = isDelivery ? (cart.customer.address_1 || 'SIN DIRECCIÓN') : `(PICKUP) ${phone}`;
-
-          const c = await tx.customer.upsert({
-            where: { phone },
-            update: {
-              phone, name,
-              ...(isDelivery && {
-                address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-                lat: clean(cart.customer.lat),
-                lng: clean(cart.customer.lng),
-              }),
-              portal: clean(cart.customer.portal),
-              observations: clean(cart.customer.observations),
-            },
-            create: {
-              code: await genCustomerCode(tx),
-              phone, name,
-              address_1: createAddress,
-              portal: clean(cart.customer.portal),
-              observations: clean(cart.customer.observations),
-              lat: isDelivery ? clean(cart.customer.lat) : null,
-              lng: isDelivery ? clean(cart.customer.lng) : null,
-            },
-          });
-          customerId = c.id;
-          snapshot = {
-            phone: c.phone, name: c.name,
-            address_1: c.address_1, portal: c.portal, observations: c.observations,
-            lat: c.lat, lng: c.lng
-          };
+      try {
+        const { sessionId, orderCode } = req.body || {};
+        if (!sessionId && !orderCode) {
+          return res.status(400).json({ error: 'sessionId u orderCode requerido' });
         }
 
-        // Extras + cupón (marcar usado aquí)
-        const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
-        let discounts = 0;
+        // Recuperar sesión (si tenemos sessionId)
+        let session = null;
+        if (sessionId) {
+          session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+        }
 
-        const couponCode = upper(cart.coupon || '');
-        if (couponCode) {
-          const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-          const now = new Date();
-          const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
-          if (coup && !coup.used && !expired) {
-            if (isFpCode(couponCode)) {
-              const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
-              discounts = discountAmount;
-              extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
-            } else {
-              const percent = Number(coup.percent) || 0;
-              if (percent > 0){
-                const discountAmount = round2(totalProducts * (percent/100));
-                discounts = discountAmount;
-                extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+        // Intentar localizar la venta existente
+        let sale = null;
+        if (session?.metadata?.saleId) {
+          sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
+        }
+        if (!sale && session?.id) {
+          sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+        }
+        if (!sale && orderCode) {
+          sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
+        }
+
+        // ¿Está pagado?
+        const payStatus = session?.payment_status || null; // 'paid' | 'no_payment_required' | ...
+        let pi = null;
+        let stripePiId = null;
+        if (session?.payment_intent) {
+          if (typeof session.payment_intent === 'string') {
+            stripePiId = session.payment_intent; // id del PI
+            pi = await stripe.paymentIntents.retrieve(session.payment_intent);
+          } else {
+            pi = session.payment_intent;
+            stripePiId = pi?.id ?? null;
+          }
+        }
+        const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
+        const paidByPI = pi?.status === 'succeeded';
+        const isPaid = paidBySession || paidByPI;
+
+        // Modo carrito: no hay venta aún, pero existe cart en metadata → crear ahora
+        if (!sale && session?.metadata?.cart) {
+          let cart = null;
+          try { cart = JSON.parse(session.metadata.cart); } catch {}
+          if (!cart) return res.status(404).json({ error: 'No hay venta ni carrito asociado a la sesión' });
+          if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
+
+          // Idempotencia por checkoutId
+          const already = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+          if (already) {
+            return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
+          }
+
+          await prisma.$transaction(async (tx) => {
+            const normItems = await normalizeItems(tx, cart.items || []);
+            await assertStock(tx, Number(cart.storeId), normItems);
+            const { lineItems, totalProducts } = await recalcTotals(tx, Number(cart.storeId), normItems);
+
+            // Cliente
+            let customerId = null, snapshot = null;
+            const isDelivery =
+              String(cart.type).toUpperCase() === 'DELIVERY' ||
+              String(cart.delivery).toUpperCase() === 'COURIER';
+
+            if (cart?.customer?.phone?.trim()) {
+              const phone = onlyDigits(cart.customer.phone);
+              const name  = (cart.customer.name || '').trim();
+              const createAddress = isDelivery ? (cart.customer.address_1 || 'SIN DIRECCIÓN') : `(PICKUP) ${phone}`;
+
+              const c = await tx.customer.upsert({
+                where: { phone },
+                update: {
+                  phone, name,
+                  ...(isDelivery && {
+                    address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                    lat: clean(cart.customer.lat),
+                    lng: clean(cart.customer.lng),
+                  }),
+                  portal: clean(cart.customer.portal),
+                  observations: clean(cart.customer.observations),
+                },
+                create: {
+                  code: await genCustomerCode(tx),
+                  phone, name,
+                  address_1: createAddress,
+                  portal: clean(cart.customer.portal),
+                  observations: clean(cart.customer.observations),
+                  lat: isDelivery ? clean(cart.customer.lat) : null,
+                  lng: isDelivery ? clean(cart.customer.lng) : null,
+                },
+              });
+              customerId = c.id;
+              snapshot = {
+                phone: c.phone, name: c.name,
+                address_1: c.address_1, portal: c.portal, observations: c.observations,
+                lat: c.lat, lng: c.lng
+              };
+            }
+
+            // Extras + cupón (marcar usado aquí)
+            const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+            let discounts = 0;
+
+            const couponCode = upper(cart.coupon || '');
+            if (couponCode) {
+              const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+              const now = new Date();
+              const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
+              if (coup && !coup.used && !expired) {
+                if (isFpCode(couponCode)) {
+                  const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
+                  discounts = discountAmount;
+                  extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`, amount:-discounts });
+                } else {
+                  const percent = Number(coup.percent) || 0;
+                  if (percent > 0){
+                    const discountAmount = round2(totalProducts * (percent/100));
+                    discounts = discountAmount;
+                    extrasFinal.push({ code:'COUPON', label:`Cupón ${couponCode} (-${percent}%)`, amount:-discounts });
+                  }
+                }
+
+                // 🔒 Concurrencia segura
+                const { count } = await tx.coupon.updateMany({
+                  where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+                  data : { used:true, usedAt:new Date() }
+                });
+                if (count === 0) throw new Error('COUPON_RACE');
               }
             }
 
-            // 🔒 Concurrencia segura
-            const { count } = await tx.coupon.updateMany({
-              where: { code: couponCode, used: false, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-              data : { used:true, usedAt:new Date() }
+            await tx.sale.create({
+              data: {
+                code: await genOrderCode(tx),
+                storeId: Number(cart.storeId),
+                customerId,
+                type: cart.type || 'LOCAL',
+                delivery: cart.delivery || 'PICKUP',
+                customerData: snapshot || cart.customer || {},
+                products: lineItems,
+                totalProducts,
+                discounts,
+                total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
+                extras: extrasFinal,
+                notes: cart.notes || '',
+                channel: cart.channel || 'WEB',
+                status: 'PAID',
+                stripeCheckoutSessionId: session.id,
+                // ✅ FIX: nunca guardar '' en campo UNIQUE
+                stripePaymentIntentId: stripePiId || null,
+                address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+                lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+                lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+              }
             });
-            if (count === 0) throw new Error('COUPON_RACE');
-          }
+          });
+
+          return res.json({ ok: true, paid: true, status: 'PAID' });
         }
 
-        await tx.sale.create({
-          data: {
-            code: await genOrderCode(tx),
-            storeId: Number(cart.storeId),
-            customerId,
-            type: cart.type || 'LOCAL',
-            delivery: cart.delivery || 'PICKUP',
-            customerData: snapshot || cart.customer || {},
-            products: lineItems,
-            totalProducts,
-            discounts,
-            total: round2(totalProducts - discounts) + (Array.isArray(extrasFinal) ? extrasFinal.reduce((s,e)=>s + (Number(e.amount)||0), 0) : 0),
-            extras: extrasFinal,
-            notes: cart.notes || '',
-            channel: cart.channel || 'WEB',
-            status: 'PAID',
-            stripeCheckoutSessionId: session.id,
-            // ✅ FIX: nunca guardar '' en campo UNIQUE
-            stripePaymentIntentId: stripePiId || null,
-            address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-            lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
-            lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+        // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
+        if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
+        if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
+
+        await prisma.$transaction(async (tx) => {
+          const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
+          if (fresh.status === 'PAID') return; // idempotente
+
+          const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
+          for (const p of items) {
+            await tx.storePizzaStock.update({
+              where: { storeId_pizzaId: { storeId: fresh.storeId, pizzaId: Number(p.pizzaId) } },
+              data : { stock: { decrement: Number(p.qty) } }
+            });
           }
+
+          // ✅ FIX: no persistir cadenas vacías en el UNIQUE
+          const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
+
+          await tx.sale.update({
+            where: { id: fresh.id },
+            data : {
+              status: 'PAID',
+              stripePaymentIntentId: stripePiIdUpdate
+            }
+          });
         });
-      });
 
-      return res.json({ ok: true, paid: true, status: 'PAID' });
-    }
-
-    // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
-    if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
-    if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
-
-    await prisma.$transaction(async (tx) => {
-      const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
-      if (fresh.status === 'PAID') return; // idempotente
-
-      const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
-      for (const p of items) {
-        await tx.storePizzaStock.update({
-          where: { storeId_pizzaId: { storeId: fresh.storeId, pizzaId: Number(p.pizzaId) } },
-          data : { stock: { decrement: Number(p.qty) } }
-        });
+        res.json({ ok: true, paid: true, status: 'PAID' });
+      } catch (e) {
+        logE('[POST /api/venta/checkout/confirm] error', e);
+        res.status(400).json({ error: e.message });
       }
-
-      // ✅ FIX: no persistir cadenas vacías en el UNIQUE
-      const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
-
-      await tx.sale.update({
-        where: { id: fresh.id },
-        data : {
-          status: 'PAID',
-          stripePaymentIntentId: stripePiIdUpdate
-        }
-      });
     });
-
-    res.json({ ok: true, paid: true, status: 'PAID' });
-  } catch (e) {
-    logE('[POST /api/venta/checkout/confirm] error', e);
-    res.status(400).json({ error: e.message });
-  }
-});
 
 
   /* ============================================================
@@ -906,180 +906,253 @@ router.post('/checkout/confirm', async (req, res) => {
    *     - Si viene cart  : crear venta ahora, bajar stock, marcar cupón
    * ============================================================ */
 // ⚠️ Montar ANTES de app.use(express.json())
-router.post(
-  '/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    if (!stripeReady) {
-      logW('webhook recibido pero Stripe no está listo');
-      return res.status(503).send('Stripe not configured');
-    }
+    router.post(
+      '/stripe/webhook',
+      express.raw({ type: 'application/json' }),
+      async (req, res) => {
+        if (!stripeReady) {
+          logW('webhook recibido pero Stripe no está listo');
+          return res.status(503).send('Stripe not configured');
+        }
 
-    let event;
-    try {
-      const sig = req.headers['stripe-signature'];
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-    } catch (err) {
-      logE('⚠️  Webhook signature verification failed.', err);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
+        let event;
+        try {
+          const sig = req.headers['stripe-signature'];
+          event = stripe.webhooks.constructEvent(
+            req.body,
+            sig,
+            process.env.STRIPE_WEBHOOK_SECRET
+          );
+        } catch (err) {
+          logE('⚠️  Webhook signature verification failed.', err);
+          return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
 
-    logI('Webhook recibido', { type: event.type });
+        logI('Webhook recibido', { type: event.type });
 
-    if (event.type === 'checkout.session.completed') {
-      const session        = event.data.object;
-      const checkoutId     = session.id;
-      const paymentIntent  = session.payment_intent || null;
-      const payStatus      = session.payment_status; // 'paid' | 'no_payment_required' | ...
-      const payOk          = payStatus === 'paid' || payStatus === 'no_payment_required';
+        if (event.type === 'checkout.session.completed') {
+          const session        = event.data.object;
+          const checkoutId     = session.id;
+          const paymentIntent  = session.payment_intent || null;
+          const payStatus      = session.payment_status; // 'paid' | 'no_payment_required' | ...
+          const payOk          = payStatus === 'paid' || payStatus === 'no_payment_required';
 
-      logI('session.completed', { checkoutId, payStatus, paymentIntent });
+          logI('session.completed', { checkoutId, payStatus, paymentIntent });
 
-      // Para SMS tras pago confirmado
-      let paidNotify = null;
+          // Para SMS tras pago confirmado
+          let paidNotify = null;
 
-      try {
-        /* ---------- C1) Modo carrito: crear venta ahora ---------- */
-        if (session.metadata?.cart) {
-          let cart = null;
-          try { cart = JSON.parse(session.metadata.cart); } catch {}
+          try {
+            /* ---------- C1) Modo carrito: crear venta ahora ---------- */
+            if (session.metadata?.cart) {
+              let cart = null;
+              try { cart = JSON.parse(session.metadata.cart); } catch {}
 
-          if (cart) {
-            await prisma.$transaction(async (tx) => {
-              // 1) Normalizar + totales
-              const normItems = await normalizeItems(tx, cart.items || []);
-              await assertStock(tx, Number(cart.storeId), normItems);
-              const { lineItems, totalProducts } =
-                await recalcTotals(tx, Number(cart.storeId), normItems);
+              if (cart) {
+                await prisma.$transaction(async (tx) => {
+                  // 1) Normalizar + totales
+                  const normItems = await normalizeItems(tx, cart.items || []);
+                  await assertStock(tx, Number(cart.storeId), normItems);
+                  const { lineItems, totalProducts } =
+                    await recalcTotals(tx, Number(cart.storeId), normItems);
 
-              // 2) Cliente
-              let customerId = null, snapshot = null;
-              const isDelivery =
-                String(cart.type).toUpperCase() === 'DELIVERY' ||
-                String(cart.delivery).toUpperCase() === 'COURIER';
+                  // 2) Cliente
+                  let customerId = null, snapshot = null;
+                  const isDelivery =
+                    String(cart.type).toUpperCase() === 'DELIVERY' ||
+                    String(cart.delivery).toUpperCase() === 'COURIER';
 
-              if (cart?.customer?.phone?.trim()) {
-                const phone = onlyDigits(cart.customer.phone);
-                const name  = (cart.customer.name || '').trim();
+                  if (cart?.customer?.phone?.trim()) {
+                    const phone = onlyDigits(cart.customer.phone);
+                    const name  = (cart.customer.name || '').trim();
 
-                const createAddress = isDelivery
-                  ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
-                  : `(PICKUP) ${phone}`;
+                    const createAddress = isDelivery
+                      ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
+                      : `(PICKUP) ${phone}`;
 
-                const c = await tx.customer.upsert({
-                  where:  { phone },
-                  update: {
-                    phone, name,
-                    ...(isDelivery && {
-                      address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-                      lat: clean(cart.customer.lat),
-                      lng: clean(cart.customer.lng),
-                    }),
-                    portal: clean(cart.customer.portal),
-                    observations: clean(cart.customer.observations),
-                  },
-                  create: {
-                    code: await genCustomerCode(tx),
-                    phone, name,
-                    address_1: createAddress,
-                    portal: clean(cart.customer.portal),
-                    observations: clean(cart.customer.observations),
-                    lat: isDelivery ? clean(cart.customer.lat) : null,
-                    lng: isDelivery ? clean(cart.customer.lng) : null,
-                  },
-                });
-
-                customerId = c.id;
-                snapshot = {
-                  phone: c.phone, name: c.name,
-                  address_1: c.address_1, portal: c.portal, observations: c.observations,
-                  lat: c.lat, lng: c.lng
-                };
-              }
-
-              // 3) Extras + cupón (aplicar y marcar USED solo si payOk)
-              const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
-              let discounts = 0;
-
-              const couponCode = upper(cart.coupon || '');
-              if (couponCode) {
-                const coup    = await tx.coupon.findUnique({ where: { code: couponCode } });
-                const now     = new Date();
-                const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
-
-                if (coup && !coup.used && !expired) {
-                  if (isFpCode(couponCode)) {
-                    const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
-                    discounts = discountAmount;
-                    extrasFinal.push({
-                      code: 'COUPON',
-                      label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`,
-                      amount: -discounts
+                    const c = await tx.customer.upsert({
+                      where:  { phone },
+                      update: {
+                        phone, name,
+                        ...(isDelivery && {
+                          address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                          lat: clean(cart.customer.lat),
+                          lng: clean(cart.customer.lng),
+                        }),
+                        portal: clean(cart.customer.portal),
+                        observations: clean(cart.customer.observations),
+                      },
+                      create: {
+                        code: await genCustomerCode(tx),
+                        phone, name,
+                        address_1: createAddress,
+                        portal: clean(cart.customer.portal),
+                        observations: clean(cart.customer.observations),
+                        lat: isDelivery ? clean(cart.customer.lat) : null,
+                        lng: isDelivery ? clean(cart.customer.lng) : null,
+                      },
                     });
-                  } else {
-                    const percent = Number(coup.percent) || 0;
-                    if (percent > 0) {
-                      const discountAmount = round2(totalProducts * (percent / 100));
-                      discounts = discountAmount;
-                      extrasFinal.push({
-                        code: 'COUPON',
-                        label: `Cupón ${couponCode} (-${percent}%)`,
-                        amount: -discounts
+
+                    customerId = c.id;
+                    snapshot = {
+                      phone: c.phone, name: c.name,
+                      address_1: c.address_1, portal: c.portal, observations: c.observations,
+                      lat: c.lat, lng: c.lng
+                    };
+                  }
+
+                  // 3) Extras + cupón (aplicar y marcar USED solo si payOk)
+                  const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+                  let discounts = 0;
+
+                  const couponCode = upper(cart.coupon || '');
+                  if (couponCode) {
+                    const coup    = await tx.coupon.findUnique({ where: { code: couponCode } });
+                    const now     = new Date();
+                    const expired = !!(coup?.expiresAt && coup.expiresAt <= now);
+
+                    if (coup && !coup.used && !expired) {
+                      if (isFpCode(couponCode)) {
+                        const discountAmount = round2(Math.min(FP_VALUE_EUR, totalProducts));
+                        discounts = discountAmount;
+                        extrasFinal.push({
+                          code: 'COUPON',
+                          label: `Cupón ${couponCode} (-€${discountAmount.toFixed(2)})`,
+                          amount: -discounts
+                        });
+                      } else {
+                        const percent = Number(coup.percent) || 0;
+                        if (percent > 0) {
+                          const discountAmount = round2(totalProducts * (percent / 100));
+                          discounts = discountAmount;
+                          extrasFinal.push({
+                            code: 'COUPON',
+                            label: `Cupón ${couponCode} (-${percent}%)`,
+                            amount: -discounts
+                          });
+                        }
+                      }
+
+                      // 🔒 Marca usado SOLO si el pago es OK
+                      if (payOk) {
+                        const { count } = await tx.coupon.updateMany({
+                          where: {
+                            code: couponCode,
+                            used: false,
+                            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+                          },
+                          data: { used: true, usedAt: now }
+                        });
+                        if (count === 0) throw new Error('COUPON_RACE');
+                      }
+                    }
+                  }
+
+                  // 4) Crear venta (status según payOk)
+                  const sale = await tx.sale.create({
+                    data: {
+                      code: await genOrderCode(tx),
+                      storeId: Number(cart.storeId),
+                      customerId,
+                      type: cart.type || 'LOCAL',
+                      delivery: cart.delivery || 'PICKUP',
+                      customerData: snapshot || cart.customer || {},
+                      products: lineItems,
+                      totalProducts,
+                      discounts,
+                      total:
+                        round2(totalProducts - discounts) +
+                        (Array.isArray(extrasFinal)
+                          ? extrasFinal.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+                          : 0),
+                      extras: extrasFinal,
+                      notes: cart.notes || '',
+                      channel: cart.channel || 'WEB',
+                      status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+                      stripeCheckoutSessionId: checkoutId,
+                      stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+                      address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+                      lat:       snapshot?.lat       ?? cart?.customer?.lat       ?? null,
+                      lng:       snapshot?.lng       ?? cart?.customer?.lng       ?? null,
+                    }
+                  });
+
+                  // 5) Bajar stock solo si pago OK
+                  if (payOk) {
+                    for (const p of lineItems) {
+                      await tx.storePizzaStock.update({
+                        where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
+                        data:  { stock: { decrement: Number(p.qty) } }
                       });
                     }
                   }
 
-                  // 🔒 Marca usado SOLO si el pago es OK
+                  // 6) Preparar SMS si pago OK
                   if (payOk) {
-                    const { count } = await tx.coupon.updateMany({
-                      where: {
-                        code: couponCode,
-                        used: false,
-                        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
-                      },
-                      data: { used: true, usedAt: now }
+                    const store = await tx.store.findUnique({
+                      where: { id: sale.storeId },
+                      select: { storeName: true }
                     });
-                    if (count === 0) throw new Error('COUPON_RACE');
+                    paidNotify = {
+                      phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
+                      name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
+                      code : sale.code,
+                      storeName: store?.storeName || 'myCrushPizza',
+                      isDelivery:
+                        String(sale.delivery).toUpperCase() === 'COURIER' ||
+                        String(sale.type).toUpperCase() === 'DELIVERY'
+                    };
                   }
-                }
-              }
 
-              // 4) Crear venta (status según payOk)
-              const sale = await tx.sale.create({
-                data: {
-                  code: await genOrderCode(tx),
-                  storeId: Number(cart.storeId),
-                  customerId,
-                  type: cart.type || 'LOCAL',
-                  delivery: cart.delivery || 'PICKUP',
-                  customerData: snapshot || cart.customer || {},
-                  products: lineItems,
-                  totalProducts,
-                  discounts,
-                  total:
-                    round2(totalProducts - discounts) +
-                    (Array.isArray(extrasFinal)
-                      ? extrasFinal.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-                      : 0),
-                  extras: extrasFinal,
-                  notes: cart.notes || '',
-                  channel: cart.channel || 'WEB',
-                  status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-                  stripeCheckoutSessionId: checkoutId,
-                  stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-                  address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-                  lat:       snapshot?.lat       ?? cart?.customer?.lat       ?? null,
-                  lng:       snapshot?.lng       ?? cart?.customer?.lng       ?? null,
+                  logI('Venta creada desde webhook (cart)', {
+                    saleId: sale.id, code: sale.code, payStatus
+                  });
+                });
+
+                // Enviar SMS fuera de la transacción
+                if (payOk && paidNotify?.phone) {
+                  const body = buildPaidMsg(paidNotify);
+                  sendSMS(paidNotify.phone, body).catch(err =>
+                    console.error('[Twilio SMS error PAID(cart)]', { err: err.message, code: paidNotify.code })
+                  );
+                }
+
+                return res.json({ received: true });
+              }
+            }
+
+            /* ---------- C2) Venta previa: marcar pagada ---------- */
+            await prisma.$transaction(async (tx) => {
+              // buscar por checkoutId; fallback por client_reference_id
+              let sale = await tx.sale.findFirst({
+                where: { stripeCheckoutSessionId: checkoutId },
+                select: {
+                  id: true, code: true, type: true, delivery: true, status: true,
+                  storeId: true, products: true, customerData: true,
+                  store: { select: { storeName: true } }
                 }
               });
 
-              // 5) Bajar stock solo si pago OK
+              if (!sale && session.client_reference_id) {
+                sale = await tx.sale.findFirst({
+                  where: { code: session.client_reference_id },
+                  select: {
+                    id: true, code: true, type: true, delivery: true, status: true,
+                    storeId: true, products: true, customerData: true,
+                    store: { select: { storeName: true } }
+                  }
+                });
+              }
+
+              if (!sale) { logW('Webhook session sin venta asociada', { checkoutId }); return; }
+              if (sale.status === 'PAID') { logI('Webhook idempotente (ya pagado)', { saleId: sale.id }); return; }
+
+              // Bajar stock solo si pago OK
               if (payOk) {
-                for (const p of lineItems) {
+                const items = Array.isArray(sale.products)
+                  ? sale.products
+                  : JSON.parse(sale.products || '[]');
+                for (const p of items) {
                   await tx.storePizzaStock.update({
                     where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
                     data:  { stock: { decrement: Number(p.qty) } }
@@ -1087,120 +1160,47 @@ router.post(
                 }
               }
 
-              // 6) Preparar SMS si pago OK
+              await tx.sale.update({
+                where: { id: sale.id },
+                data: {
+                  status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+                  paidAt: payOk ? new Date() : null,
+                  stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+                  processed: false
+                }
+              });
+
               if (payOk) {
-                const store = await tx.store.findUnique({
-                  where: { id: sale.storeId },
-                  select: { storeName: true }
-                });
                 paidNotify = {
-                  phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
-                  name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
+                  phone: (sale.customerData?.phone || '').trim(),
+                  name : (sale.customerData?.name  || '').trim(),
                   code : sale.code,
-                  storeName: store?.storeName || 'myCrushPizza',
+                  storeName: sale.store?.storeName || 'myCrushPizza',
                   isDelivery:
                     String(sale.delivery).toUpperCase() === 'COURIER' ||
-                    String(sale.type).toUpperCase() === 'DELIVERY'
+                    String(sale.type || '').toUpperCase() === 'DELIVERY' ||
+                    sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
                 };
               }
 
-              logI('Venta creada desde webhook (cart)', {
-                saleId: sale.id, code: sale.code, payStatus
-              });
+              logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
             });
 
-            // Enviar SMS fuera de la transacción
             if (payOk && paidNotify?.phone) {
               const body = buildPaidMsg(paidNotify);
               sendSMS(paidNotify.phone, body).catch(err =>
-                console.error('[Twilio SMS error PAID(cart)]', { err: err.message, code: paidNotify.code })
+                console.error('[Twilio SMS error PAID(update)]', { err: err.message, code: paidNotify.code })
               );
             }
 
-            return res.json({ received: true });
+          } catch (e) {
+            logE('[webhook] error al procesar session.completed', e);
           }
         }
 
-        /* ---------- C2) Venta previa: marcar pagada ---------- */
-        await prisma.$transaction(async (tx) => {
-          // buscar por checkoutId; fallback por client_reference_id
-          let sale = await tx.sale.findFirst({
-            where: { stripeCheckoutSessionId: checkoutId },
-            select: {
-              id: true, code: true, type: true, delivery: true, status: true,
-              storeId: true, products: true, customerData: true,
-              store: { select: { storeName: true } }
-            }
-          });
-
-          if (!sale && session.client_reference_id) {
-            sale = await tx.sale.findFirst({
-              where: { code: session.client_reference_id },
-              select: {
-                id: true, code: true, type: true, delivery: true, status: true,
-                storeId: true, products: true, customerData: true,
-                store: { select: { storeName: true } }
-              }
-            });
-          }
-
-          if (!sale) { logW('Webhook session sin venta asociada', { checkoutId }); return; }
-          if (sale.status === 'PAID') { logI('Webhook idempotente (ya pagado)', { saleId: sale.id }); return; }
-
-          // Bajar stock solo si pago OK
-          if (payOk) {
-            const items = Array.isArray(sale.products)
-              ? sale.products
-              : JSON.parse(sale.products || '[]');
-            for (const p of items) {
-              await tx.storePizzaStock.update({
-                where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
-                data:  { stock: { decrement: Number(p.qty) } }
-              });
-            }
-          }
-
-          await tx.sale.update({
-            where: { id: sale.id },
-            data: {
-              status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-              paidAt: payOk ? new Date() : null,
-              stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-              processed: false
-            }
-          });
-
-          if (payOk) {
-            paidNotify = {
-              phone: (sale.customerData?.phone || '').trim(),
-              name : (sale.customerData?.name  || '').trim(),
-              code : sale.code,
-              storeName: sale.store?.storeName || 'myCrushPizza',
-              isDelivery:
-                String(sale.delivery).toUpperCase() === 'COURIER' ||
-                String(sale.type || '').toUpperCase() === 'DELIVERY' ||
-                sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
-            };
-          }
-
-          logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
-        });
-
-        if (payOk && paidNotify?.phone) {
-          const body = buildPaidMsg(paidNotify);
-          sendSMS(paidNotify.phone, body).catch(err =>
-            console.error('[Twilio SMS error PAID(update)]', { err: err.message, code: paidNotify.code })
-          );
-        }
-
-      } catch (e) {
-        logE('[webhook] error al procesar session.completed', e);
+        return res.json({ received: true });
       }
-    }
-
-    return res.json({ received: true });
-  }
-);
+    );
 
 
   // Estado rápido por código
