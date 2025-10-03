@@ -6,7 +6,7 @@ const GOOGLE  = process.env.GOOGLE_GEOCODING_KEY;
 
 module.exports = (prisma) => {
 
-  /* helper: CUS-##### único -------------------------------------- */
+  // ── helper CUS-#####
   async function genCustomerCode() {
     let code;
     do {
@@ -15,65 +15,55 @@ module.exports = (prisma) => {
     return code;
   }
 
-  const normPhone = (s = "") => s.replace(/[^\d+]/g, "");
+  const normPhone = (s="") => s.replace(/[^\d+]/g, "");
   const toInt = (v) => {
     const n = parseInt(v, 10);
     return Number.isFinite(n) && n >= 0 ? n : undefined;
   };
 
-  /* ────────────────────────────────────────────────────────────────
-   * 1)  GET /api/customers
-   *     → lista compacta para el mapa  (id, name, lat, lng, daysOff)
-   * ---------------------------------------------------------------- */
+  /* 1) lista compacta (mapa) */
   router.get("/", async (_, res) => {
     try {
       const list = await prisma.customer.findMany({
-        select: {
-          id      : true,
-          name    : true,
-          lat     : true,
-          lng     : true,
-          daysOff : true              //  ← ya calculado en tu DB
-        },
-        orderBy: { updatedAt: "desc" }
+        select: { id:true, name:true, lat:true, lng:true, daysOff:true },
+        orderBy: { updatedAt:"desc" }
       });
       res.json(list);
     } catch (err) {
       console.error("[CUSTOMERS/] error:", err);
-      res.status(500).json({ error: "internal" });
+      res.status(500).json({ error:"internal" });
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 1.b) GET /api/customers/admin?q=&skip=&take=
-   *      → listado completo para Backoffice (búsqueda amplia)
-   * ---------------------------------------------------------------- */
+  /* 1.b) listado admin (Backoffice) + últimos N */
   router.get("/admin", async (req, res) => {
     const q    = (req.query.q || "").trim();
-    const skip = toInt(req.query.skip) || 0;
     const take = Math.min(toInt(req.query.take) || 50, 200);
+    const skip = toInt(req.query.skip) || 0;
 
-    // filtros
     const digits = q.replace(/\D/g, "");
-    const text   = q.toUpperCase();
-
     try {
       const where = q ? {
         OR: [
-          { name     : { contains: q, mode: "insensitive" } },
+          { name     : { contains: q, mode:"insensitive" } },
           digits ? { phone   : { contains: digits } } : undefined,
-          { email    : { contains: q, mode: "insensitive" } },
-          { code     : { contains: q, mode: "insensitive" } },
-          { address_1: { contains: text } },
-          // Si usas String[] para tags en Postgres:
-          // { tags: { has: q } }
+          { email    : { contains: q, mode:"insensitive" } },   // ← búsqueda por email
+          { code     : { contains: q, mode:"insensitive" } },
+          { address_1: { contains: q, mode:"insensitive" } },
         ].filter(Boolean)
       } : {};
 
       const [items, total] = await Promise.all([
         prisma.customer.findMany({
           where,
-          orderBy: { updatedAt: "desc" },
+          orderBy: { createdAt: "desc" }, // últimos agregados primero
+          select: {
+            id:true, code:true, name:true,
+            phone:true, email:true,
+            address_1:true, portal:true, observations:true,
+            isRestricted:true, restrictedAt:true, restrictionReason:true,
+            createdAt:true, updatedAt:true
+          },
           skip, take
         }),
         prisma.customer.count({ where })
@@ -82,33 +72,27 @@ module.exports = (prisma) => {
       res.json({ items, total, skip, take });
     } catch (err) {
       console.error("[CUSTOMERS/admin] error:", err);
-      res.status(500).json({ error: "internal" });
+      res.status(500).json({ error:"internal" });
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 2)  GET /api/customers/search?q=…
-   *     → por teléfono (dígitos) o address_1 (texto) – rápido
-   * ---------------------------------------------------------------- */
+  /* 2) búsqueda rápida por phone/address_1 (rápida) */
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
     if (!q) return res.json([]);
-
     const digits = q.replace(/\D/g, "");
     const text   = q.toUpperCase();
-
     try {
       const found = await prisma.customer.findMany({
         where:{
           OR:[
-            digits ? { phone:     { contains:digits } } : undefined,
-            { address_1:{ contains:text } }
+            digits ? { phone    : { contains:digits } } : undefined,
+            { address_1         : { contains:text } }
           ].filter(Boolean)
         },
         take:5,
         orderBy:{ updatedAt:"desc" }
       });
-      console.log("[SEARCH]", q, `→ ${found.length} hit(s)`);
       res.json(found);
     } catch (err) {
       console.error("[CUSTOMERS/search] error:", err);
@@ -116,32 +100,22 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 3)  POST /api/customers
-   *     → crea o actualiza (upsert) por address_1 **o** por phone
-   *        - si hay address_1 y faltan coords ⇒ geocode
-   *        - permite alta manual sin address (p.ej. sólo teléfono)
-   * ---------------------------------------------------------------- */
+  /* 3) alta/upsert real (con email) */
   router.post("/", async (req, res) => {
     try {
       let {
         name, phone, email,
-        address_1, portal, observations, // compat anterior
-        notes, tags,                      // nuevos opcionales
+        address_1, portal, observations,
         lat, lng
       } = req.body;
 
       phone = normPhone(phone || "");
-      const hasAddress = !!address_1;
-      const hasPhone   = !!phone;
+      if (!address_1 && !phone)
+        return res.status(400).json({ error:"address_1 o phone requerido" });
 
-      if (!hasAddress && !hasPhone) {
-        return res.status(400).json({ error: "address_1 o phone requerido" });
-      }
-
-      // ① coords si hay address_1 y faltan
+      // coords si hay address_1 y faltan
       let geo = { lat: lat != null ? +lat : null, lng: lng != null ? +lng : null };
-      if (hasAddress && (!geo.lat || !geo.lng)) {
+      if (address_1 && (!geo.lat || !geo.lng)) {
         const { data:g } = await axios.get(
           "https://maps.googleapis.com/maps/api/geocode/json",
           { params:{ address:address_1, components:"country:ES", key:GOOGLE } }
@@ -151,62 +125,40 @@ module.exports = (prisma) => {
         geo = g.results[0].geometry.location;
       }
 
-      // Preparar datos
-      const data = {
-        name, phone, email,
-        address_1, portal,
-        observations, notes,
-        ...(Array.isArray(tags) ? { tags } : {}),
-        ...geo
-      };
+      const data = { name, phone, email, address_1, portal, observations, ...geo };
 
-      // ② upsert flexible: prioriza address_1 si existe, si no por phone
+      // upsert por address_1 si existe; si no, por phone
       let saved;
-      if (hasAddress) {
+      if (address_1) {
         saved = await prisma.customer.upsert({
           where : { address_1 },
           update: data,
-          create: { code: await genCustomerCode(), ...data }
+          create: { code: await genCustomerCode(), origin:"PHONE", ...data }
         });
       } else {
-        // si no hay address, usamos phone como (pseudo) unique lógico
-        // (recomendado: crear índice único en phone si procede)
         const existing = await prisma.customer.findFirst({ where: { phone } });
-        if (existing) {
-          saved = await prisma.customer.update({
-            where: { id: existing.id },
-            data
-          });
-        } else {
-          saved = await prisma.customer.create({
-            data: { code: await genCustomerCode(), ...data }
-          });
-        }
+        saved = existing
+          ? await prisma.customer.update({ where:{ id: existing.id }, data })
+          : await prisma.customer.create({ data:{ code: await genCustomerCode(), origin:"PHONE", ...data } });
       }
 
       res.json(saved);
     } catch (err) {
       console.error("[CUSTOMERS/post]", err);
+      // conflictos por uniques: Prisma lanza P2002
+      if (err.code === "P2002") {
+        return res.status(409).json({ error:"Unique constraint violation", meta: err.meta });
+      }
       res.status(500).json({ error:"internal" });
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 3.b) PATCH /api/customers/:id
-   *      → editar campos generales (sin geocode automático)
-   * ---------------------------------------------------------------- */
+  /* 3.b) edición simple (incluye email) */
   router.patch("/:id", async (req, res) => {
     const id = +req.params.id;
-    if (!id) return res.status(400).json({ error: "Invalid ID" });
-
+    if (!id) return res.status(400).json({ error:"Invalid ID" });
     try {
-      const {
-        name, phone, email,
-        address_1, portal,
-        observations, notes, tags,
-        lat, lng
-      } = req.body;
-
+      const { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
       const data = {
         ...(name != null ? { name } : {}),
         ...(phone != null ? { phone: normPhone(phone) } : {}),
@@ -214,24 +166,21 @@ module.exports = (prisma) => {
         ...(address_1 != null ? { address_1 } : {}),
         ...(portal != null ? { portal } : {}),
         ...(observations != null ? { observations } : {}),
-        ...(notes != null ? { notes } : {}),
-        ...(Array.isArray(tags) ? { tags } : {}),
         ...(lat != null ? { lat: +lat } : {}),
         ...(lng != null ? { lng: +lng } : {}),
       };
-
-      const updated = await prisma.customer.update({ where: { id }, data });
+      const updated = await prisma.customer.update({ where:{ id }, data });
       res.json(updated);
     } catch (err) {
       console.error("[CUSTOMERS/patch]", err);
-      res.status(500).json({ error: "internal" });
+      if (err.code === "P2002") {
+        return res.status(409).json({ error:"Unique constraint violation", meta: err.meta });
+      }
+      res.status(500).json({ error:"internal" });
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 3.c) PATCH /api/customers/:id/restrict
-   *      body: { isRestricted: boolean, reason?: string }
-   * ---------------------------------------------------------------- */
+  /* 3.c) restricción / quitar restricción */
   router.patch("/:id/restrict", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -251,26 +200,15 @@ module.exports = (prisma) => {
       res.json(updated);
     } catch (err) {
       console.error("[CUSTOMERS/restrict]", err);
-      res.status(500).json({ error: "internal" });
+      res.status(500).json({ error:"internal" });
     }
   });
 
-  /* ────────────────────────────────────────────────────────────────
-   * 4)  DELETE /api/customers/:id
-   *     → elimina cliente por ID (recomendado: soft delete)
-   * ---------------------------------------------------------------- */
+  /* 4) eliminar (duro; si prefieres soft delete, lo cambiamos) */
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
-
     try {
-      // Si tu esquema tiene soft delete:
-      // const out = await prisma.customer.update({
-      //   where: { id },
-      //   data : { isDeleted: true, deletedAt: new Date() }
-      // });
-      // return res.json({ ok:true, soft:true });
-
       await prisma.customer.delete({ where: { id } });
       res.json({ ok: true });
     } catch (err) {

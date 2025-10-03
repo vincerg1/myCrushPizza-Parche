@@ -94,6 +94,7 @@ model Customer {
   code         String         @unique
   name         String?
   phone        String?        @unique
+  email        String?        @unique     // ★ nuevo
   address_1    String         @unique
   portal       String?
   observations String?
@@ -103,6 +104,11 @@ model Customer {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   daysOff      Int?
+
+  // ★ restricción/ban
+  isRestricted       Boolean   @default(false)
+  restrictedAt       DateTime?
+  restrictionReason  String?
 
   sales Sale[] @relation("CustomerSales")
 }
