@@ -4,13 +4,23 @@ import React, { useEffect, useState } from "react";
  * - Usa REACT_APP_API_BASE o window.__API_BASE__ si existe.
  * - Si no, usa el mismo origen (válido cuando backend y front comparten dominio).
  */
-const API_BASE =
-  (window.__API_BASE__ || process.env.REACT_APP_API_BASE || "").replace(/\/$/, "");
-
-const buildURL = (path) => {
-  if (/^https?:\/\//i.test(path)) return path;
-  return `${API_BASE}${path}`;
+const guessDevBase = () => {
+  const { protocol, hostname, port } = window.location;
+  if ((hostname === "localhost" || hostname === "127.0.0.1") && port === "3000") {
+    return `${protocol}//${hostname}:8080`;
+  }
+  return "";
 };
+
+const API_BASE = (
+  window.__API_BASE__ ||
+  process.env.REACT_APP_API_BASE ||
+  process.env.REACT_APP_API_URL ||   // ← ahora sí toma tu var
+  guessDevBase() ||
+  ""
+).replace(/\/$/, "");
+
+const buildURL = (path) => (/^https?:\/\//i.test(path) ? path : `${API_BASE}${path}`);
 
 async function httpJSON(path, opts = {}) {
   const url = buildURL(path);
