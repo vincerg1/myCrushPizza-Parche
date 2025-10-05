@@ -35,7 +35,7 @@ async function httpJSON(path, opts = {}) {
 const CustomersAPI = {
   async listByPhone({ phoneDigits = "", take = 50, skip = 0 } = {}) {
     const qs = new URLSearchParams();
-    if (phoneDigits) qs.set("q", phoneDigits); // backend /admin ahora busca SOLO por phone
+    if (phoneDigits) qs.set("q", phoneDigits);
     qs.set("take", String(take));
     qs.set("skip", String(skip));
     return httpJSON(`/api/customers/admin?${qs.toString()}`);
@@ -147,6 +147,23 @@ export default function CustomersPanel() {
     }
   };
 
+  // ★ eliminar cliente actual (desde el modal)
+  const onDeleteCurrent = async (id) => {
+    if (!id) return;
+    if (!window.confirm("¿Eliminar este cliente? Esta acción no se puede deshacer.")) return;
+    setLoading(true); setError("");
+    try {
+      await CustomersAPI.remove(id);
+      await loadLatest();
+      setShowForm(false); setEditing(null);
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo eliminar. " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
@@ -231,13 +248,14 @@ export default function CustomersPanel() {
           initial={editing || {}}
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSubmit={onSubmitForm}
+          onDelete={editing?.id ? () => onDeleteCurrent(editing.id) : null}  // ★ pasa handler
         />
       )}
     </div>
   );
 }
 
-function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
+function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
   const [name, setName] = useState(initial.name || "");
   const [phone, setPhone] = useState(initial.phone || "");
   const [email, setEmail] = useState(initial.email || "");
@@ -249,7 +267,7 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
     e.preventDefault();
     const payload = {
       name: name.trim() || null,
-      phone: phone.trim(), // se normaliza en el prechequeo
+      phone: phone.trim(),
       email: email.trim() || null,
       address_1: address.trim(),
       portal: portal.trim() || null,
@@ -298,9 +316,24 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit }) {
           </label>
         </div>
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn" type="submit">{initial?.id ? "Save" : "Create"}</button>
+        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+          {/* Botón Delete solo si estamos editando */}
+          {onDelete && initial?.id ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              className="btn"
+              style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}
+              title="Eliminar este cliente"
+            >
+              Delete
+            </button>
+          ) : <span />}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn" type="submit">{initial?.id ? "Save" : "Create"}</button>
+          </div>
         </div>
       </form>
     </div>
