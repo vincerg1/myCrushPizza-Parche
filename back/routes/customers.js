@@ -47,7 +47,7 @@ module.exports = (prisma) => {
         OR: [
           { name     : { contains: q, mode:"insensitive" } },
           digits ? { phone   : { contains: digits } } : undefined,
-          { email    : { contains: q, mode:"insensitive" } },   // ← búsqueda por email
+          { email    : { contains: q, mode:"insensitive" } },
           { code     : { contains: q, mode:"insensitive" } },
           { address_1: { contains: q, mode:"insensitive" } },
         ].filter(Boolean)
@@ -100,7 +100,7 @@ module.exports = (prisma) => {
     }
   });
 
-  /* 3) alta/upsert real (con email) */
+  /* 3) alta/upsert real (con email) — address opcional y geocoding “suave” */
   router.post("/", async (req, res) => {
     try {
       let {
@@ -109,38 +109,58 @@ module.exports = (prisma) => {
         lat, lng
       } = req.body;
 
+      // normalizar phone
       phone = normPhone(phone || "");
-      if (!address_1 && !phone)
-        return res.status(400).json({ error:"address_1 o phone requerido" });
 
-      // coords si hay address_1 y faltan
-      let geo = { lat: lat != null ? +lat : null, lng: lng != null ? +lng : null };
-      if (address_1 && (!geo.lat || !geo.lng)) {
-        const { data:g } = await axios.get(
-          "https://maps.googleapis.com/maps/api/geocode/json",
-          { params:{ address:address_1, components:"country:ES", key:GOOGLE } }
-        );
-        if (!g.results?.length)
-          return res.status(400).json({ error:"Dirección no encontrada" });
-        geo = g.results[0].geometry.location;
+      // Reglas: necesitamos al menos phone O address_1
+      if (!phone && !address_1)
+        return res.status(400).json({ error:"phone o address_1 requerido" });
+
+      // Si falta address_1, generamos uno de cortesía (cumple UNIQUE)
+      // patrón coherente con tus datos existentes: "(PICKUP) <phone>"
+      let address = (address_1 || "").trim();
+      if (!address) {
+        address = phone ? `(PICKUP) ${phone}` : `(PICKUP) ${Date.now()}`;
       }
 
-      const data = { name, phone, email, address_1, portal, observations, ...geo };
+      // coords iniciales (mantener null si no vienen válidas)
+      let geo = {
+        lat: lat != null ? +lat : null,
+        lng: lng != null ? +lng : null
+      };
 
-      // upsert por address_1 si existe; si no, por phone
-      let saved;
-      if (address_1) {
-        saved = await prisma.customer.upsert({
-          where : { address_1 },
-          update: data,
-          create: { code: await genCustomerCode(), origin:"PHONE", ...data }
-        });
-      } else {
-        const existing = await prisma.customer.findFirst({ where: { phone } });
-        saved = existing
-          ? await prisma.customer.update({ where:{ id: existing.id }, data })
-          : await prisma.customer.create({ data:{ code: await genCustomerCode(), origin:"PHONE", ...data } });
+      // Geocode solo si:
+      // - hay address "real" (no PICKUP)
+      // - faltan coords
+      // - hay GOOGLE key
+      const isPickupAddr = /^\(PICKUP\)/i.test(address);
+      if (!isPickupAddr && (!geo.lat || !geo.lng) && GOOGLE) {
+        try {
+          const { data:g } = await axios.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            { params:{ address, components:"country:ES", key:GOOGLE } }
+          );
+          const loc = g?.results?.[0]?.geometry?.location;
+          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+            geo = { lat: loc.lat, lng: loc.lng };
+          } else {
+            // antes devolvía 400; ahora seguimos sin coords
+            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
+          }
+        } catch (e) {
+          // fallo de geocode: continuamos
+          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
+        }
       }
+
+      const data = { name, phone, email, address_1: address, portal, observations, ...geo };
+
+      // upsert por address_1 (UNIQUE)
+      const saved = await prisma.customer.upsert({
+        where : { address_1: address },
+        update: data,
+        create: { code: await genCustomerCode(), origin:"PHONE", ...data }
+      });
 
       res.json(saved);
     } catch (err) {
