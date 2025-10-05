@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 
 /** ===== Config base de API =====
- * - Usa REACT_APP_API_BASE o window.__API_BASE__ si existe.
- * - Si no, usa el mismo origen (válido cuando backend y front comparten dominio).
+ * Prioriza window.__API_BASE__, luego REACT_APP_API_BASE,
+ * luego REACT_APP_API_URL (tu var en Railway),
+ * y como fallback en dev usa :8080 cuando estás en :3000.
  */
 const guessDevBase = () => {
   const { protocol, hostname, port } = window.location;
@@ -15,7 +16,7 @@ const guessDevBase = () => {
 const API_BASE = (
   window.__API_BASE__ ||
   process.env.REACT_APP_API_BASE ||
-  process.env.REACT_APP_API_URL ||   // ← ahora sí toma tu var
+  process.env.REACT_APP_API_URL ||
   guessDevBase() ||
   ""
 ).replace(/\/$/, "");
@@ -24,18 +25,19 @@ const buildURL = (path) => (/^https?:\/\//i.test(path) ? path : `${API_BASE}${pa
 
 async function httpJSON(path, opts = {}) {
   const url = buildURL(path);
+  // log útil para ver el destino real de cada petición
+  console.debug("[HTTP]", (opts.method || "GET").toUpperCase(), url);
+
   const res = await fetch(url, {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     credentials: "include",
     ...opts,
   });
 
-  // Leemos siempre como texto primero para poder diagnosticar errores
   const raw = await res.text();
   const ct = (res.headers.get("content-type") || "").toLowerCase();
 
   if (!res.ok) {
-    // Mensaje útil con el inicio del body
     const snippet = raw.slice(0, 200);
     throw new Error(`${res.status} ${res.statusText} – ${snippet}`);
   }
@@ -52,12 +54,11 @@ async function httpJSON(path, opts = {}) {
 
 const CustomersAPI = {
   async list({ q = "", take = 5, skip = 0 } = {}) {
-    const u = new URL("/api/customers/admin", window.location.origin);
-    if (q) u.searchParams.set("q", q);
-    u.searchParams.set("take", take);
-    u.searchParams.set("skip", skip);
-    // Usamos sólo el pathname+search al pasar a httpJSON, para que buildURL funcione bien
-    return httpJSON(`/api/customers/admin?${u.searchParams.toString()}`);
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    qs.set("take", String(take));
+    qs.set("skip", String(skip));
+    return httpJSON(`/api/customers/admin?${qs.toString()}`);
   },
   async create(payload) {
     return httpJSON(`/api/customers`, {
@@ -113,6 +114,12 @@ export default function CustomersPanel() {
   };
 
   useEffect(() => {
+    if (!API_BASE) {
+      console.warn(
+        "[CustomersPanel] API_BASE vacío. Si el front y el back no comparten dominio, define REACT_APP_API_URL o REACT_APP_API_BASE en el build."
+      );
+    }
+    console.info("[CustomersPanel] API_BASE =>", API_BASE || "(vacío / mismo origen)");
     loadLatest();
   }, []);
 
@@ -146,6 +153,12 @@ export default function CustomersPanel() {
   };
 
   const onSubmitForm = async (form) => {
+    // Validación mínima coherente con el backend: requiere phone o address_1
+    if (!normalizePhone(form.phone || "") && !(form.address_1 || "").trim()) {
+      setError("Debes indicar al menos teléfono o address_1.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     try {
