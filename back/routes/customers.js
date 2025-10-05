@@ -41,22 +41,15 @@ module.exports = (prisma) => {
     const take = Math.min(toInt(req.query.take) || 50, 200);
     const skip = toInt(req.query.skip) || 0;
 
+    // solo dígitos para teléfono
     const digits = q.replace(/\D/g, "");
-    try {
-      const where = q ? {
-        OR: [
-          { name     : { contains: q, mode:"insensitive" } },
-          digits ? { phone   : { contains: digits } } : undefined,
-          { email    : { contains: q, mode:"insensitive" } },
-          { code     : { contains: q, mode:"insensitive" } },
-          { address_1: { contains: q, mode:"insensitive" } },
-        ].filter(Boolean)
-      } : {};
+    const where = digits ? { phone: { contains: digits } } : {};
 
+    try {
       const [items, total] = await Promise.all([
         prisma.customer.findMany({
           where,
-          orderBy: { createdAt: "desc" }, // últimos agregados primero
+          orderBy: { createdAt: "desc" },
           select: {
             id:true, code:true, name:true,
             phone:true, email:true,
@@ -102,75 +95,68 @@ module.exports = (prisma) => {
 
   /* 3) alta/upsert real (con email) — address opcional y geocoding “suave” */
   router.post("/", async (req, res) => {
-    try {
-      let {
-        name, phone, email,
-        address_1, portal, observations,
-        lat, lng
-      } = req.body;
+  try {
+    let {
+      name, phone, email,
+      address_1, portal, observations,
+      lat, lng
+    } = req.body;
 
-      // normalizar phone
-      phone = normPhone(phone || "");
+    // normalizar phone y exigirlo
+    phone = normPhone(phone || "");
+    if (!phone) return res.status(400).json({ error: "phone requerido" });
 
-      // Reglas: necesitamos al menos phone O address_1
-      if (!phone && !address_1)
-        return res.status(400).json({ error:"phone o address_1 requerido" });
-
-      // Si falta address_1, generamos uno de cortesía (cumple UNIQUE)
-      // patrón coherente con tus datos existentes: "(PICKUP) <phone>"
-      let address = (address_1 || "").trim();
-      if (!address) {
-        address = phone ? `(PICKUP) ${phone}` : `(PICKUP) ${Date.now()}`;
-      }
-
-      // coords iniciales (mantener null si no vienen válidas)
-      let geo = {
-        lat: lat != null ? +lat : null,
-        lng: lng != null ? +lng : null
-      };
-
-      // Geocode solo si:
-      // - hay address "real" (no PICKUP)
-      // - faltan coords
-      // - hay GOOGLE key
-      const isPickupAddr = /^\(PICKUP\)/i.test(address);
-      if (!isPickupAddr && (!geo.lat || !geo.lng) && GOOGLE) {
-        try {
-          const { data:g } = await axios.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            { params:{ address, components:"country:ES", key:GOOGLE } }
-          );
-          const loc = g?.results?.[0]?.geometry?.location;
-          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
-            geo = { lat: loc.lat, lng: loc.lng };
-          } else {
-            // antes devolvía 400; ahora seguimos sin coords
-            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
-          }
-        } catch (e) {
-          // fallo de geocode: continuamos
-          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
-        }
-      }
-
-      const data = { name, phone, email, address_1: address, portal, observations, ...geo };
-
-      // upsert por address_1 (UNIQUE)
-      const saved = await prisma.customer.upsert({
-        where : { address_1: address },
-        update: data,
-        create: { code: await genCustomerCode(), origin:"PHONE", ...data }
-      });
-
-      res.json(saved);
-    } catch (err) {
-      console.error("[CUSTOMERS/post]", err);
-      // conflictos por uniques: Prisma lanza P2002
-      if (err.code === "P2002") {
-        return res.status(409).json({ error:"Unique constraint violation", meta: err.meta });
-      }
-      res.status(500).json({ error:"internal" });
+    // si el phone ya existe → 409
+    const existingByPhone = await prisma.customer.findUnique({ where: { phone } });
+    if (existingByPhone) {
+      return res.status(409).json({ error: "phone_exists", customer: existingByPhone });
     }
+
+    // address_1 opcional (si falta, generamos PICKUP)
+    let address = (address_1 || "").trim();
+    if (!address) address = `(PICKUP) ${phone}`;
+
+    // coords iniciales
+    let geo = {
+      lat: lat != null ? +lat : null,
+      lng: lng != null ? +lng : null
+    };
+
+    // Geocode solo si no es PICKUP, faltan coords y hay GOOGLE key
+    const isPickup = /^\(PICKUP\)/i.test(address);
+    if (!isPickup && (!geo.lat || !geo.lng) && GOOGLE) {
+      try {
+        const { data:g } = await axios.get(
+          "https://maps.googleapis.com/maps/api/geocode/json",
+          { params:{ address, components:"country:ES", key:GOOGLE } }
+        );
+        const loc = g?.results?.[0]?.geometry?.location;
+        if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+          geo = { lat: loc.lat, lng: loc.lng };
+        } else {
+          console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
+        }
+      } catch (e) {
+        console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
+      }
+    }
+
+    const data = { name, phone, email, address_1: address, portal, observations, ...geo };
+
+    // crear (address_1 es UNIQUE; si choca, Prisma devolverá P2002)
+    const saved = await prisma.customer.create({
+      data: { code: await genCustomerCode(), origin: "PHONE", ...data }
+    });
+
+    res.json(saved);
+  } catch (err) {
+    console.error("[CUSTOMERS/post]", err);
+    if (err.code === "P2002") {
+      // diferenciamos si choca por address_1 u otro campo
+      return res.status(409).json({ error:"Unique constraint violation", meta: err.meta });
+    }
+    res.status(500).json({ error:"internal" });
+  }
   });
 
   /* 3.b) edición simple (incluye email) */
