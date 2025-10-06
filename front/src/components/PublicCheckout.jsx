@@ -25,34 +25,7 @@ const STATUS_POLL_MS = 8000;
 // Utils
 const phoneDigits = (s) => (s || "").replace(/\D/g, "");
 const hasBaseCustomer = (c) => !!(c?.name?.trim() && phoneDigits(c?.phone).length >= 7);
-const normDigits = (s="") => (s || "").replace(/\D/g,"");
-const [restrictInfo, setRestrictInfo] = useState({ checked:false, restricted:false, reason:"", code:"" });
 
-const checkRestriction = useCallback(async (rawPhone) => {
-  const phone = normDigits(rawPhone || "");
-  if (!phone || phone.length < 7) {
-    const info = { checked:true, restricted:false, reason:"", code:"" };
-    setRestrictInfo(info);
-    return info;
-  }
-  try {
-    // Endpoint ligero del backend: devuelve { restricted:boolean, reason?:string, code?:string }
-    const { data } = await api.get("/api/customers/restriction", { params: { phone } });
-    const info = {
-      checked: true,
-      restricted: !!data?.restricted,
-      reason: data?.reason || "",
-      code: data?.code || ""
-    };
-    setRestrictInfo(info);
-    return info;
-  } catch {
-    // Si el endpoint no existe o falla, no bloqueamos aquí (igual cortará el backend al pagar)
-    const info = { checked:true, restricted:false, reason:"", code:"" };
-    setRestrictInfo(info);
-    return info;
-  }
-}, []);
 // Reverse geocode
 async function reverseGeocode({ lat, lng }) {
   return new Promise((resolve) => {
@@ -149,6 +122,8 @@ export default function PublicCheckout() {
     setConsentTick((t) => t + 1);
   };
   const hasConsent = () => !!getConsent();
+
+  // ===== helpers tienda =====
   const parseOnce = (v) => {
     if (typeof v !== "string") return v;
     try { return JSON.parse(v); } catch { return v; }
@@ -182,33 +157,6 @@ export default function PublicCheckout() {
     },
     [getStoreById]
   );
-
-  const handleNextClick = async () => {
-  setTriedNext(true);
-
-  // Validaciones ya existentes
-  const baseOkLocal = hasBaseCustomer(customer);
-  if (!baseOkLocal) { flashCustomerBtn(); return; }
-
-  if (mode === "deliveryLocate") {
-    if (!addrOk || outOfRange) return;
-  } else {
-    if (!selectedStoreId) return;
-  }
-
-  // 🔒 Chequeo de restricción por teléfono
-  const info = await checkRestriction(customer?.phone);
-  if (info.restricted) {
-    alert(
-      `Tu cuenta está restringida y no podemos continuar.\n` +
-      (info.reason ? `${info.reason}\n` : "") +
-      (info.code ? `Ref.: ${info.code}` : "")
-    );
-    return;
-  }
-
-  setStep("order");
-};
 
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
@@ -326,9 +274,6 @@ export default function PublicCheckout() {
     mode !== "deliveryLocate" ||
     (!!(query?.trim() || customer?.address_1?.trim()) && !!coords && !!nearest?.storeId && !outOfRange);
   const baseOk = hasBaseCustomer(customer);
-
-
-
 
   const nextGuard = () => {
     setTriedNext(true);
@@ -915,13 +860,16 @@ export default function PublicCheckout() {
           Datos del cliente
         </button>
 
-      <button
-        className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-        onClick={handleNextClick}
-        disabled={outOfRange ? true : false}
-      >
-        Siguiente → productos
-      </button>
+        <button
+          className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+          onClick={() => {
+            if (!nextGuard()) return;
+            setStep("order");
+          }}
+          disabled={outOfRange ? true : false}
+        >
+          Siguiente → productos
+        </button>
       </div>
 
       {showCus && (
@@ -932,7 +880,6 @@ export default function PublicCheckout() {
           onSave={(data) => {
             setCustomer({ ...customer, ...data });
             setShowCus(false);
-            checkRestriction(data?.phone);
           }}
         />
       )}
@@ -1040,7 +987,10 @@ export default function PublicCheckout() {
 
             <button
               className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-              onClick={handleNextClick}
+              onClick={() => {
+                if (!nextGuard()) return;
+                setStep("order");
+              }}
             >
               Siguiente → productos
             </button>
