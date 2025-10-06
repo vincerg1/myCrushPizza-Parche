@@ -60,6 +60,9 @@ const CustomersAPI = {
       body: JSON.stringify({ isRestricted: flag, reason }),
     });
   },
+  async resegment() {
+    return httpJSON(`/api/customers/resegment`, { method: "POST" });
+  }
 };
 
 function normalizePhone(s = "") { return s.replace(/[^\d]/g, ""); }
@@ -82,6 +85,22 @@ export default function CustomersPanel() {
       setRows(items); setMeta({ total });
     } catch (e) {
       console.error(e); setError("No se pudo cargar clientes. " + e.message);
+    } finally { setLoading(false); }
+  };
+
+  const reloadSameFilter = async () => {
+    const digits = normalizePhone(query);
+    setLoading(true); setError("");
+    try {
+      if (digits) {
+        const { items, total } = await CustomersAPI.listByPhone({ phoneDigits: digits, take:50 });
+        setRows(items); setMeta({ total });
+      } else {
+        const { items, total } = await CustomersAPI.listByPhone({ phoneDigits:"", take:5 });
+        setRows(items); setMeta({ total });
+      }
+    } catch (e) {
+      console.error(e); setError("No se pudo refrescar la lista. " + e.message);
     } finally { setLoading(false); }
   };
 
@@ -147,18 +166,37 @@ export default function CustomersPanel() {
     }
   };
 
-  // ★ eliminar cliente actual (desde el modal)
+  // eliminar cliente actual (desde el modal)
   const onDeleteCurrent = async (id) => {
     if (!id) return;
     if (!window.confirm("¿Eliminar este cliente? Esta acción no se puede deshacer.")) return;
     setLoading(true); setError("");
     try {
       await CustomersAPI.remove(id);
-      await loadLatest();
+      await reloadSameFilter();
       setShowForm(false); setEditing(null);
     } catch (e) {
       console.error(e);
       setError("No se pudo eliminar. " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onResegment = async () => {
+    setError(""); setLoading(true);
+    try {
+      const r = await CustomersAPI.resegment();
+      await reloadSameFilter();
+      const msg =
+        `Segmentos actualizados.\n` +
+        `Cambiados: ${r.changed}\n` +
+        `S1:${r.counts?.S1 ?? 0}  S2:${r.counts?.S2 ?? 0}  S3:${r.counts?.S3 ?? 0}  S4:${r.counts?.S4 ?? 0}\n` +
+        `Ticket medio empresa: ${Number(r.companyAvg || 0).toFixed(2)}`;
+      alert(msg);
+    } catch (e) {
+      console.error(e);
+      setError("No se pudo recalcular segmentos. " + e.message);
     } finally {
       setLoading(false);
     }
@@ -169,6 +207,7 @@ export default function CustomersPanel() {
       <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Customers</h2>
         <button onClick={startCreate} className="btn">+ Add customer</button>
+        <button onClick={onResegment} className="btn btn-ghost">Actualizar segmentos</button>
         <div style={{ marginLeft: "auto" }}>
           <input
             value={query}
@@ -188,13 +227,14 @@ export default function CustomersPanel() {
       <div className="table-like" style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "120px 1fr 140px 220px 1.2fr 120px 200px",
+          gridTemplateColumns: "120px 1fr 140px 220px 90px 1.2fr 120px 200px",
           background: "#fafafa", padding: "10px 12px", fontWeight: 600
         }}>
           <div>Code</div>
           <div>Name</div>
           <div>Phone</div>
           <div>Email</div>
+          <div>Segment</div>
           <div>Address</div>
           <div>Status</div>
           <div>Actions</div>
@@ -203,7 +243,7 @@ export default function CustomersPanel() {
         {rows.map(c => (
           <div key={c.id} style={{
             display: "grid",
-            gridTemplateColumns: "120px 1fr 140px 220px 1.2fr 120px 200px",
+            gridTemplateColumns: "120px 1fr 140px 220px 90px 1.2fr 120px 200px",
             padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center"
           }}>
             <div>{c.code}</div>
@@ -213,6 +253,7 @@ export default function CustomersPanel() {
             </div>
             <div>{c.phone || "—"}</div>
             <div>{c.email || "—"}</div>
+            <div style={{ fontWeight: 700 }}>{c.segment || "—"}</div>
             <div>
               <div>{c.address_1}</div>
               {c.portal ? <div className="small" style={{ opacity: .7 }}>{c.portal}</div> : null}
@@ -248,7 +289,7 @@ export default function CustomersPanel() {
           initial={editing || {}}
           onClose={() => { setShowForm(false); setEditing(null); }}
           onSubmit={onSubmitForm}
-          onDelete={editing?.id ? () => onDeleteCurrent(editing.id) : null}  // ★ pasa handler
+          onDelete={editing?.id ? () => onDeleteCurrent(editing.id) : null}
         />
       )}
     </div>
@@ -317,7 +358,6 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
         </div>
 
         <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
-          {/* Botón Delete solo si estamos editando */}
           {onDelete && initial?.id ? (
             <button
               type="button"
