@@ -211,82 +211,74 @@ module.exports = (prisma) => {
   });
 
   /* 3.d) recalcular segmentos (S1..S4) */
-  router.post("/resegment", async (_req, res) => {
-    try {
-      // ① Ticket medio empresa (media de los importes)
-      const allSales = await prisma.sale.findMany({
-        select: { total:true, amount:true, importe:true, grandTotal:true }
-      });
-      const getMoney = (s) => {
-        const n = Number(
-          s?.total ?? s?.amount ?? s?.importe ?? s?.grandTotal ?? 0
-        );
-        return Number.isFinite(n) ? n : 0;
-      };
-      const totals = allSales.map(getMoney).filter(n => n > 0);
-      const companyAvg = totals.length ? (totals.reduce((a,b)=>a+b,0) / totals.length) : 0;
+    router.post("/resegment", async (_req, res) => {
+      try {
+        // ① media de empresa (robusta ante ventas vacías)
+        const allSales = await prisma.sale.findMany({
+          select: { createdAt:true, total:true, amount:true, importe:true, grandTotal:true }
+        });
 
-      // ② Traemos los clientes con sus ventas (fechas e importes)
-      const customers = await prisma.customer.findMany({
-        select: {
-          id:true,
-          segment:true,
-          sales: {
-            select: { createdAt:true, total:true, amount:true, importe:true, grandTotal:true }
+        const getMoney = (s) => {
+          const n = Number(
+            s?.total ?? s?.amount ?? s?.importe ?? s?.grandTotal ?? 0
+          );
+          return Number.isFinite(n) ? n : 0;
+        };
+
+        const totals = allSales.map(getMoney).filter(n => n > 0);
+        const companyAvg = totals.length ? (totals.reduce((a,b)=>a+b,0) / totals.length) : 0;
+
+        // ② clientes con ventas necesarias únicamente
+        const customers = await prisma.customer.findMany({
+          select: {
+            id:true,
+            segment:true,
+            sales: { select: { createdAt:true, total:true, amount:true, importe:true, grandTotal:true } }
+          }
+        });
+
+        const nowMs = Date.now();
+        const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000*60*60*24));
+
+        const updates = [];
+        const counts  = { S1:0, S2:0, S3:0, S4:0 };
+        let changed = 0;
+
+        for (const c of customers) {
+          const sales = c.sales || [];
+          const orders = sales.length;
+          const last   = orders ? sales.reduce((m,s)=> (m > s.createdAt ? m : s.createdAt), sales[0].createdAt) : null;
+          const days   = last ? daysBetween(nowMs, new Date(last).getTime()) : Infinity;
+          const avg    = orders ? sales.reduce((acc,s)=> acc + getMoney(s), 0) / orders : 0;
+
+          let seg = "S1";
+          if (orders <= 1) seg = "S1";
+          else if (days > 30) seg = "S2";
+          else { seg = "S3"; if (avg > companyAvg) seg = "S4"; }
+
+          counts[seg]++;
+          if (seg !== c.segment) {
+            changed++;
+            updates.push(prisma.customer.update({
+              where: { id: c.id },
+              data : { segment: seg, segmentUpdatedAt: new Date() }
+            }));
           }
         }
-      });
 
-      const now = Date.now();
-      const daysBetween = (d1, d2) => Math.floor((d1 - d2) / (1000*60*60*24));
+        if (updates.length) await prisma.$transaction(updates);
+        res.json({ ok:true, companyAvg, changed, counts });
 
-      const updates = [];
-      const counts  = { S1:0, S2:0, S3:0, S4:0 };
-      let changed = 0;
-
-      for (const c of customers) {
-        const sales = c.sales || [];
-        const orders = sales.length;
-        const last   = orders ? sales.reduce((m,s)=> (m > s.createdAt ? m : s.createdAt), sales[0].createdAt) : null;
-        const days   = last ? daysBetween(now, new Date(last).getTime()) : Infinity;
-        const avg    = orders
-          ? sales.reduce((acc,s)=> acc + getMoney(s), 0) / orders
-          : 0;
-
-        // regla de segmentación:
-        // S1: 0–1 compras
-        // S2: >1 compras y última > 30 días
-        // S3: última ≤ 30 días
-        // S4: S3 y ticket medio > ticket medio empresa
-        let seg = "S1";
-        if (orders <= 1) {
-          seg = "S1";
-        } else if (days > 30) {
-          seg = "S2";
-        } else {
-          seg = "S3";
-          if (avg > companyAvg) seg = "S4";
-        }
-
-        counts[seg]++;
-
-        if (seg !== c.segment) {
-          changed++;
-          updates.push(prisma.customer.update({
-            where: { id: c.id },
-            data : { segment: seg, segmentUpdatedAt: new Date() }
-          }));
-        }
+      } catch (err) {
+        console.error("[/customers/resegment] FAIL:", err);
+        // dev-friendly: devuelve mensaje exacto para debug
+        res.status(500).json({
+          error: "internal",
+          message: err?.message || "unknown",
+          code: err?.code || null
+        });
       }
-
-      if (updates.length) await prisma.$transaction(updates);
-
-      res.json({ ok:true, companyAvg, changed, counts });
-    } catch (err) {
-      console.error("[CUSTOMERS/resegment] error:", err);
-      res.status(500).json({ error:"internal" });
-    }
-  });
+    });
 
   /* 4) eliminar (duro; si prefieres soft delete, lo cambiamos) */
   router.delete("/:id", async (req, res) => {
