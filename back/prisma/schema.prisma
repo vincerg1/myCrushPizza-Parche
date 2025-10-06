@@ -3,9 +3,6 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
-
-
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -89,12 +86,20 @@ enum CustomerOrigin {
   QR
 }
 
+// ── nuevo enum
+enum CustomerSegment {
+  S1  // Potencial: 0–1 compras
+  S2  // Inactivo: >1 compras y última > 30 días
+  S3  // Activo:   última ≤ 30 días
+  S4  // CMV:      S3 y ticket medio > ticket medio empresa
+}
+
 model Customer {
   id           Int            @id @default(autoincrement())
   code         String         @unique
   name         String?
   phone        String?        @unique
-  email        String?        @unique     // ★ nuevo
+  email        String?        @unique
   address_1    String         @unique
   portal       String?
   observations String?
@@ -105,13 +110,18 @@ model Customer {
   updatedAt    DateTime       @updatedAt
   daysOff      Int?
 
-  // ★ restricción/ban
+  // restricción/ban
   isRestricted       Boolean   @default(false)
   restrictedAt       DateTime?
   restrictionReason  String?
 
+  // ── NUEVO: segmento
+  segment       CustomerSegment @default(S1)
+  segmentUpdatedAt DateTime?
+
   sales Sale[] @relation("CustomerSales")
 }
+
 
 /**
  * ========================= VENTA =======================
