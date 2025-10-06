@@ -27,8 +27,8 @@ async function httpJSON(path, opts = {}) {
   });
   const raw = await res.text();
   const ct = (res.headers.get("content-type") || "").toLowerCase();
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} – ${raw.slice(0, 200)}`);
-  if (!ct.includes("application/json")) throw new Error(`Respuesta no-JSON (${ct}). Body: ${raw.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} – ${raw.slice(0, 280)}`);
+  if (!ct.includes("application/json")) throw new Error(`Respuesta no-JSON (${ct}). Body: ${raw.slice(0, 280)}`);
   return JSON.parse(raw);
 }
 
@@ -66,6 +66,23 @@ const CustomersAPI = {
 };
 
 function normalizePhone(s = "") { return s.replace(/[^\d]/g, ""); }
+
+// helpers de UI
+const Badge = ({ children, tone = "default" }) => {
+  const tones = {
+    default: { bg:"#eef2ff", color:"#3730a3", border:"#c7d2fe" }, // indigo
+    success: { bg:"#ecfdf5", color:"#065f46", border:"#a7f3d0" }, // green
+    warn:    { bg:"#fff7ed", color:"#9a3412", border:"#fed7aa" }, // orange
+    gray:    { bg:"#f3f4f6", color:"#374151", border:"#e5e7eb" }
+  }[tone] || {};
+  return (
+    <span style={{
+      display:"inline-block", padding:"2px 8px", borderRadius:999,
+      fontSize:12, fontWeight:700, background:tones.bg,
+      color:tones.color, border:`1px solid ${tones.border}`, lineHeight:1.4
+    }}>{children}</span>
+  );
+};
 
 export default function CustomersPanel() {
   const [loading, setLoading] = useState(true);
@@ -131,16 +148,11 @@ export default function CustomersPanel() {
   const startEdit   = (c) => { setEditing(c);   setShowForm(true); };
 
   const onSubmitForm = async (form) => {
-    // Teléfono es OBLIGATORIO
     const phoneDigits = normalizePhone(form.phone || "");
-    if (!phoneDigits) {
-      setError("El teléfono es obligatorio.");
-      return;
-    }
+    if (!phoneDigits) { setError("El teléfono es obligatorio."); return; }
 
     setLoading(true); setError("");
     try {
-      // Prechequeo: ¿ya existe ese teléfono?
       const hit = await CustomersAPI.existsPhoneExact(phoneDigits);
       if (hit && (!editing || hit.id !== editing.id)) {
         setError(`Este teléfono ya existe (${hit.code}).`);
@@ -161,12 +173,9 @@ export default function CustomersPanel() {
       const msg = e.message || "";
       const conflict = /phone_exists|unique|duplicad[oa]|constraint/i.test(msg);
       setError(conflict ? "Ese teléfono ya existe." : "No se pudo guardar. " + msg);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  // eliminar cliente actual (desde el modal)
   const onDeleteCurrent = async (id) => {
     if (!id) return;
     if (!window.confirm("¿Eliminar este cliente? Esta acción no se puede deshacer.")) return;
@@ -178,9 +187,7 @@ export default function CustomersPanel() {
     } catch (e) {
       console.error(e);
       setError("No se pudo eliminar. " + e.message);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const onResegment = async () => {
@@ -188,12 +195,12 @@ export default function CustomersPanel() {
     try {
       const r = await CustomersAPI.resegment();
       await reloadSameFilter();
-      const msg =
+      alert(
         `Segmentos actualizados.\n` +
         `Cambiados: ${r.changed}\n` +
         `S1:${r.counts?.S1 ?? 0}  S2:${r.counts?.S2 ?? 0}  S3:${r.counts?.S3 ?? 0}  S4:${r.counts?.S4 ?? 0}\n` +
-        `Ticket medio empresa: ${Number(r.companyAvg || 0).toFixed(2)}`;
-      alert(msg);
+        `Ticket medio empresa: ${Number(r.companyAvg || 0).toFixed(2)}`
+      );
     } catch (e) {
       console.error(e);
       setError("No se pudo recalcular segmentos. " + e.message);
@@ -224,44 +231,43 @@ export default function CustomersPanel() {
       {error && <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>}
       {loading && <div className="small">Loading…</div>}
 
-      <div className="table-like" style={{ border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
+      <div className="table-like" style={{ border:"1px solid #e5e7eb", borderRadius:12, overflow:"hidden" }}>
+        {/* CABECERA tabla (sin Address) */}
         <div style={{
-          display: "grid",
-          gridTemplateColumns: "120px 1fr 140px 220px 90px 1.2fr 120px 200px",
-          background: "#fafafa", padding: "10px 12px", fontWeight: 600
+          display:"grid",
+          gridTemplateColumns:"120px 1fr 140px 220px 90px 120px 200px",
+          background:"#fafafa", padding:"10px 12px", fontWeight:600
         }}>
           <div>Code</div>
           <div>Name</div>
           <div>Phone</div>
           <div>Email</div>
           <div>Segment</div>
-          <div>Address</div>
           <div>Status</div>
           <div>Actions</div>
         </div>
 
-        {rows.map(c => (
+        {rows.map((c, i) => (
           <div key={c.id} style={{
-            display: "grid",
-            gridTemplateColumns: "120px 1fr 140px 220px 90px 1.2fr 120px 200px",
-            padding: "10px 12px", borderTop: "1px solid #eee", alignItems: "center"
+            display:"grid",
+            gridTemplateColumns:"120px 1fr 140px 220px 90px 120px 200px",
+            padding:"12px", borderTop:"1px solid #eee", alignItems:"center",
+            background: i % 2 ? "#fcfcfc" : "#fff"
           }}>
-            <div>{c.code}</div>
+            <div style={{fontVariantNumeric:"tabular-nums"}}>{c.code}</div>
             <div title={c.observations || ""}>
-              <div style={{ fontWeight: 600 }}>{c.name || "—"}</div>
-              {c.observations ? <div className="small" style={{ opacity: .7 }}>{c.observations}</div> : null}
+              <div style={{ fontWeight:600 }}>{c.name || "—"}</div>
+              {c.observations ? <div className="small" style={{ opacity:.7 }}>{c.observations}</div> : null}
             </div>
             <div>{c.phone || "—"}</div>
             <div>{c.email || "—"}</div>
-            <div style={{ fontWeight: 700 }}>{c.segment || "—"}</div>
+            <div><Badge tone="default">{c.segment || "—"}</Badge></div>
             <div>
-              <div>{c.address_1}</div>
-              {c.portal ? <div className="small" style={{ opacity: .7 }}>{c.portal}</div> : null}
+              {c.isRestricted
+                ? <Badge tone="warn">Restricted</Badge>
+                : <Badge tone="success">Active</Badge>}
             </div>
-            <div style={{ fontWeight: 600, color: c.isRestricted ? "#b45309" : "#059669" }}>
-              {c.isRestricted ? "Restricted" : "Active"}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               <button className="btn btn-sm" onClick={() => startEdit(c)}>Edit</button>
               <button className="btn btn-sm" onClick={async () => {
                 const flag = !c.isRestricted;
@@ -278,9 +284,7 @@ export default function CustomersPanel() {
         ))}
 
         {!rows.length && !loading && (
-          <div style={{ padding: 16, textAlign: "center", color: "#6b7280" }}>
-            No customers.
-          </div>
+          <div style={{ padding:16, textAlign:"center", color:"#6b7280" }}>No customers.</div>
         )}
       </div>
 
@@ -318,14 +322,14 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", zIndex: 50 }}>
-      <form onSubmit={submit} style={{ background: "#fff", borderRadius: 14, width: 560, maxWidth: "92vw", boxShadow: "0 10px 30px rgba(0,0,0,.15)", padding: 18, display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <h3 style={{ margin: 0 }}>{initial?.id ? "Edit customer" : "Add customer"}</h3>
-          <button type="button" onClick={onClose} style={{ marginLeft: "auto" }} className="btn btn-ghost">✕</button>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.35)", display:"grid", placeItems:"center", zIndex:50 }}>
+      <form onSubmit={submit} style={{ background:"#fff", borderRadius:14, width:560, maxWidth:"92vw", boxShadow:"0 10px 30px rgba(0,0,0,.15)", padding:18, display:"grid", gap:12 }}>
+        <div style={{ display:"flex", alignItems:"center" }}>
+          <h3 style={{ margin:0 }}>{initial?.id ? "Edit customer" : "Add customer"}</h3>
+          <button type="button" onClick={onClose} style={{ marginLeft:"auto" }} className="btn btn-ghost">✕</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <label className="fld">
             <span>Name</span>
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" />
@@ -346,7 +350,7 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Opcional. Se autogenera si no lo indicas." />
         </label>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <label className="fld">
             <span>Portal</span>
             <input value={portal} onChange={(e) => setPortal(e.target.value)} placeholder="Portal / piso / puerta" />
@@ -357,20 +361,20 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
           </label>
         </div>
 
-        <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display:"flex", gap:8, justifyContent:"space-between", alignItems:"center" }}>
           {onDelete && initial?.id ? (
             <button
               type="button"
               onClick={onDelete}
               className="btn"
-              style={{ background: "#dc2626", color: "#fff", border: "1px solid #b91c1c" }}
+              style={{ background:"#dc2626", color:"#fff", border:"1px solid #b91c1c" }}
               title="Eliminar este cliente"
             >
               Delete
             </button>
           ) : <span />}
 
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display:"flex", gap:8 }}>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button className="btn" type="submit">{initial?.id ? "Save" : "Create"}</button>
           </div>
