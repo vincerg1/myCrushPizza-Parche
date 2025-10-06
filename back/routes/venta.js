@@ -58,6 +58,22 @@ function haversineKm(lat1, lon1, lat2, lon2){
   return 2*R*Math.asin(Math.sqrt(a));
 }
 
+const normPhone = (s='') => s.replace(/[^\d+]/g, '');
+
+async function getRestrictionByPhone(db, rawPhone) {
+  const phone = normPhone(rawPhone || '');
+  if (!phone) return { restricted:false };
+  const c = await db.customer.findUnique({
+    where: { phone },
+    select: { isRestricted:true, restrictionReason:true, code:true }
+  });
+  return {
+    restricted: !!c?.isRestricted,
+    reason    : c?.restrictionReason || null,
+    code      : c?.code || null
+  };
+}
+
 /* ───────── generadores ───────── */
 async function genOrderCode(db){ let code; do{ code='ORD-'+Math.floor(10000+Math.random()*90000);} while(await db.sale.findUnique({where:{code}})); return code; }
 async function genCustomerCode(db){ let code; do{ code='CUS-'+Math.floor(10000+Math.random()*90000);} while(await db.customer.findUnique({where:{code}})); return code; }
@@ -196,6 +212,12 @@ router.post('/pedido', async (req, res) => {
     if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
 
     // Cobertura (solo delivery)
+    if (customer?.phone?.trim()) {
+  const r = await getRestrictionByPhone(prisma, customer.phone);
+  if (r.restricted) {
+    return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+  }
+}
     if (String(delivery).toUpperCase() === 'COURIER') {
       const lat = Number(customer?.lat), lng = Number(customer?.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -469,7 +491,25 @@ router.post('/checkout-session', async (req, res) => {
       const sale = await prisma.sale.findUnique({ where });
       if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
       if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
+let restrictedInfo = { restricted:false };
+const snapPhone = sale?.customerData?.phone || null;
 
+if (snapPhone) {
+  restrictedInfo = await getRestrictionByPhone(prisma, snapPhone);
+} else if (sale.customerId) {
+  const c = await prisma.customer.findUnique({
+    where: { id: sale.customerId },
+    select: { phone:true, isRestricted:true, restrictionReason:true, code:true }
+  });
+  restrictedInfo = {
+    restricted: !!c?.isRestricted,
+    reason: c?.restrictionReason || null,
+    code: c?.code || null
+  };
+}
+if (restrictedInfo.restricted) {
+  return res.status(403).json({ error:'restricted', code: restrictedInfo.code, reason: restrictedInfo.reason });
+}
       const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
       const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : parseMaybe(sale.extras,   []);
 
@@ -644,6 +684,12 @@ router.post('/checkout-session', async (req, res) => {
     }
 
     /* ---------- B2) Modo carrito (pagar primero) ---------- */
+    if (cart?.customer?.phone) {
+  const r = await getRestrictionByPhone(prisma, cart.customer.phone);
+  if (r.restricted) {
+    return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+  }
+}
     if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
     if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
       return res.status(400).json({ error: 'cart inválido' });
