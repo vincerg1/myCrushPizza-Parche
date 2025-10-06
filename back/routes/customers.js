@@ -210,25 +210,9 @@ module.exports = (prisma) => {
     }
   });
 
-  router.post("/resegment", async (_req, res) => {
+router.post("/resegment", async (_req, res) => {
   try {
-    // --- helpers robustos ---
-    async function fetchSalesLight() {
-      // probamos selecciones de mayor a menor; si falla una, probamos la siguiente
-      const tries = [
-        { select: { createdAt: true, total: true, grandTotal: true, importe: true, amount: true } },
-        { select: { createdAt: true, total: true, grandTotal: true, importe: true } },
-        { select: { createdAt: true, total: true, grandTotal: true } },
-        { select: { createdAt: true, total: true } },
-        { } // sin select → trae todo (último recurso)
-      ];
-      let lastErr;
-      for (const t of tries) {
-        try { return await prisma.sale.findMany(t); } catch (e) { lastErr = e; }
-      }
-      throw lastErr;
-    }
-
+    // --- helpers ---
     const moneyKeys = [
       "total", "grandTotal", "importe", "amount",
       "totalAmount", "amount_total", "total_amount", "price", "subtotal"
@@ -250,19 +234,44 @@ module.exports = (prisma) => {
       return null;
     };
 
-    // ① Ventas (robusto)
-    const allSales = await fetchSalesLight();
-    const totals   = allSales.map(getMoney).filter(n => n > 0);
+    // Intenta varias selecciones; si falla una, prueba la siguiente
+    async function tryFindManySales(selects) {
+      let lastErr;
+      for (const s of selects) {
+        try { return await prisma.sale.findMany(s); }
+        catch (e) { lastErr = e; }
+      }
+      throw lastErr;
+    }
+
+    // ① Ventas de toda la empresa para ticket medio
+    const allSales = await tryFindManySales([
+      { select: { createdAt: true, total: true, grandTotal: true, importe: true, amount: true } },
+      { select: { createdAt: true, total: true, importe: true } },
+      { select: { createdAt: true, total: true } },
+      { }, // último recurso: trae todas las columnas
+    ]);
+
+    const totals = allSales.map(getMoney).filter(n => n > 0);
     const companyAvg = totals.length ? (totals.reduce((a,b)=>a+b,0) / totals.length) : 0;
 
-    // ② Clientes con solo lo necesario de sus ventas
-    const customers = await prisma.customer.findMany({
-      select: {
-        id: true,
-        segment: true,
-        sales: { select: { createdAt: true, total: true, grandTotal: true, importe: true, amount: true } }
+    // ② Clientes con sus ventas (con fallback también)
+    async function fetchCustomersWithSales() {
+      const tries = [
+        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, grandTotal:true, importe:true, amount:true } } } },
+        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, importe:true } } } },
+        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true } } } },
+        { select: { id:true, segment:true, sales: true } } // todo el objeto sale
+      ];
+      let lastErr;
+      for (const s of tries) {
+        try { return await prisma.customer.findMany(s); }
+        catch (e) { lastErr = e; }
       }
-    });
+      throw lastErr;
+    }
+
+    const customers = await fetchCustomersWithSales();
 
     const nowMs = Date.now();
     const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000*60*60*24));
@@ -306,7 +315,8 @@ module.exports = (prisma) => {
     }
 
     if (updates.length) await prisma.$transaction(updates);
-    res.json({ ok: true, companyAvg, changed, counts });
+    res.json({ ok:true, companyAvg, changed, counts });
+
   } catch (err) {
     console.error("[/customers/resegment] FAIL:", err);
     res.status(500).json({
@@ -315,7 +325,8 @@ module.exports = (prisma) => {
       code: err?.code || null
     });
   }
-  });
+});
+
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
