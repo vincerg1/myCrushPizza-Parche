@@ -62,12 +62,15 @@ const CustomersAPI = {
   },
   async resegment() {
     return httpJSON(`/api/customers/resegment`, { method: "POST" });
+  },
+  async stats() {
+    return httpJSON(`/api/customers/segment-stats`);
   }
 };
 
 function normalizePhone(s = "") { return s.replace(/[^\d]/g, ""); }
 
-// helpers de UI
+// UI helpers
 const Badge = ({ children, tone = "default" }) => {
   const tones = {
     default: { bg:"#eef2ff", color:"#3730a3", border:"#c7d2fe" }, // indigo
@@ -84,6 +87,60 @@ const Badge = ({ children, tone = "default" }) => {
   );
 };
 
+/** Donut de segmentos S1..S4 (SVG) */
+const SEG_COLORS = { S1:"#c7d2fe", S2:"#fecaca", S3:"#bbf7d0", S4:"#fde68a" };
+function SegmentDonut({ counts }) {
+  const total = Math.max(
+    (counts?.S1||0)+(counts?.S2||0)+(counts?.S3||0)+(counts?.S4||0), 0
+  ) || 1;
+  const order = ["S1","S2","S3","S4"];
+  const r = 60, stroke = 22, C = 2*Math.PI*r;
+
+  let acc = 0;
+  const arcs = order.map(seg => {
+    const v = counts?.[seg] || 0;
+    const frac = v / total;
+    const len = frac * C;
+    const dasharray = `${len} ${C-len}`;
+    const dashoffset = -acc * C;
+    acc += frac;
+    return { seg, dasharray, dashoffset, color: SEG_COLORS[seg] };
+  });
+
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+      <svg width="160" height="160" viewBox="0 0 160 160">
+        <g transform="translate(80,80)">
+          {/* base círculo gris claro */}
+          <circle r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke}/>
+          {arcs.map(a=>(
+            <circle key={a.seg}
+              r={r} fill="none"
+              stroke={a.color}
+              strokeWidth={stroke}
+              strokeDasharray={a.dasharray}
+              strokeDashoffset={a.dashoffset}
+              transform="rotate(-90)"
+              strokeLinecap="butt"
+            />
+          ))}
+          {/* agujero interior para efecto donut */}
+          <circle r={r-stroke/2-0.5} fill="#fff"/>
+        </g>
+      </svg>
+      <div style={{ display:"grid", gap:6 }}>
+        {order.map(seg => (
+          <div key={seg} style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ width:10, height:10, background:SEG_COLORS[seg], borderRadius:2, border:"1px solid #e5e7eb" }}/>
+            <span style={{ width:24 }}>{seg}</span>
+            <strong style={{ fontVariantNumeric:"tabular-nums" }}>{counts?.[seg] || 0}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CustomersPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,14 +148,28 @@ export default function CustomersPanel() {
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ total: 0 });
 
+  const [stats, setStats] = useState({ total:0, counts:{ S1:0,S2:0,S3:0,S4:0 }, active:{restricted:0,unrestricted:0}, updatedAt:null });
+
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  // carga inicial: últimos 5 (sin filtro)
+  const loadStats = async () => {
+    try {
+      const s = await CustomersAPI.stats();
+      setStats(s);
+    } catch (e) {
+      console.error(e);
+      // no detenemos la UI si fallan métricas
+    }
+  };
+
+  // carga inicial: últimos 5 + stats
   const loadLatest = async () => {
     setLoading(true); setError("");
     try {
-      const { items, total } = await CustomersAPI.listByPhone({ phoneDigits:"", take:5 });
+      const [{ items, total }] = await Promise.all([
+        CustomersAPI.listByPhone({ phoneDigits:"", take:5 }),
+      ]);
       setRows(items); setMeta({ total });
     } catch (e) {
       console.error(e); setError("No se pudo cargar clientes. " + e.message);
@@ -124,13 +195,14 @@ export default function CustomersPanel() {
   useEffect(() => {
     console.info("[CustomersPanel] API_BASE =>", API_BASE || "(vacío / mismo origen)");
     loadLatest();
+    loadStats();
   }, []);
 
   // búsqueda por teléfono (solo dígitos) con debounce
   useEffect(() => {
     const t = setTimeout(async () => {
       const digits = normalizePhone(query);
-      if (!digits) return loadLatest();
+      if (!digits) { loadLatest(); return; }
       setLoading(true); setError("");
       try {
         const { items, total } = await CustomersAPI.listByPhone({ phoneDigits: digits, take:50 });
@@ -168,6 +240,7 @@ export default function CustomersPanel() {
         await loadLatest();
       }
       setShowForm(false); setEditing(null);
+      loadStats();
     } catch (e) {
       console.error(e);
       const msg = e.message || "";
@@ -184,10 +257,13 @@ export default function CustomersPanel() {
       await CustomersAPI.remove(id);
       await reloadSameFilter();
       setShowForm(false); setEditing(null);
+      loadStats();
     } catch (e) {
       console.error(e);
       setError("No se pudo eliminar. " + e.message);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onResegment = async () => {
@@ -195,6 +271,7 @@ export default function CustomersPanel() {
     try {
       const r = await CustomersAPI.resegment();
       await reloadSameFilter();
+      await loadStats();
       alert(
         `Segmentos actualizados.\n` +
         `Cambiados: ${r.changed}\n` +
@@ -211,6 +288,7 @@ export default function CustomersPanel() {
 
   return (
     <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {/* Header */}
       <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>Customers</h2>
         <button onClick={startCreate} className="btn">+ Add customer</button>
@@ -225,23 +303,50 @@ export default function CustomersPanel() {
         </div>
       </header>
 
-      <div className="small" style={{ marginBottom: 8 }}>
-        {query ? `Matches: ${meta.total}` : "Showing latest 5 customers"}
-      </div>
-      {error && <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>}
-      {loading && <div className="small">Loading…</div>}
+      {/* Stats card */}
+      <section style={{
+        display:"grid",
+        gridTemplateColumns:"auto 1fr",
+        gap:24,
+        alignItems:"center",
+        border:"1px solid #e5e7eb",
+        borderRadius:12,
+        padding:16,
+        marginBottom:16
+      }}>
+        <SegmentDonut counts={stats.counts} />
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(5, minmax(0,1fr))", gap:12 }}>
+          {["S1","S2","S3","S4"].map(seg=>(
+            <div key={seg} style={{ padding:12, border:"1px solid #f3f4f6", borderRadius:10, background:"#fafafa" }}>
+              <div className="small" style={{ opacity:.7 }}>Segment {seg}</div>
+              <div style={{ fontSize:22, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>
+                {stats?.counts?.[seg] ?? 0}
+              </div>
+            </div>
+          ))}
+          <div style={{ padding:12, border:"1px solid #f3f4f6", borderRadius:10, background:"#fff" }}>
+            <div className="small" style={{ opacity:.7 }}>Total</div>
+            <div style={{ fontSize:22, fontWeight:700, fontVariantNumeric:"tabular-nums" }}>
+              {stats?.total ?? 0}
+            </div>
+            <div className="small" style={{ marginTop:6, opacity:.8 }}>
+              Activos: {stats?.active?.unrestricted ?? 0} · Restrict: {stats?.active?.restricted ?? 0}
+            </div>
+          </div>
+        </div>
+      </section>
 
+      {/* Lista */}
       <div className="table-like" style={{ border:"1px solid #e5e7eb", borderRadius:12, overflow:"hidden" }}>
-        {/* CABECERA tabla (sin Address) */}
+        {/* Cabecera sin email */}
         <div style={{
           display:"grid",
-          gridTemplateColumns:"120px 1fr 140px 220px 90px 120px 200px",
+          gridTemplateColumns:"120px 1fr 160px 90px 120px 200px",
           background:"#fafafa", padding:"10px 12px", fontWeight:600
         }}>
           <div>Code</div>
           <div>Name</div>
           <div>Phone</div>
-          <div>Email</div>
           <div>Segment</div>
           <div>Status</div>
           <div>Actions</div>
@@ -250,7 +355,7 @@ export default function CustomersPanel() {
         {rows.map((c, i) => (
           <div key={c.id} style={{
             display:"grid",
-            gridTemplateColumns:"120px 1fr 140px 220px 90px 120px 200px",
+            gridTemplateColumns:"120px 1fr 160px 90px 120px 200px",
             padding:"12px", borderTop:"1px solid #eee", alignItems:"center",
             background: i % 2 ? "#fcfcfc" : "#fff"
           }}>
@@ -260,7 +365,6 @@ export default function CustomersPanel() {
               {c.observations ? <div className="small" style={{ opacity:.7 }}>{c.observations}</div> : null}
             </div>
             <div>{c.phone || "—"}</div>
-            <div>{c.email || "—"}</div>
             <div><Badge tone="default">{c.segment || "—"}</Badge></div>
             <div>
               {c.isRestricted
@@ -275,6 +379,7 @@ export default function CustomersPanel() {
                 try {
                   const up = await CustomersAPI.toggleRestrict(c.id, flag, reason);
                   setRows(prev => prev.map(r => r.id === c.id ? { ...r, ...up } : r));
+                  loadStats();
                 } catch (e) {
                   console.error(e); alert("No se pudo cambiar el estado de restricción.");
                 }
@@ -288,6 +393,8 @@ export default function CustomersPanel() {
         )}
       </div>
 
+      {error && <div style={{ color:"crimson", marginTop:10 }}>{error}</div>}
+
       {showForm && (
         <CustomerFormModal
           initial={editing || {}}
@@ -300,6 +407,7 @@ export default function CustomersPanel() {
   );
 }
 
+/* Modal (sin cambios funcionales) */
 function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
   const [name, setName] = useState(initial.name || "");
   const [phone, setPhone] = useState(initial.phone || "");
