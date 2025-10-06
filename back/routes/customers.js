@@ -210,120 +210,150 @@ module.exports = (prisma) => {
     }
   });
 
-router.post("/resegment", async (_req, res) => {
-  try {
-    // --- helpers ---
-    const moneyKeys = [
-      "total", "grandTotal", "importe", "amount",
-      "totalAmount", "amount_total", "total_amount", "price", "subtotal"
-    ];
-    const dateKeys = ["createdAt", "date", "deliveredAt", "updatedAt"];
+  router.post("/resegment", async (_req, res) => {
+    try {
+      // --- helpers ---
+      const moneyKeys = [
+        "total", "grandTotal", "importe", "amount",
+        "totalAmount", "amount_total", "total_amount", "price", "subtotal"
+      ];
+      const dateKeys = ["createdAt", "date", "deliveredAt", "updatedAt"];
 
-    const getMoney = (s) => {
-      for (const k of moneyKeys) {
-        const v = Number(s?.[k]);
-        if (Number.isFinite(v) && v > 0) return v;
-      }
-      return 0;
-    };
-    const getDate = (s) => {
-      for (const k of dateKeys) {
-        const d = s?.[k];
-        if (d) return new Date(d);
-      }
-      return null;
-    };
+      const getMoney = (s) => {
+        for (const k of moneyKeys) {
+          const v = Number(s?.[k]);
+          if (Number.isFinite(v) && v > 0) return v;
+        }
+        return 0;
+      };
+      const getDate = (s) => {
+        for (const k of dateKeys) {
+          const d = s?.[k];
+          if (d) return new Date(d);
+        }
+        return null;
+      };
 
-    // Intenta varias selecciones; si falla una, prueba la siguiente
-    async function tryFindManySales(selects) {
-      let lastErr;
-      for (const s of selects) {
-        try { return await prisma.sale.findMany(s); }
-        catch (e) { lastErr = e; }
+      // Intenta varias selecciones; si falla una, prueba la siguiente
+      async function tryFindManySales(selects) {
+        let lastErr;
+        for (const s of selects) {
+          try { return await prisma.sale.findMany(s); }
+          catch (e) { lastErr = e; }
+        }
+        throw lastErr;
       }
-      throw lastErr;
+
+      // ① Ventas de toda la empresa para ticket medio
+      const allSales = await tryFindManySales([
+        { select: { createdAt: true, total: true, grandTotal: true, importe: true, amount: true } },
+        { select: { createdAt: true, total: true, importe: true } },
+        { select: { createdAt: true, total: true } },
+        { }, // último recurso: trae todas las columnas
+      ]);
+
+      const totals = allSales.map(getMoney).filter(n => n > 0);
+      const companyAvg = totals.length ? (totals.reduce((a,b)=>a+b,0) / totals.length) : 0;
+
+      // ② Clientes con sus ventas (con fallback también)
+      async function fetchCustomersWithSales() {
+        const tries = [
+          { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, grandTotal:true, importe:true, amount:true } } } },
+          { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, importe:true } } } },
+          { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true } } } },
+          { select: { id:true, segment:true, sales: true } } // todo el objeto sale
+        ];
+        let lastErr;
+        for (const s of tries) {
+          try { return await prisma.customer.findMany(s); }
+          catch (e) { lastErr = e; }
+        }
+        throw lastErr;
+      }
+
+      const customers = await fetchCustomersWithSales();
+
+      const nowMs = Date.now();
+      const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000*60*60*24));
+
+      const updates = [];
+      const counts  = { S1:0, S2:0, S3:0, S4:0 };
+      let changed = 0;
+
+      for (const c of customers) {
+        const sales = c.sales || [];
+        const orders = sales.length;
+
+        // última fecha
+        let lastDate = null;
+        for (const s of sales) {
+          const d = getDate(s);
+          if (d && (!lastDate || d > lastDate)) lastDate = d;
+        }
+        const days = lastDate ? daysBetween(nowMs, lastDate.getTime()) : Infinity;
+
+        // ticket medio del cliente
+        const sum = sales.reduce((acc, s) => acc + getMoney(s), 0);
+        const avg = orders ? sum / orders : 0;
+
+        // reglas S1..S4
+        let seg = "S1";
+        if (orders <= 1) seg = "S1";
+        else if (days > 30) seg = "S2";
+        else { seg = "S3"; if (avg > companyAvg) seg = "S4"; }
+
+        counts[seg]++;
+        if (seg !== c.segment) {
+          changed++;
+          updates.push(
+            prisma.customer.update({
+              where: { id: c.id },
+              data : { segment: seg, segmentUpdatedAt: new Date() }
+            })
+          );
+        }
+      }
+
+      if (updates.length) await prisma.$transaction(updates);
+      res.json({ ok:true, companyAvg, changed, counts });
+
+    } catch (err) {
+      console.error("[/customers/resegment] FAIL:", err);
+      res.status(500).json({
+        error: "internal",
+        message: err?.message || "unknown",
+        code: err?.code || null
+      });
     }
+  });
 
-    // ① Ventas de toda la empresa para ticket medio
-    const allSales = await tryFindManySales([
-      { select: { createdAt: true, total: true, grandTotal: true, importe: true, amount: true } },
-      { select: { createdAt: true, total: true, importe: true } },
-      { select: { createdAt: true, total: true } },
-      { }, // último recurso: trae todas las columnas
+  router.get("/segment-stats", async (_req, res) => {
+  try {
+    const [bySeg, total, restricted] = await Promise.all([
+      prisma.customer.groupBy({
+        by: ["segment"],
+        _count: { _all: true }
+      }),
+      prisma.customer.count(),
+      prisma.customer.count({ where: { isRestricted: true } })
     ]);
 
-    const totals = allSales.map(getMoney).filter(n => n > 0);
-    const companyAvg = totals.length ? (totals.reduce((a,b)=>a+b,0) / totals.length) : 0;
-
-    // ② Clientes con sus ventas (con fallback también)
-    async function fetchCustomersWithSales() {
-      const tries = [
-        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, grandTotal:true, importe:true, amount:true } } } },
-        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true, importe:true } } } },
-        { select: { id:true, segment:true, sales: { select: { createdAt:true, total:true } } } },
-        { select: { id:true, segment:true, sales: true } } // todo el objeto sale
-      ];
-      let lastErr;
-      for (const s of tries) {
-        try { return await prisma.customer.findMany(s); }
-        catch (e) { lastErr = e; }
-      }
-      throw lastErr;
-    }
-
-    const customers = await fetchCustomersWithSales();
-
-    const nowMs = Date.now();
-    const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000*60*60*24));
-
-    const updates = [];
-    const counts  = { S1:0, S2:0, S3:0, S4:0 };
-    let changed = 0;
-
-    for (const c of customers) {
-      const sales = c.sales || [];
-      const orders = sales.length;
-
-      // última fecha
-      let lastDate = null;
-      for (const s of sales) {
-        const d = getDate(s);
-        if (d && (!lastDate || d > lastDate)) lastDate = d;
-      }
-      const days = lastDate ? daysBetween(nowMs, lastDate.getTime()) : Infinity;
-
-      // ticket medio del cliente
-      const sum = sales.reduce((acc, s) => acc + getMoney(s), 0);
-      const avg = orders ? sum / orders : 0;
-
-      // reglas S1..S4
-      let seg = "S1";
-      if (orders <= 1) seg = "S1";
-      else if (days > 30) seg = "S2";
-      else { seg = "S3"; if (avg > companyAvg) seg = "S4"; }
-
-      counts[seg]++;
-      if (seg !== c.segment) {
-        changed++;
-        updates.push(
-          prisma.customer.update({
-            where: { id: c.id },
-            data : { segment: seg, segmentUpdatedAt: new Date() }
-          })
-        );
+    const counts = { S1: 0, S2: 0, S3: 0, S4: 0 };
+    for (const row of bySeg) {
+      if (row.segment && counts.hasOwnProperty(row.segment)) {
+        counts[row.segment] = row._count._all || 0;
       }
     }
 
-    if (updates.length) await prisma.$transaction(updates);
-    res.json({ ok:true, companyAvg, changed, counts });
-
-  } catch (err) {
-    console.error("[/customers/resegment] FAIL:", err);
-    res.status(500).json({
-      error: "internal",
-      message: err?.message || "unknown",
-      code: err?.code || null
+    res.json({
+      total,
+      counts,
+      active: { restricted, unrestricted: Math.max(total - restricted, 0) },
+      updatedAt: new Date().toISOString()
     });
+  } catch (err) {
+    console.error("[/customers/segment-stats] FAIL:", err);
+    res.status(500).json({ error: "internal" });
   }
 });
 
