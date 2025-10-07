@@ -3,6 +3,7 @@ datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -43,21 +44,21 @@ model Ingredient {
  * ======================== TIENDA =======================
  */
 model Store {
-  id        Int      @id @default(autoincrement())
-  storeName String
-  address   String
-  latitude  Float?
-  longitude Float?
-  city      String?
-  zipCode   String?
-  email     String?
-  tlf       String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  acceptingOrders   Boolean  @default(true)
-  stocks StorePizzaStock[]
-  sales  Sale[]
+  id              Int               @id @default(autoincrement())
+  storeName       String
+  address         String
+  latitude        Float?
+  longitude       Float?
+  city            String?
+  zipCode         String?
+  email           String?
+  tlf             String?
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  acceptingOrders Boolean           @default(true)
+  stocks          StorePizzaStock[]
+  sales           Sale[]
 }
 
 /**
@@ -66,11 +67,11 @@ model Store {
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
-  stock     Int      @default(0)
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  pizza MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
+  stock     Int       @default(0)
+  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  pizza     MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
 
   @@id([storeId, pizzaId])
 }
@@ -88,40 +89,38 @@ enum CustomerOrigin {
 
 // ── nuevo enum
 enum CustomerSegment {
-  S1  // Potencial: 0–1 compras
-  S2  // Inactivo: >1 compras y última > 30 días
-  S3  // Activo:   última ≤ 30 días
-  S4  // CMV:      S3 y ticket medio > ticket medio empresa
+  S1 // Potencial: 0–1 compras
+  S2 // Inactivo: >1 compras y última > 30 días
+  S3 // Activo:   última ≤ 30 días
+  S4 // CMV:      S3 y ticket medio > ticket medio empresa
 }
 
 model Customer {
-  id           Int            @id @default(autoincrement())
-  code         String         @unique
-  name         String?
-  phone        String?        @unique
-  email        String?        @unique
-  address_1    String         @unique
-  portal       String?
-  observations String?
-  lat          Float?
-  lng          Float?
-  origin       CustomerOrigin @default(PHONE)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  daysOff      Int?
+  id                Int             @id @default(autoincrement())
+  code              String          @unique
+  name              String?
+  phone             String?         @unique
+  email             String?         @unique
+  address_1         String          @unique
+  portal            String?
+  observations      String?
+  lat               Float?
+  lng               Float?
+  origin            CustomerOrigin  @default(PHONE)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  daysOff           Int?
+  isRestricted      Boolean         @default(false)
+  restrictedAt      DateTime?
+  restrictionReason String?
+  segment           CustomerSegment @default(S1)
+  segmentUpdatedAt  DateTime?
 
-  // restricción/ban
-  isRestricted       Boolean   @default(false)
-  restrictedAt       DateTime?
-  restrictionReason  String?
-
-  // ── NUEVO: segmento
-  segment       CustomerSegment @default(S1)
-  segmentUpdatedAt DateTime?
+  // ← relación inversa necesaria
+  assignedCoupons Coupon[] @relation("CustomerAssignedCoupons")
 
   sales Sale[] @relation("CustomerSales")
 }
-
 
 /**
  * ========================= VENTA =======================
@@ -146,15 +145,64 @@ enum Channel {
   WEB
 }
 
-model Coupon {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique
-  percent   Int      // 5..10
-  used      Boolean  @default(false)
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  expiresAt DateTime?
+// Enums
+enum CouponKind {
+  PERCENT // % de descuento
+  AMOUNT // € fijos
+}
 
+enum CouponVariant {
+  FIXED // valor fijo
+  RANGE // solo para random %, se resuelve al generar
+}
+
+enum CouponStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  DISABLED
+}
+
+// Tabla principal
+model Coupon {
+  id   Int    @id @default(autoincrement())
+  code String @unique
+
+  // tipo y variante
+  kind    CouponKind    @default(PERCENT)
+  variant CouponVariant @default(FIXED)
+
+  // valores según el tipo/variante
+  percent    Int? // FIXED + PERCENT
+  amount     Decimal? @db.Decimal(10, 2) // FIXED + AMOUNT
+  percentMin Int? // RANDOM -> mínimo
+  percentMax Int? // RANDOM -> máximo
+  maxAmount  Decimal? @db.Decimal(10, 2) // tope de descuento si aplica
+
+  // targeting
+  segments     Json? // ["S1","S2",...]
+  assignedToId Int? // para Customized
+  assignedTo   Customer? @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // ventana de validez
+  activeFrom  DateTime?
+  expiresAt   DateTime?
+  daysActive  Json? // ["lunes","martes",...]
+  windowStart Int? // HHmm, ej. 1100
+  windowEnd   Int? // HHmm, ej. 2330
+
+  // uso
+  usageLimit Int          @default(1) // nº de usos permitidos
+  usedCount  Int          @default(0)
+  status     CouponStatus @default(ACTIVE)
+
+  // auditoría
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([expiresAt])
 }
 
 model AppMeta {
@@ -165,31 +213,31 @@ model AppMeta {
 }
 
 model Sale {
-  id            Int            @id @default(autoincrement())
-  code          String         @unique
-  date          DateTime       @default(now())
-  deliveredAt   DateTime?
-  storeId       Int
-  customerId    Int?
-  type          String
-  delivery      DeliveryMethod
-  customerData  Json?
-  products      Json
-  extras        Json           @default("[]")
-  totalProducts Float
-  discounts     Float          @default(0)
-  total         Float
-  processed     Boolean        @default(false)
-  notes         String?
-  createdAt     DateTime       @default(now())
-  status                  OrderStatus @default(PENDING)
-  channel                 Channel     @default(WHATSAPP)
-  currency                String      @default("EUR")
+  id                      Int            @id @default(autoincrement())
+  code                    String         @unique
+  date                    DateTime       @default(now())
+  deliveredAt             DateTime?
+  storeId                 Int
+  customerId              Int?
+  type                    String
+  delivery                DeliveryMethod
+  customerData            Json?
+  products                Json
+  extras                  Json           @default("[]")
+  totalProducts           Float
+  discounts               Float          @default(0)
+  total                   Float
+  processed               Boolean        @default(false)
+  notes                   String?
+  createdAt               DateTime       @default(now())
+  status                  OrderStatus    @default(PENDING)
+  channel                 Channel        @default(WHATSAPP)
+  currency                String         @default("EUR")
   address_1               String?
   lat                     Float?
   lng                     Float?
-  stripePaymentIntentId   String?     @unique @db.VarChar(191)
-  stripeCheckoutSessionId String?     @unique @db.VarChar(191)
+  stripePaymentIntentId   String?        @unique @db.VarChar(191)
+  stripeCheckoutSessionId String?        @unique @db.VarChar(191)
 
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
