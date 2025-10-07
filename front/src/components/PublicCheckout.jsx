@@ -706,13 +706,7 @@ if (Number(rchk?.isRestricted) === 1) {
         {ref && <p className="pc-note" style={{marginTop:-6}}>{ref}</p>}
 
         <div className="pc-actions" style={{ marginTop: 12 }}>
-          <button
-            className="pc-btn"
-            onClick={() => { onClose(); setShowCus(true); }}
-          >
-            Cambiar teléfono
-          </button>
-
+          
           <a
             className="pc-btn pc-btn-primary push"
             href={`https://wa.me/34694301433?text=${waText}`}
