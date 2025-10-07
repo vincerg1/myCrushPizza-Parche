@@ -6,27 +6,41 @@
 }
 
 /* --- sidebar --- */
-.sidebar {
-  width: 220px;
-  background: #ffffff;
-  box-shadow: 2px 0 6px rgba(0,0,0,.05);
-  padding: 20px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
+/* ---- sidebar desplegable ---- */
 .sidebar-btn {
-  all: unset;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  background: #fff;
+  border-radius: 10px;
+  margin: 6px 8px;
   cursor: pointer;
-  text-align: center;
-  padding: 14px 10px;
-  border-radius: 12px;
-  background: #ececec;
-  transition: background .2s;
-  font-weight: 600;
+  font-size: 15px;
+  transition: background .15s ease, color .15s ease;
 }
-.sidebar-btn:hover { background: #d9d9d9; }
+.sidebar-btn:hover { background: #f5f6f7; }
+.sidebar-btn.active {
+  background: #ffe3ee;
+  color: #e5005a;
+  font-weight: 700;
+}
+.sidebar-btn.group {
+  font-weight: 700;
+  background: #fff4f8;
+}
+.sidebar-btn .chev {
+  display: inline-block;
+  margin-right: 6px;
+  transform: rotate(0deg);
+  transition: transform .15s ease;
+}
+.sidebar-btn .chev.open { transform: rotate(90deg); }
+
+/* indentación para hijos del grupo */
+.sidebar-btn.depth-1 { padding-left: 28px; font-size: 14.5px; }
+.sidebar-btn.depth-2 { padding-left: 44px; font-size: 14px; }
+
 
 /* --- main panel --- */
 .panel {
