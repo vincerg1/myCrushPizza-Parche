@@ -9,6 +9,7 @@ import logo from "../logo/nuevoLogoMyCrushPizza.jpeg";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
 import { faMobileScreenButton } from "@fortawesome/free-solid-svg-icons";
+import { faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ||
@@ -67,12 +68,12 @@ export default function PublicCheckout() {
 
   // pagar
   const [isPaying, setIsPaying] = useState(false);
-const [restriction, setRestriction] = useState({
-  checked: false,
-  isRestricted: 0,
-  reason: "",
-  code: ""
-});
+  const [restrictModal, setRestrictModal] = useState({
+    open: false,
+    reason: "",
+    code: "",
+    phone: ""
+  });
 
 const checkRestriction = useCallback(async (rawPhone) => {
   const phone = (rawPhone || "").replace(/\D/g, "");
@@ -197,21 +198,15 @@ const checkRestriction = useCallback(async (rawPhone) => {
   );
   const handleNextClick = async () => {
     setTriedNext(true);
-
-    // Validaciones actuales de nombre/teléfono y dirección/tienda
     const ok = nextGuard();
     if (!ok) return;
 
-    // Consulta de restricción al backend
-    const res = await checkRestriction(customer?.phone);
-    if (Number(res?.isRestricted) === 1) {
-      alert(
-        "No podemos continuar con este número.\n" +
-        (res?.reason ? `${res.reason}\n` : "") +
-        (res?.code ? `Ref.: ${res.code}` : "")
-      );
-      return;
-    }
+const r = await checkRestriction(customer?.phone);
+if (Number(r.isRestricted) === 1) {
+  setRestrictModal({ open:true, reason:r.reason||"", code:r.code||"", phone:customer?.phone||"" });
+  setIsPaying(false);
+  return;
+}
 
     setStep("order");
   };
@@ -257,7 +252,6 @@ const checkRestriction = useCallback(async (rawPhone) => {
   // FP fijo 9,99 € (fallback local si backend no manda value)
   const FP_VALUE_EUR = 9.99;
   const isFpCode = (code) => /^MCP-FP/i.test((code || "").trim());
-
   const [showCouponInfo, setShowCouponInfo] = useState(false);
 
   useEffect(() => {
@@ -689,6 +683,52 @@ const checkRestriction = useCallback(async (rawPhone) => {
       </BaseModal>
     );
   }
+
+  function RestrictionModal({ open, info, onClose }) {
+  if (!open) return null;
+  const msg = info?.reason || "No podemos continuar con este número.";
+  const ref = info?.code ? `Ref.: ${info.code}` : "";
+  const waText = encodeURIComponent(
+    `Hola, tengo restringido mi número ${info?.phone || ""}. ${ref}`.trim()
+  );
+
+  return (
+    <BaseModal
+      open={open}
+      title="Acceso restringido"
+      onClose={onClose}
+      width={520}
+      hideFooter
+      overlayClassName="pc-modal-overlay--danger"
+    >
+      <div className="pc-content">
+        <p className="pc-lead" style={{display:"flex",alignItems:"center",gap:8}}>
+          <FontAwesomeIcon icon={faTriangleExclamation} />
+          {msg}
+        </p>
+        {ref && <p className="pc-note" style={{marginTop:-6}}>{ref}</p>}
+
+        <div className="pc-actions" style={{ marginTop: 12 }}>
+          <button
+            className="pc-btn"
+            onClick={() => { onClose(); setShowCus(true); }}
+          >
+            Cambiar teléfono
+          </button>
+
+          <a
+            className="pc-btn pc-btn-primary push"
+            href={`https://wa.me/34694301433?text=${waText}`}
+            target="_blank" rel="noopener noreferrer"
+          >
+            Contactar soporte
+          </a>
+        </div>
+      </div>
+    </BaseModal>
+  );
+}
+
 
   // ===== Modal de cupón con contador destacado =====
   function CouponInfoModal({ open, onClose, data }) {
@@ -1570,7 +1610,11 @@ if (Number(rchk?.isRestricted) === 1) {
           expiresAt: coupon?.expiresAt || null
         } : null}
       />
-
+      <RestrictionModal
+        open={restrictModal.open}
+        info={restrictModal}
+        onClose={() => setRestrictModal(m => ({ ...m, open: false }))}
+      />
       <PublicFooter />
     </div>
   );

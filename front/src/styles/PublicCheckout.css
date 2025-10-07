@@ -713,7 +713,9 @@
 .pc-modal__body .pc-table th:nth-child(3){ width: 30%; } /* Finalidad */
 .pc-modal__body .pc-table th:nth-child(4){ width: 14%; } /* Duración */
 .pc-modal__body .pc-table th:nth-child(5){ width: 14%; } /* Titular */
-
+.pc-modal-overlay--danger .pc-modal { border-top: 6px solid #dc2626; }
+.pc-modal-overlay--danger .pc-btn-primary { background: #dc2626; }
+.pc-lead { font-weight: 600; }
 /* ===== Cookies table: mobile -> stacked cards ===== */
 @media (max-width: 420px){
   .pc-modal__body .pc-table thead{ display: none; }
