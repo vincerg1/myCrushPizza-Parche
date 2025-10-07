@@ -60,6 +60,14 @@ export default function OfferCreatePanel() {
     });
   };
 
+  const toggleDay = (day) => {
+  setForm((f) => {
+    const has = f.daysActive.includes(day);
+    const next = has ? f.daysActive.filter((d) => d !== day) : [...f.daysActive, day];
+    return { ...f, daysActive: next };
+  });
+};
+
   // ───── buscador clientes (dropdown)
   const [custQuery, setCustQuery] = useState("");
   const [custOpts, setCustOpts]   = useState([]);
