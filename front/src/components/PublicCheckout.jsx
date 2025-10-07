@@ -67,7 +67,45 @@ export default function PublicCheckout() {
 
   // pagar
   const [isPaying, setIsPaying] = useState(false);
+const [restriction, setRestriction] = useState({
+  checked: false,
+  isRestricted: 0,
+  reason: "",
+  code: ""
+});
 
+const checkRestriction = useCallback(async (rawPhone) => {
+  const phone = (rawPhone || "").replace(/\D/g, "");
+  // si no hay teléfono válido no bloqueamos aquí
+  if (!phone || phone.length < 7) {
+    const r = { checked: true, isRestricted: 0, reason: "", code: "" };
+    setRestriction(r);
+    return r;
+  }
+
+  try {
+    // Soporta shape { isRestricted:0|1 } o { restricted:true|false }
+    const { data } = await api.get("/api/customers/restriction", { params: { phone } });
+    const isRestrictedNum = Number(
+      data?.isRestricted ??
+      (typeof data?.restricted === "boolean" ? (data.restricted ? 1 : 0) : data?.restricted) ??
+      0
+    );
+    const r = {
+      checked: true,
+      isRestricted: isRestrictedNum,
+      reason: data?.reason || data?.message || "",
+      code: data?.code || ""
+    };
+    setRestriction(r);
+    return r;
+  } catch {
+    // si falla el endpoint, por UX dejamos continuar (el backend cortará en pago si aplica)
+    const r = { checked: true, isRestricted: 0, reason: "", code: "" };
+    setRestriction(r);
+    return r;
+  }
+}, []);
   // ===== LEGALES / COOKIES =====
   const [showTermsPurchase, setShowTermsPurchase] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -157,7 +195,26 @@ export default function PublicCheckout() {
     },
     [getStoreById]
   );
+  const handleNextClick = async () => {
+    setTriedNext(true);
 
+    // Validaciones actuales de nombre/teléfono y dirección/tienda
+    const ok = nextGuard();
+    if (!ok) return;
+
+    // Consulta de restricción al backend
+    const res = await checkRestriction(customer?.phone);
+    if (Number(res?.isRestricted) === 1) {
+      alert(
+        "No podemos continuar con este número.\n" +
+        (res?.reason ? `${res.reason}\n` : "") +
+        (res?.code ? `Ref.: ${res.code}` : "")
+      );
+      return;
+    }
+
+    setStep("order");
+  };
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
   const onPlaceChanged = useCallback(async () => {
@@ -860,16 +917,13 @@ export default function PublicCheckout() {
           Datos del cliente
         </button>
 
-        <button
-          className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-          onClick={() => {
-            if (!nextGuard()) return;
-            setStep("order");
-          }}
-          disabled={outOfRange ? true : false}
-        >
-          Siguiente → productos
-        </button>
+      <button
+        className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+        onClick={handleNextClick}
+        disabled={outOfRange ? true : false}
+      >
+        Siguiente → productos
+      </button>
       </div>
 
       {showCus && (
@@ -985,15 +1039,12 @@ export default function PublicCheckout() {
               Datos del cliente
             </button>
 
-            <button
-              className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-              onClick={() => {
-                if (!nextGuard()) return;
-                setStep("order");
-              }}
-            >
-              Siguiente → productos
-            </button>
+          <button
+            className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+            onClick={handleNextClick}
+          >
+            Siguiente → productos
+          </button>
           </div>
         </div>
       </div>
@@ -1112,6 +1163,16 @@ const buildItemsForApi = (lines = []) =>
     Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
 
   const startPayment = useCallback(async () => {
+    const rchk = await checkRestriction(customer?.phone);
+if (Number(rchk?.isRestricted) === 1) {
+  alert(
+    "No podemos iniciar el pago con este número.\n" +
+    (rchk?.reason ? `${rchk.reason}\n` : "") +
+    (rchk?.code ? `Ref.: ${rchk.code}` : "")
+  );
+  setIsPaying(false);
+  return;
+}
     if (!pending || isPaying) return;
     setIsPaying(true);
     try {
