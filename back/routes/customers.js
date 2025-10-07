@@ -368,6 +368,45 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+/* 1.c) comprobar restricción por teléfono */
+router.get("/restriction", async (req, res) => {
+  try {
+    const phone = normPhone(req.query.phone || "");
+    if (!phone) return res.status(400).json({ error: "phone requerido" });
+
+    const c = await prisma.customer.findUnique({
+      where: { phone },
+      select: {
+        id: true, code: true,
+        isRestricted: true,
+        restrictionReason: true,
+        restrictedAt: true
+      }
+    });
+
+    // si no existe el cliente, no bloqueamos
+    if (!c) return res.json({
+      exists: false,
+      isRestricted: 0,
+      restricted: false,
+      reason: "",
+      code: ""
+    });
+
+    const isR = !!c.isRestricted;
+    return res.json({
+      exists: true,
+      isRestricted: isR ? 1 : 0,   // ← lo que pide el front
+      restricted: isR,             // ← compat extra
+      reason: c.restrictionReason || "",
+      code: c.code || "",
+      restrictedAt: c.restrictedAt
+    });
+  } catch (err) {
+    console.error("[CUSTOMERS/restriction] error:", err);
+    res.status(500).json({ error: "internal" });
+  }
+});
 
   return router;
 };
