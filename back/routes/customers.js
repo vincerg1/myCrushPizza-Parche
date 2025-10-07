@@ -1,6 +1,7 @@
 /* eslint-disable consistent-return */
 const express = require("express");
 const axios   = require("axios");
+const { esBase9, toE164ES } = require("../utils/phone");
 const router  = express.Router();
 const GOOGLE  = process.env.GOOGLE_GEOCODING_KEY;
 
@@ -95,69 +96,108 @@ module.exports = (prisma) => {
   });
 
   /* 3) alta (con email) — phone obligatorio, address opcional, geocoding “suave” y sin duplicar phone */
-  router.post("/", async (req, res) => {
-    try {
-      let {
-        name, phone, email,
-        address_1, portal, observations,
-        lat, lng
-      } = req.body;
+router.post("/", async (req, res) => {
+  try {
+    let {
+      name, phone, email,
+      address_1, portal, observations,
+      lat, lng
+    } = req.body;
 
-      // normalizar phone y exigirlo
-      phone = normPhone(phone || "");
-      if (!phone) return res.status(400).json({ error: "phone requerido" });
+    // --- normalización: base9 + (opcional) E.164 para guardar
+    const base9 = esBase9(phone || "");
+    if (!base9) return res.status(400).json({ error: "phone requerido" });
+    const phoneE164 = toE164ES(phone) || String(phone || "");
 
-      // si el phone ya existe → 409
-      const existingByPhone = await prisma.customer.findUnique({ where: { phone } });
-      if (existingByPhone) {
-        return res.status(409).json({ error: "phone_exists", customer: existingByPhone });
+    // --- helper: buscar cualquier número que contenga esos 9 dígitos
+    async function findByBase9(b9) {
+      try {
+        // si existe columna phoneBase9, úsala también
+        return await prisma.customer.findFirst({
+          where: { OR: [{ phone: { contains: b9 } }, { phoneBase9: b9 }] },
+          select: { id: true, code: true, phone: true }
+        });
+      } catch {
+        // fallback si no existe phoneBase9
+        return await prisma.customer.findFirst({
+          where: { phone: { contains: b9 } },
+          select: { id: true, code: true, phone: true }
+        });
       }
-
-      // address_1 opcional (si falta, generamos PICKUP)
-      let address = (address_1 || "").trim();
-      if (!address) address = `(PICKUP) ${phone}`;
-
-      // coords iniciales
-      let geo = {
-        lat: lat != null ? +lat : null,
-        lng: lng != null ? +lng : null
-      };
-
-      // Geocode solo si no es PICKUP, faltan coords y hay GOOGLE key
-      const isPickup = /^\(PICKUP\)/i.test(address);
-      if (!isPickup && (!geo.lat || !geo.lng) && GOOGLE) {
-        try {
-          const { data:g } = await axios.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            { params:{ address, components:"country:ES", key:GOOGLE } }
-          );
-          const loc = g?.results?.[0]?.geometry?.location;
-          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
-            geo = { lat: loc.lat, lng: loc.lng };
-          } else {
-            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
-          }
-        } catch (e) {
-          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
-        }
-      }
-
-      const data = { name, phone, email, address_1: address, portal, observations, ...geo };
-
-      // crear (address_1 es UNIQUE; si choca, Prisma devolverá P2002)
-      const saved = await prisma.customer.create({
-        data: { code: await genCustomerCode(), origin: "PHONE", ...data }
-      });
-
-      res.json(saved);
-    } catch (err) {
-      console.error("[CUSTOMERS/post]", err);
-      if (err.code === "P2002") {
-        return res.status(409).json({ error:"Unique constraint violation", meta: err.meta });
-      }
-      res.status(500).json({ error:"internal" });
     }
-  });
+
+    // --- duplicado por base9
+    const existing = await findByBase9(base9);
+    if (existing) {
+      return res.status(409).json({ error: "phone_exists", customer: existing });
+    }
+
+    // --- address opcional (PICKUP si no llega)
+    let address = (address_1 || "").trim();
+    if (!address) address = `(PICKUP) ${phoneE164}`;
+
+    // --- coords iniciales
+    let geo = {
+      lat: lat != null ? +lat : null,
+      lng: lng != null ? +lng : null
+    };
+
+    // --- geocode si procede
+    const isPickup = /^\(PICKUP\)/i.test(address);
+    if (!isPickup && (!geo.lat || !geo.lng) && GOOGLE) {
+      try {
+        const { data: g } = await axios.get(
+          "https://maps.googleapis.com/maps/api/geocode/json",
+          { params: { address, components: "country:ES", key: GOOGLE } }
+        );
+        const loc = g?.results?.[0]?.geometry?.location;
+        if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+          geo = { lat: loc.lat, lng: loc.lng };
+        } else {
+          console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
+        }
+      } catch (e) {
+        console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
+      }
+    }
+
+    const baseData = {
+      name,
+      phone: phoneE164,         // guardamos normalizado (con +34 si es válido)
+      email,
+      address_1: address,
+      portal,
+      observations,
+      ...geo
+    };
+
+    // --- crear (intentando guardar phoneBase9 si existe la columna)
+    let saved;
+    try {
+      saved = await prisma.customer.create({
+        data: { code: await genCustomerCode(), origin: "PHONE", phoneBase9: base9, ...baseData }
+      });
+    } catch (e) {
+      // si la columna no existe en el esquema -> reintenta sin ella
+      if (/Unknown arg `phoneBase9`/i.test(e?.message)) {
+        saved = await prisma.customer.create({
+          data: { code: await genCustomerCode(), origin: "PHONE", ...baseData }
+        });
+      } else {
+        throw e;
+      }
+    }
+
+    res.json(saved);
+  } catch (err) {
+    console.error("[CUSTOMERS/post]", err);
+    if (err.code === "P2002") {
+      return res.status(409).json({ error: "Unique constraint violation", meta: err.meta });
+    }
+    res.status(500).json({ error: "internal" });
+  }
+});
+
 
   /* 3.b) edición simple (incluye email) */
   router.patch("/:id", async (req, res) => {
@@ -371,42 +411,71 @@ module.exports = (prisma) => {
 /* 1.c) comprobar restricción por teléfono */
 router.get("/restriction", async (req, res) => {
   try {
-    const phone = normPhone(req.query.phone || "");
-    if (!phone) return res.status(400).json({ error: "phone requerido" });
+    const q = req.query.phone || req.query.q || "";
+    const base9 = esBase9(q);
 
-    const c = await prisma.customer.findUnique({
-      where: { phone },
-      select: {
-        id: true, code: true,
-        isRestricted: true,
-        restrictionReason: true,
-        restrictedAt: true
+    // si no se puede obtener base9 devolvemos "no restringido"
+    if (!base9) {
+      return res.json({
+        exists: false,
+        isRestricted: 0,
+        restricted: false,
+        reason: "",
+        code: ""
+      });
+    }
+
+    async function findByBase9(b9) {
+      try {
+        return await prisma.customer.findFirst({
+          where: { OR: [{ phone: { contains: b9 } }, { phoneBase9: b9 }] },
+          select: {
+            id: true, code: true,
+            isRestricted: true,
+            restrictionReason: true,
+            restrictedAt: true
+          }
+        });
+      } catch {
+        return await prisma.customer.findFirst({
+          where: { phone: { contains: b9 } },
+          select: {
+            id: true, code: true,
+            isRestricted: true,
+            restrictionReason: true,
+            restrictedAt: true
+          }
+        });
       }
-    });
+    }
 
-    // si no existe el cliente, no bloqueamos
-    if (!c) return res.json({
-      exists: false,
-      isRestricted: 0,
-      restricted: false,
-      reason: "",
-      code: ""
-    });
+    const c = await findByBase9(base9);
+
+    if (!c) {
+      return res.json({
+        exists: false,
+        isRestricted: 0,
+        restricted: false,
+        reason: "",
+        code: ""
+      });
+    }
 
     const isR = !!c.isRestricted;
-    return res.json({
+    res.json({
       exists: true,
-      isRestricted: isR ? 1 : 0,   // ← lo que pide el front
-      restricted: isR,             // ← compat extra
+      isRestricted: isR ? 1 : 0,   // lo que consume el front
+      restricted: isR,             // compat adicional
       reason: c.restrictionReason || "",
       code: c.code || "",
-      restrictedAt: c.restrictedAt
+      restrictedAt: c.restrictedAt || null
     });
   } catch (err) {
     console.error("[CUSTOMERS/restriction] error:", err);
     res.status(500).json({ error: "internal" });
   }
 });
+
 
   return router;
 };
