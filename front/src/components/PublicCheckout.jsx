@@ -77,34 +77,26 @@ export default function PublicCheckout() {
 
 const checkRestriction = useCallback(async (rawPhone) => {
   const phone = (rawPhone || "").replace(/\D/g, "");
-  // si no hay teléfono válido no bloqueamos aquí
   if (!phone || phone.length < 7) {
-    const r = { checked: true, isRestricted: 0, reason: "", code: "" };
-    setRestriction(r);
-    return r;
+    return { checked: true, isRestricted: 0, reason: "", code: "" };
   }
 
   try {
-    // Soporta shape { isRestricted:0|1 } o { restricted:true|false }
     const { data } = await api.get("/api/customers/restriction", { params: { phone } });
     const isRestrictedNum = Number(
       data?.isRestricted ??
       (typeof data?.restricted === "boolean" ? (data.restricted ? 1 : 0) : data?.restricted) ??
       0
     );
-    const r = {
+    return {
       checked: true,
       isRestricted: isRestrictedNum,
       reason: data?.reason || data?.message || "",
       code: data?.code || ""
     };
-    setRestriction(r);
-    return r;
   } catch {
-    // si falla el endpoint, por UX dejamos continuar (el backend cortará en pago si aplica)
-    const r = { checked: true, isRestricted: 0, reason: "", code: "" };
-    setRestriction(r);
-    return r;
+    // si falla el endpoint, dejamos continuar (el backend cortará si aplica)
+    return { checked: true, isRestricted: 0, reason: "", code: "" };
   }
 }, []);
   // ===== LEGALES / COOKIES =====
@@ -201,9 +193,14 @@ const checkRestriction = useCallback(async (rawPhone) => {
     const ok = nextGuard();
     if (!ok) return;
 
-const r = await checkRestriction(customer?.phone);
-if (Number(r.isRestricted) === 1) {
-  setRestrictModal({ open:true, reason:r.reason||"", code:r.code||"", phone:customer?.phone||"" });
+const rchk = await checkRestriction(customer?.phone);
+if (Number(rchk?.isRestricted) === 1) {
+  setRestrictModal({
+    open: true,
+    reason: rchk.reason || "",
+    code: rchk.code || "",
+    phone: customer?.phone || ""
+  });
   setIsPaying(false);
   return;
 }
