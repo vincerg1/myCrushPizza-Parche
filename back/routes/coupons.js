@@ -110,13 +110,7 @@ module.exports = (prisma) => {
   /* ==========================================================
    * ================  CREACIÓN MASIVA (nuevo)  ================
    * ========================================================== */
-  // POST /api/coupons/bulk-generate
-  // body: {
-  //   type: "RANDOM_PERCENT" | "FIXED_PERCENT" | "FIXED_AMOUNT",
-  //   quantity, percent, percentMin, percentMax, amount,
-  //   maxAmount, usageLimit, assignedToId, segments (["S1","S2"...]),
-  //   activeFrom, expiresAt, daysActive, windowStart, windowEnd
-  // }
+
   router.post('/bulk-generate', requireApiKey, async (req, res) => {
     try {
       const {
