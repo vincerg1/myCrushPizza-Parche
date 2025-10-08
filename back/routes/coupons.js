@@ -91,10 +91,15 @@ function isActiveByDate(row, ref = nowInTZ()) {
   if (row.expiresAt && new Date(row.expiresAt).getTime() <= t) return false;
   return true;
 }
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const pick = (n) => Array.from({ length: n }, () =>
+  CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)]
+).join('');
 
 function codePattern(prefix) {
-  const block = () => Math.random().toString(36).toUpperCase().slice(2, 6);
-  return `${prefix}-${block()}-${block()}`;
+  // prefix llega como "MCP-RC" | "MCP-PF" | "MCP-CD"
+  const tag = String(prefix || '').replace(/^MCP-/, '').slice(0, 2).toUpperCase();
+  return `MCP-${tag}${pick(2)}-${pick(4)}`;
 }
 
 // --- API Key SOLO para endpoints internos (issue/assign/bulk-generate)
