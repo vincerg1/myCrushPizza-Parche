@@ -37,41 +37,39 @@ module.exports = (prisma) => {
   });
 
 
+  router.get("/admin", async (req, res) => {
+    const q    = (req.query.q || "").trim();
+    const take = Math.min(toInt(req.query.take) || 50, 200);
+    const skip = toInt(req.query.skip) || 0;
 
-router.get("/admin", async (req, res) => {
-  const q    = (req.query.q || "").trim();
-  const take = Math.min(toInt(req.query.take) || 50, 200);
-  const skip = toInt(req.query.skip) || 0;
+    // solo dígitos para teléfono
+    const digits = q.replace(/\D/g, "");
+    const where = digits ? { phone: { contains: digits } } : {};
 
-  const digits = q.replace(/\D/g, "");
-  const where = q ? {
-    OR: [
-      digits ? { phone: { contains: digits } } : undefined,                // 603...
-      { code:  { contains: q.toUpperCase() } },                            // CUS-74309
-      { name:  { contains: q, mode: "insensitive" } },                     // alex
-    ].filter(Boolean)
-  } : {};
+    try {
+      const [items, total] = await Promise.all([
+        prisma.customer.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id:true, code:true, name:true,
+            phone:true, email:true,
+            address_1:true, portal:true, observations:true,
+            isRestricted:true, restrictedAt:true, restrictionReason:true,
+            segment:true, segmentUpdatedAt:true,     // ★ segmento
+            createdAt:true, updatedAt:true
+          },
+          skip, take
+        }),
+        prisma.customer.count({ where })
+      ]);
 
-  try {
-    const [items, total] = await Promise.all([
-      prisma.customer.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id:true, code:true, name:true, phone:true, segment:true
-        },
-        skip, take
-      }),
-      prisma.customer.count({ where })
-    ]);
-
-    res.json({ items, total, skip, take });
-  } catch (err) {
-    console.error("[CUSTOMERS/admin] error:", err);
-    res.status(500).json({ error:"internal" });
-  }
-});
-
+      res.json({ items, total, skip, take });
+    } catch (err) {
+      console.error("[CUSTOMERS/admin] error:", err);
+      res.status(500).json({ error:"internal" });
+    }
+  });
 
   /* 2) búsqueda rápida por phone/address_1 (rápida) */
   router.get("/search", async (req, res) => {
