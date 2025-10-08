@@ -53,8 +53,8 @@ export default function Backoffice() {
       case "pizzaCreator":    return <PizzaCreator   />;
       case "storeCreator":    return <StoreCreator   />;
       case "customers":       return <CustomersPanel />;
-      case "offers/sms":      return <MyOffersPanel  />;     // Enviar promo por SMS
-      case "offers/create":   return <OfferCreatePanel />;   // NUEVO formulario de cupones
+      case "offers/sms":      return <MyOffersPanel  />;     
+      case "offers/create":   return <OfferCreatePanel />;   
       case "myOrders":        return <MyOrdersGate   />;
       default:                return null;
     }
