@@ -69,9 +69,7 @@ export default function MyOffersPanel() {
       const list = (phones || "").split(/[,\s;]+/).map(x => x.trim()).filter(Boolean);
       if (list.length === 0) return "Ingresa al menos un teléfono para envío individual.";
     }
-    if (testMode && (!Number.isFinite(Number(testLimit)) || Number(testLimit) < 1)) {
-      return "Test limit inválido.";
-    }
+ 
     if (!Number.isFinite(Number(batchSize)) || Number(batchSize) < 10) {
       return "Batch size mínimo 10.";
     }
@@ -184,18 +182,7 @@ ${data.sample?.length ? `muestra: ${data.sample.join(", ")}` : ""}`);
           &nbsp;Modo prueba
         </label>
 
-        <label className="block">
-          Test limit:
-          <input
-            type="number"
-            value={testLimit}
-            onChange={e => setTestLimit(e.target.value)}
-            style={{ width: "100%", marginTop: 6 }}
-            min={1}
-            max={5000}
-            disabled={!testMode}
-          />
-        </label>
+
 
         <label className="block">
           Batch size:
