@@ -147,13 +147,13 @@ enum Channel {
 
 // Enums
 enum CouponKind {
-  PERCENT // % de descuento
-  AMOUNT // € fijos
+  PERCENT 
+  AMOUNT 
 }
 
 enum CouponVariant {
-  FIXED // valor fijo
-  RANGE // solo para random %, se resuelve al generar
+  FIXED 
+  RANGE 
 }
 
 enum CouponStatus {
