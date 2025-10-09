@@ -78,6 +78,62 @@
   font-size:12px;
 }
 .logout-btn:hover{ background:#e14b4b; }
+
+
+/* ====== Split layout con sidebar ajustable ====== */
+.backoffice-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 100%;
+  /* fallback por si no viene el inline style */
+  --sidebar-w: 220px;
+}
+
+.backoffice-wrapper .sidebar {
+  width: var(--sidebar-w);
+  min-width: 160px;
+  max-width: 420px;
+  overflow: auto;
+  /* transiciones suaves al soltar el drag */
+  transition: width .08s ease;
+}
+
+/* línea/agarre entre sidebar y panel */
+.backoffice-wrapper .splitter {
+  flex: 0 0 8px;       /* zona cómoda de arrastre */
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+}
+.backoffice-wrapper .splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: 0 3px;       /* la línea visual del centro */
+  border-left: 1px solid #e5e7eb;
+}
+.backoffice-wrapper .splitter:hover {
+  background: #f3f4f6;
+}
+.backoffice-wrapper .splitter.dragging {
+  background: #e5e7eb;
+}
+
+/* panel principal */
+.backoffice-wrapper .panel {
+  flex: 1 1 auto;
+  min-width: 0;       /* importante para que no crezca y permita el overflow interno */
+  overflow: auto;
+}
+
+/* (opcional) responsive: en pantallas muy pequeñas, forzar ancho mínimo */
+@media (max-width: 860px) {
+  .backoffice-wrapper .sidebar {
+    min-width: 140px;
+  }
+}
+
 /* Backoffice.css  ─ añadir al final */
 @media (max-width: 768px) {
   .sidebar.non-admin {
