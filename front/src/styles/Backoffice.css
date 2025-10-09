@@ -127,6 +127,87 @@
   overflow: auto;
 }
 
+/* ==== Sidebar: grupos con hijos (acordeón temático) ==== */
+
+/* Caja del grupo (header + hijos) */
+.sidebar-group{
+  --tone-bg:    #f8f9ff;   /* defaults suaves por si no hay tema */
+  --tone-border:#e6e9ff;
+  --tone-accent:#5865f2;
+
+  border: 1px solid var(--tone-border);
+  background: var(--tone-bg);
+  border-radius: 12px;
+  margin: 10px 0;
+  overflow: hidden; /* para el highlight del hijo activo */
+}
+
+/* Tema por grupo (puedes replicar para otros: customers, inventory, etc.) */
+.sidebar-group[data-key="offers"]{
+  --tone-bg:    #fff5f8;   /* rosa muy suave */
+  --tone-border:#ffd7e4;
+  --tone-accent:#ff3b7a;   /* acento ofertas */
+}
+
+/* Contenedor de los hijos con indentación real + guía vertical */
+.sidebar-children{
+  position: relative;
+  padding: 6px 8px 10px 22px; /* deja espacio a la guía y para la indentación */
+}
+
+/* Guía vertical que conecta a todos los hijos */
+.sidebar-children::before{
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--tone-accent);
+  opacity: .25; /* sutil */
+}
+
+/* Cada hijo envuelto para poder marcar activo sin depender del contenido */
+.sidebar-child{
+  border-radius: 10px;
+  margin: 4px 0;
+  padding: 0; /* el padding lo da SidebarButton internamente */
+}
+
+/* Hijo activo: fondo elevado + borde izquierdo acento */
+.sidebar-child[data-active="true"]{
+  background: color-mix(in srgb, var(--tone-bg) 60%, #fff 40%);
+  box-shadow: 0 4px 18px rgba(16,24,40,.08);
+  border-left: 3px solid var(--tone-accent);
+}
+
+/* Pequeña mejora de foco/hover dentro del grupo */
+.sidebar-child:hover{
+  background: color-mix(in srgb, var(--tone-bg) 45%, #fff 55%);
+}
+
+/* Asegura que los botones hijos respeten la indentación visual */
+.sidebar .sidebar-child .sidebar-button{
+  margin-left: 6px; /* muévete dentro de la caja del grupo */
+}
+
+/* Header del grupo: chevron/estado suele venir del propio SidebarButton,
+   aquí sólo ajustamos separación para que el header parezca “tapa” del contenedor */
+.sidebar-group > .sidebar-button{
+  border-bottom: 1px solid var(--tone-border);
+}
+.sidebar-group.open > .sidebar-button{
+  background: color-mix(in srgb, var(--tone-bg) 85%, #fff 15%);
+}
+
+/* Opcional: separa ligeramente grupos adyacentes del resto del menú */
+.sidebar .sidebar-group + .sidebar-button,
+.sidebar .sidebar-button + .sidebar-group {
+  margin-top: 6px;
+}
+
+
 /* (opcional) responsive: en pantallas muy pequeñas, forzar ancho mínimo */
 @media (max-width: 860px) {
   .backoffice-wrapper .sidebar {

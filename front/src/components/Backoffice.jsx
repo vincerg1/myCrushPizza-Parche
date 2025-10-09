@@ -1,19 +1,18 @@
-// src/components/Backoffice.jsx
 import React, { useState, useEffect, useRef } from "react";
 import SidebarButton   from "./SidebarButton";
 import PizzaCreator    from "./PizzaCreator";
 import StoreCreator    from "./StoreCreator";
 import IngredientForm  from "./IngredientForm";
 import MyOrdersGate    from "./MyOrders";
-import MyOffersPanel   from "./MyOffersPanel";     // ← Enviar SMS
+import MyOffersPanel   from "./MyOffersPanel";
 import { useAuth }     from "./AuthContext";
 import CustomerInfo    from "./CustomerInfo";
 import "../styles/Backoffice.css";
 import CustomersPanel  from "./CustomersPanel";
-import OfferCreatePanel from "./OfferCreatePanel"; // ← NUEVO: Crear ofertas
+import OfferCreatePanel from "./OfferCreatePanel";
 
 const LS_KEY_SIDEBAR_W = "bo.sidebarW";
-const DEFAULT_W = 220;  // más estrecho por defecto
+const DEFAULT_W = 220;
 const MIN_W = 160;
 const MAX_W = 420;
 
@@ -23,7 +22,7 @@ export default function Backoffice() {
   const isAdmin = role === "admin";
 
   const [active, setActive] = useState("inventory");
-  const [open, setOpen] = useState({ offers: true }); // control de desplegables
+  const [open, setOpen] = useState({ offers: true });
 
   // ancho del sidebar + drag
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
@@ -47,10 +46,8 @@ export default function Backoffice() {
     dragRef.current.startX = e.clientX;
     dragRef.current.startW = sidebarW;
 
-    // listeners globales
     window.addEventListener("mousemove", onDragMove);
     window.addEventListener("mouseup", onDragEnd);
-    // UX: evita seleccionar texto durante el drag
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
   };
@@ -72,7 +69,7 @@ export default function Backoffice() {
     localStorage.setItem(LS_KEY_SIDEBAR_W, String(sidebarW));
   };
 
-  // accesibilidad básica con teclado (← →)
+  // accesibilidad teclado
   const onSplitterKeyDown = (e) => {
     const step = e.shiftKey ? 20 : 10;
     if (e.key === "ArrowLeft") {
@@ -92,8 +89,6 @@ export default function Backoffice() {
     { key:"pizzaCreator" , label:"🍕  Pizza Creator" , show:isAdmin },
     { key:"storeCreator" , label:"🏪  Store Creator" , show:isAdmin },
     { key:"customers"    , label:"👥  Customers"     , show:isAdmin },
-
-    // Grupo: Ofertas
     {
       key: "offers",
       label: "🏆  Ofertas",
@@ -103,7 +98,6 @@ export default function Backoffice() {
         { key: "offers/create", label: "➕  Crear ofertas"},
       ],
     },
-
     { key:"myOrders"     , label:"🧾  My Orders"     , show:true    },
   ].filter(m => m.show);
 
@@ -121,10 +115,7 @@ export default function Backoffice() {
   })();
 
   return (
-    <div
-      className="backoffice-wrapper"
-      style={{ "--sidebar-w": `${sidebarW}px` }}
-    >
+    <div className="backoffice-wrapper" style={{ "--sidebar-w": `${sidebarW}px` }}>
       {/* ───── LATERAL ───── */}
       <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
         <div className="sidebar-head">
@@ -145,25 +136,39 @@ export default function Backoffice() {
             );
           }
 
-          // Grupos con hijos
+          // Grupos con hijos: contenedor con tono + guía + indentación
           const isOpen = !!open[item.key];
           return (
-            <div key={item.key}>
+            <div
+              key={item.key}
+              className={`sidebar-group ${isOpen ? "open" : ""}`}
+              data-key={item.key} // para temas por grupo (colores)
+            >
               <SidebarButton
                 label={item.label}
                 group
                 open={isOpen}
                 onClick={() => setOpen(o => ({ ...o, [item.key]: !o[item.key] }))}
               />
-              {isOpen && item.children.map(child => (
-                <SidebarButton
-                  key={child.key}
-                  label={child.label}
-                  active={active === child.key}
-                  depth={1}
-                  onClick={() => setActive(child.key)}
-                />
-              ))}
+
+              {isOpen && (
+                <div className="sidebar-children">
+                  {item.children.map(child => (
+                    <div
+                      key={child.key}
+                      className="sidebar-child"
+                      data-active={active === child.key}
+                    >
+                      <SidebarButton
+                        label={child.label}
+                        active={active === child.key}
+                        depth={1}
+                        onClick={() => setActive(child.key)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
