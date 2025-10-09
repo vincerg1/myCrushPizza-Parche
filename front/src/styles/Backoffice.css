@@ -127,103 +127,73 @@
   overflow: auto;
 }
 
-/* Ancho variable del sidebar viene de --sidebar-w */
-.backoffice-wrapper {
-  --sidebar-w: 220px;
+/* -------- Sidebar layout (ya lo tienes) -------- */
+
+/* Quita scrollbar interno del contenedor de hijos */
+.sidebar-children{
+  margin: 6px 0 10px 0;
+  padding-left: 10px;
+  border-left: 2px solid #fde2e8; /* guía sutil */
+  overflow: visible; /* ← sin mini-scroll */
 }
 
-/* ====== GRUPOS (Acordeón) ====== */
-.sidebar-group {
-  background: #ffecef;           /* rosado suave */
-  border: 1px solid #ffd5dc;
-  border-radius: 12px;
-  padding: 8px 10px;
-  margin: 10px 0;
-  position: relative;
-}
-
-/* guía sutil a la izquierda (vertical) */
-.sidebar-group::before {
-  content: "";
-  position: absolute;
-  left: 8px;
-  top: 12px;
-  bottom: 12px;
-  width: 2px;
-  background: #ffc2cd;
-  border-radius: 2px;
-  opacity: .85;
-}
-
-/* encabezado del grupo (usa SidebarButton con .is-group) */
-.sidebar-btn.is-group {
+/* Estética general de botón */
+.sidebar-btn{
   width: 100%;
-  background: transparent;
-  border: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 6px 8px 18px; /* deja espacio para la guía */
-  border-radius: 8px;
-  font-weight: 700;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 6px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
-/* caret ▸/▾ y placeholder para alinear */
-.sidebar-btn .caret {
-  width: 16px;
-  text-align: center;
-  font-size: 14px;
-  line-height: 1;
+/* Hover unificado para todos */
+.sidebar-btn:hover{
+  background: #f6f7fb;
+  border-color: #e7e9f1;
+}
+
+/* Activo = rosado (para simples, grupo activo por tener un hijo, e hijo activo) */
+.sidebar-btn.is-active{
+  background: #ffe6ee;
+  border-color: #ffc8d8;
+  box-shadow: 0 0 0 2px rgba(255,46,115,.12) inset;
+}
+
+/* Botón de cabecera de grupo (sin caja rosada por defecto) */
+.sidebar-group .sidebar-btn.is-group{
+  background: #fff;                 /* neutral por defecto */
+  border-color: #eee;
+}
+
+/* Si el grupo tiene un hijo activo, la cabecera hereda activo (ya se añade .is-active desde JSX) */
+
+/* Apariencia de los hijos (limpios, sin “caja blanca” extra) */
+.sidebar-child .sidebar-btn{
+  margin: 6px 6px 6px 10px; /* un pelín más a la derecha */
+}
+
+/* Flecha del acordeón: ▼ cuando cerrado, ▶ cuando abierto (tu pedido) */
+.sidebar-btn.is-group .chev{
+  display: inline-block;
+  width: 18px;
+  margin-right: 4px;
   opacity: .9;
 }
-.sidebar-btn .caret.placeholder { visibility: hidden; }
+.sidebar-btn.is-group .chev.closed::before{ content: "˅"; } /* cerrado */
+.sidebar-btn.is-group .chev.open::before  { content: "˄"; } /* abierto */
 
-/* contenedor de hijos integrado al mismo bloque rosado */
-.sidebar-children {
-  margin-top: 6px;
-  padding-left: 18px;       /* alinea con guía */
-  display: grid;
-  gap: 6px;
-  /* clave: NO overflow aquí → sin miniscrollbars */
-  overflow: visible;
-}
+/* Profundidad/indent */
+.sidebar-btn.depth-1{ padding-left: 10px; }
 
-/* cada hijo: sin tarjetas blancas; solo un chip/hover */
-.sidebar-child .sidebar-btn.is-child {
+/* Quita cualquier color de fondo fijo que viniera de estilos previos del grupo */
+.sidebar-group.open{
   background: transparent;
-  border: 0;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 8px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-/* hover/active de hijos dentro del rosado */
-.sidebar-child .sidebar-btn.is-child:hover {
-  background: #ffdfe6;
-}
-
-.sidebar-child[data-active="true"] .sidebar-btn.is-child {
-  background: #ffcfd9;
-  box-shadow: inset 0 0 0 1px #ffb3c2;
-}
-
-/* botón base (para los ítems no-grupo) conserva tu estilo anterior */
-.sidebar-btn {
-  cursor: pointer;
-}
-
-/* Por si había alguna regla previa que forzaba scroll dentro del grupo */
-.sidebar-group,
-.sidebar-children {
-  scrollbar-width: none;     /* Firefox */
-}
-.sidebar-group::-webkit-scrollbar,
-.sidebar-children::-webkit-scrollbar {
-  display: none;             /* WebKit */
+  border-radius: 12px;
 }
 
 
