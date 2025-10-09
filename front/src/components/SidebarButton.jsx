@@ -6,24 +6,32 @@ export default function SidebarButton({
   label,
   active = false,
   onClick,
-  group = false,   // si es cabecera de grupo
-  open  = false,   // estado del grupo
+  group = false,   // si es cabecera de grupo (acordeón)
+  open  = false,   // estado del grupo (abierto/cerrado)
   depth = 0        // nivel de indentación para hijos
 }) {
+  const isChild = depth > 0;
+
   return (
     <button
-      className={[
-        "sidebar-btn",
-        active ? "active" : "",
-        group ? "group" : "",
-        depth ? `depth-${depth}` : ""
-      ].join(" ").trim()}
+      type="button"
       onClick={onClick}
       aria-expanded={group ? open : undefined}
-      type="button"
+      className={[
+        "sidebar-btn",
+        group ? "is-group" : "",
+        isChild ? "is-child" : "",
+        active ? "is-active" : ""
+      ].join(" ").trim()}
     >
-      {group && <span className={`chev ${open ? "open" : ""}`} aria-hidden>▸</span>}
-      <span className="lbl">{label}</span>
+      {/* caret: ▸ (cerrado) / ▾ (abierto). Para ítems no-grupo se reserva espacio con placeholder */}
+      {group ? (
+        <span className="caret" aria-hidden="true">{open ? "▾" : "▸"}</span>
+      ) : (
+        <span className="caret placeholder" aria-hidden="true"> </span>
+      )}
+
+      <span className="label">{label}</span>
     </button>
   );
 }

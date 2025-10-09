@@ -22,7 +22,7 @@ export default function Backoffice() {
   const isAdmin = role === "admin";
 
   const [active, setActive] = useState("inventory");
-  const [open, setOpen] = useState({ offers: true });
+  const [open, setOpen] = useState({ offers: false });
 
   // ancho del sidebar + drag
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
