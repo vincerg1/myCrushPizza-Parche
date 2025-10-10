@@ -1,3 +1,4 @@
+// src/components/Backoffice.jsx
 import React, { useState, useEffect, useRef } from "react";
 import SidebarButton   from "./SidebarButton";
 import PizzaCreator    from "./PizzaCreator";
@@ -22,6 +23,7 @@ export default function Backoffice() {
   const isAdmin = role === "admin";
 
   const [active, setActive] = useState("inventory");
+  // grupos cerrados por defecto
   const [open, setOpen] = useState({ offers: false });
 
   // ancho del sidebar + drag
@@ -84,22 +86,22 @@ export default function Backoffice() {
   if (!role) return null;
 
   // Menú con grupos (children)
-const menu = [
-  { key:"inventory"    , label:"📦  Inventory"     , show:isAdmin },
-  { key:"pizzaCreator" , label:"🍕  Pizza Creator" , show:isAdmin },
-  { key:"storeCreator" , label:"🏪  Store Creator" , show:isAdmin },
-  { key:"customers"    , label:"👥  Customers"     , show:isAdmin },
-  {
-    key: "offers",
-    label: "🏆  Ofertas",
-    show: isAdmin,
-    children: [
-      { key: "offers/sms"   , label: "✉️  Enviar SMS"   },
-      { key: "offers/create", label: "➕  Crear ofertas"},
-    ],
-  },
-  { key:"myOrders"     , label:"🧾  My Orders"     , show:true    },
-].filter(m => m.show);
+  const menu = [
+    { key:"inventory"    , label:"📦  Inventory"     , show:isAdmin },
+    { key:"pizzaCreator" , label:"🍕  Pizza Creator" , show:isAdmin },
+    { key:"storeCreator" , label:"🏪  Store Creator" , show:isAdmin },
+    { key:"customers"    , label:"👥  Customers"     , show:isAdmin },
+    {
+      key: "offers",
+      label: "🏆  Ofertas",
+      show: isAdmin,
+      children: [
+        { key: "offers/sms"   , label: "✉️  Enviar SMS"   },
+        { key: "offers/create", label: "➕  Crear ofertas"},
+      ],
+    },
+    { key:"myOrders"     , label:"🧾  My Orders"     , show:true    },
+  ].filter(m => m.show);
 
   const panel = (() => {
     switch (active) {
@@ -117,57 +119,58 @@ const menu = [
   return (
     <div className="backoffice-wrapper" style={{ "--sidebar-w": `${sidebarW}px` }}>
       {/* ───── LATERAL ───── */}
-   <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
-  <div className="sidebar-head">
-    <span className="small">{isAdmin ? "Admin" : auth.storeName}</span>
-    <button className="logout-btn" onClick={logout}>Logout</button>
-  </div>
+      <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
+        <div className="sidebar-head">
+          <span className="small">{isAdmin ? "Admin" : auth.storeName}</span>
+          <button className="logout-btn" onClick={logout}>Logout</button>
+        </div>
 
-  {menu.map(item => {
-    // Ítems simples
-    if (!item.children) {
-      return (
-        <SidebarButton
-          key={item.key}
-          label={item.label}
-          active={active === item.key}
-          onClick={() => setActive(item.key)}
-        />
-      );
-    }
+        {menu.map(item => {
+          // Ítems simples
+          if (!item.children) {
+            return (
+              <SidebarButton
+                key={item.key}
+                label={item.label}
+                active={active === item.key}
+                onClick={() => setActive(item.key)}
+              />
+            );
+          }
 
-    // Grupos con hijos
-    const isOpen = !!open[item.key];
-    const groupActive = item.children?.some(ch => active === ch.key); // ← resalta cabecera si hay hijo activo
+          // Grupos con hijos
+          const isOpen = !!open[item.key];
+          // resalta la cabecera si algún hijo está activo
+          const hasActiveChild = item.children?.some(ch => active === ch.key);
 
-    return (
-      <div key={item.key} className={`sidebar-group ${isOpen ? "open" : ""}`} data-key={item.key}>
-        <SidebarButton
-          label={item.label}
-          group
-          open={isOpen}
-          active={groupActive}
-          onClick={() => setOpen(o => ({ ...o, [item.key]: !o[item.key] }))}
-        />
+          return (
+            <div key={item.key} className={`sidebar-group ${isOpen ? "open" : ""}`} data-key={item.key}>
+              <SidebarButton
+                label={item.label}
+                group
+                open={isOpen}
+                active={active === item.key || hasActiveChild}
+                onClick={() => setOpen(o => ({ ...o, [item.key]: !o[item.key] }))}
+              />
 
-        {isOpen && (
-          <div className="sidebar-children">
-            {item.children.map(child => (
-              <div key={child.key} className="sidebar-child" data-active={active === child.key}>
-                <SidebarButton
-                  label={child.label}
-                  active={active === child.key}
-                  depth={1}
-                  onClick={() => setActive(child.key)}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  })}
-  </aside>
+              {isOpen && (
+                <div className="sidebar-children">
+                  {item.children.map(child => (
+                    <div key={child.key} className="sidebar-child" data-active={active === child.key}>
+                      <SidebarButton
+                        label={child.label}
+                        active={active === child.key}
+                        depth={1}
+                        onClick={() => setActive(child.key)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </aside>
 
       {/* ───── SEPARADOR (drag) ───── */}
       <div

@@ -129,15 +129,20 @@
 
 /* -------- Sidebar layout (ya lo tienes) -------- */
 
-/* Quita scrollbar interno del contenedor de hijos */
 .sidebar-children{
   margin: 6px 0 10px 0;
   padding-left: 10px;
-  border-left: 2px solid #fde2e8; /* guía sutil */
-  overflow: visible; /* ← sin mini-scroll */
+  border-left: 2px solid #f0f2f6; /* guía muy sutil */
+  overflow: visible; /* no mini-scroll */
 }
 
-/* Estética general de botón */
+/* Cuando la CABECERA DE GRUPO está activa (o la marcamos activa desde JSX),
+   damos un leve tono al contenedor de hijos: */
+.sidebar-btn.is-group.is-active + .sidebar-children{
+  border-left-color: #fde2e8;            /* tono acorde con el activo */
+}
+
+/* ====== BOTONES DEL SIDEBAR ====== */
 .sidebar-btn{
   width: 100%;
   text-align: left;
@@ -149,51 +154,78 @@
   font-size: 14px;
   cursor: pointer;
   transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  box-sizing: border-box;
 }
 
-/* Hover unificado para todos */
+/* Hover unificado */
 .sidebar-btn:hover{
   background: #f6f7fb;
   border-color: #e7e9f1;
 }
 
-/* Activo = rosado (para simples, grupo activo por tener un hijo, e hijo activo) */
+/* ACTIVO = rosado (para cualquier botón: simple, cabecera de grupo o hijo) */
 .sidebar-btn.is-active{
   background: #ffe6ee;
   border-color: #ffc8d8;
   box-shadow: 0 0 0 2px rgba(255,46,115,.12) inset;
 }
 
-/* Botón de cabecera de grupo (sin caja rosada por defecto) */
+/* Cabecera de grupo por defecto NEUTRA (sin rosado si no está activa) */
 .sidebar-group .sidebar-btn.is-group{
-  background: #fff;                 /* neutral por defecto */
+  background: #fff;
   border-color: #eee;
 }
 
-/* Si el grupo tiene un hijo activo, la cabecera hereda activo (ya se añade .is-active desde JSX) */
-
-/* Apariencia de los hijos (limpios, sin “caja blanca” extra) */
+/* Apariencia de los hijos: un poco más indentados */
 .sidebar-child .sidebar-btn{
-  margin: 6px 6px 6px 10px; /* un pelín más a la derecha */
+  margin: 6px 6px 6px 10px; /* desplaza ligeramente a la derecha */
 }
 
-/* Flecha del acordeón: ▼ cuando cerrado, ▶ cuando abierto (tu pedido) */
+/* Profundidad/indent (por si quieres más niveles en el futuro) */
+.sidebar-btn.depth-1{ padding-left: 10px; }
+
+/* ====== FLECHA DEL ACORDEÓN ====== */
+/* Cerrado: ˅  —  Abierto: ˄  (tal cual pediste) */
 .sidebar-btn.is-group .chev{
   display: inline-block;
   width: 18px;
   margin-right: 4px;
   opacity: .9;
+  text-align: center;
 }
-.sidebar-btn.is-group .chev.closed::before{ content: "˅"; } /* cerrado */
-.sidebar-btn.is-group .chev.open::before  { content: "˄"; } /* abierto */
+.sidebar-btn.is-group .chev.closed::before{ content: "˅"; } /* grupo cerrado */
+.sidebar-btn.is-group .chev.open::before  { content: "˄"; } /* grupo abierto */
 
-/* Profundidad/indent */
-.sidebar-btn.depth-1{ padding-left: 10px; }
+/* ====== ESTADOS DEL GRUPO ====== */
+/* El contenedor del grupo en sí mismo no fuerza color de fondo */
+.sidebar-group{ border-radius: 12px; }
+.sidebar-group.open{ background: transparent; }
 
-/* Quita cualquier color de fondo fijo que viniera de estilos previos del grupo */
-.sidebar-group.open{
+/* ====== SPLITTER (BARRA DE RESIZE) ====== */
+.splitter{
+  width: 6px;
+  cursor: col-resize;
   background: transparent;
-  border-radius: 12px;
+  position: relative;
+}
+.splitter::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 2px;
+  margin: 0 auto;
+  background: #e5e7eb; /* línea sutil centrada */
+  transition: background .15s ease, width .15s ease;
+}
+.splitter:hover::after,
+.splitter.dragging::after{
+  background: #ff2e73;
+  width: 3px;
+}
+
+/* ====== ASEGURAR QUE NADA DESBORDE LATERALMENTE ====== */
+.sidebar{
+  overflow-x: hidden; /* evita scroll horizontal */
 }
 
 
