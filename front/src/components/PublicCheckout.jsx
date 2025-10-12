@@ -246,9 +246,6 @@ if (Number(rchk?.isRestricted) === 1) {
   const [showCouponToast, setShowCouponToast] = useState(false);
   const COUPON_GROUPS = [3, 4, 4];
 
-  // FP fijo 9,99 € (fallback local si backend no manda value)
-  const FP_VALUE_EUR = 9.99;
-  const isFpCode = (code) => /^MCP-FP/i.test((code || "").trim());
   const [showCouponInfo, setShowCouponInfo] = useState(false);
 
   useEffect(() => {
@@ -269,33 +266,42 @@ if (Number(rchk?.isRestricted) === 1) {
     return parts.join("-");
   }, []);
 
-  const checkCoupon = useCallback(async () => {
-    const code = (couponCode || "").trim().toUpperCase();
-    if (!code) {
-      setCoupon(null); setCouponOk(false); setCouponMsg("Introduce un cupón.");
-      return;
+const checkCoupon = useCallback(async () => {
+  const code = (couponCode || "").trim().toUpperCase();
+  if (!code) {
+    setCoupon(null); setCouponOk(false); setCouponMsg("Introduce un cupón.");
+    return;
+  }
+  try {
+    const { data } = await api.get("/api/coupons/validate", { params: { code } });
+    if (data?.valid) {
+      // v2 -> copiamos propiedades relevantes
+      const c = {
+        code,
+        kind    : data.kind,      // 'PERCENT' | 'AMOUNT'
+        variant : data.variant,   // 'FIXED' | 'RANGE'
+        percent : Number(data.percent ?? 0) || undefined,
+        amount  : Number(data.amount  ?? 0) || undefined,
+        maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
+        expiresAt: data.expiresAt || null,
+      };
+      setCoupon(c);
+      setCouponOk(true);
+      setCouponMsg("Cupón aplicado");
+      setShowCouponToast(false);
+    } else {
+      setCoupon(null); setCouponOk(false);
+      setCouponMsg(
+        data?.reason === "expired" ? "Cupón caducado." :
+        data?.reason === "used" ? "Cupón ya usado." :
+        "Cupón inválido."
+      );
     }
-    try {
-      const { data } = await api.get("/api/coupons/validate", { params: { code } });
-      if (data?.valid) {
-        const fp = isFpCode(code) || data.kind === "FP";
-        if (fp) {
-          setCoupon({ code, kind: "FP", value: FP_VALUE_EUR, expiresAt: data.expiresAt || null });
-          setCouponMsg(`Cupón aplicado`);
-        } else {
-          const pct = Number(data.percent) || 0;
-          setCoupon({ code, kind: "PERCENT", percent: pct, expiresAt: data.expiresAt || null });
-          setCouponMsg(`Cupón aplicado`);
-        }
-        setCouponOk(true);
-        setShowCouponToast(false);
-      } else {
-        setCoupon(null); setCouponOk(false); setCouponMsg("Cupón inválido o ya usado.");
-      }
-    } catch {
-      setCoupon(null); setCouponOk(false); setCouponMsg("No se pudo validar el cupón.");
-    }
-  }, [couponCode]);
+  } catch {
+    setCoupon(null); setCouponOk(false); setCouponMsg("No se pudo validar el cupón.");
+  }
+}, [couponCode]);
+
 
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
@@ -756,7 +762,13 @@ if (Number(rchk?.isRestricted) === 1) {
     const variant =
       secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
 
-    const isFp = data.kind === "FP";
+    <p style={{marginTop:0}}>
+  <b>Beneficio:</b>{" "}
+  {data.kind === "AMOUNT"
+    ? `Descuento fijo (−€${Number(data.amount||0).toFixed(2)})`
+    : `Descuento ${Number(data.percent||0)}%${data.maxAmount!=null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""}`
+  }
+</p>
     const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
 
     return (
@@ -1172,23 +1184,24 @@ const buildItemsForApi = (lines = []) =>
   const deliveryBlocks = isDelivery && qtyTotal > 0 ? Math.ceil(qtyTotal / DELIVERY_BLOCK) : 0;
   const deliveryFeeTotal = isDelivery ? deliveryBlocks * DELIVERY_FEE : 0;
 
-  // --- DESCUENTOS (FP fijo 9,99 o %)
-  const productsSubtotal = pending ? Number(pending.total || 0) : 0;
-  const isFp = !!(coupon && ((coupon.kind === "FP") || isFpCode(coupon?.code)));
-  const couponPct = !isFp ? Number(coupon?.percent || 0) : 0;
 
-  const percentDiscount = !isFp
-    ? Math.round(productsSubtotal * (couponPct / 100) * 100) / 100
-    : 0;
+const productsSubtotal = pending ? Number(pending.total || 0) : 0;
 
-  const fpDiscount = isFp
-    ? Math.min(Number(coupon?.value ?? FP_VALUE_EUR), productsSubtotal)
-    : 0;
+let discountTotal = 0;
+if (coupon && couponOk && productsSubtotal > 0) {
+  if (coupon.kind === "AMOUNT") {
+    const amt = Number(coupon.amount || 0);
+    discountTotal = Math.min(Math.max(amt, 0), productsSubtotal);
+  } else if (coupon.kind === "PERCENT") {
+    const pct = Math.max(0, Math.min(100, Number(coupon.percent || 0)));
+    const raw = (productsSubtotal * pct) / 100;
+    const cap = coupon.maxAmount != null ? Math.max(0, Number(coupon.maxAmount)) : Infinity;
+    discountTotal = Math.min(raw, cap, productsSubtotal);
+  }
+}
 
-  const discountTotal = isFp ? fpDiscount : percentDiscount;
-
-  const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
-  const reviewTotal = reviewNetProducts + deliveryFeeTotal;
+const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
+const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 
   const fmtEur = (n) =>
     Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
@@ -1405,16 +1418,16 @@ if (Number(rchk?.isRestricted) === 1) {
           <div className="pc-totals">
             <div>Subtotal: €{productsSubtotal.toFixed(2)}</div>
 
-            {isFp && (
-              <div>
-                Cupón {coupon?.code} (Pizza gratis): −€{fpDiscount.toFixed(2)}
-              </div>
-            )}
-            {!isFp && couponPct > 0 && (
-              <div>
-                Cupón {coupon?.code} ({couponPct}%): −€{percentDiscount.toFixed(2)}
-              </div>
-            )}
+        {coupon && couponOk && discountTotal > 0 && (
+          <div>
+            Cupón {coupon.code}
+            {coupon.kind === "PERCENT"
+              ? ` (${Number(coupon.percent||0)}%` + (coupon.maxAmount != null ? ` · tope €${Number(coupon.maxAmount).toFixed(2)}` : "") + `)`
+              : ` (−€${Number(coupon.amount||0).toFixed(2)})`
+            }
+            : −€{discountTotal.toFixed(2)}
+          </div>
+        )}
 
             {isDelivery && (
               <div>
@@ -1484,15 +1497,19 @@ if (Number(rchk?.isRestricted) === 1) {
   }
 
   // === Toast Cupón ===
-  const CouponToast = showCouponToast ? (
-    <div
-      className="pc-toast pc-toast--brand pc-toast--blink"
-      role="status"
-      onClick={() => setShowCouponToast(false)}
-    >
-      ✅ {coupon?.code} aplicado: {isFp ? `-€${Number(coupon?.value ?? FP_VALUE_EUR).toFixed(2)}` : `${coupon?.percent}% de descuento`}
-    </div>
-  ) : null;
+const CouponToast = showCouponToast ? (
+  <div
+    className="pc-toast pc-toast--brand pc-toast--blink"
+    role="status"
+    onClick={() => setShowCouponToast(false)}
+  >
+    ✅ {coupon?.code} aplicado:{" "}
+    {coupon?.kind === "AMOUNT"
+      ? `-€${Number(coupon?.amount||0).toFixed(2)}`
+      : `${Number(coupon?.percent||0)}%${coupon?.maxAmount!=null ? ` (tope €${Number(coupon.maxAmount).toFixed(2)})` : ""}`
+    }
+  </div>
+) : null;
 
   // === Caja de Cupón (solo portada) ===
   const CouponCard = (
@@ -1591,16 +1608,19 @@ if (Number(rchk?.isRestricted) === 1) {
       <CookiesPolicyModal open={showCookiesPolicy} onClose={() => setShowCookiesPolicy(false)} />
 
       {/* Modal de condiciones del cupón */}
-      <CouponInfoModal
-        open={showCouponInfo}
-        onClose={() => setShowCouponInfo(false)}
-        data={coupon ? {
-          code: coupon.code,
-          kind: coupon.kind,
-          percent: coupon.percent,
-          expiresAt: coupon?.expiresAt || null
-        } : null}
-      />
+    <CouponInfoModal
+      open={showCouponInfo}
+      onClose={() => setShowCouponInfo(false)}
+      data={coupon ? {
+        code: coupon.code,
+        kind: coupon.kind,
+        variant: coupon.variant,
+        percent: coupon.percent,
+        amount: coupon.amount,
+        maxAmount: coupon.maxAmount,
+        expiresAt: coupon?.expiresAt || null
+      } : null}
+    />
       <RestrictionModal
         open={restrictModal.open}
         info={restrictModal}
