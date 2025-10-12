@@ -738,93 +738,106 @@ const onPlaceChanged = useCallback(async () => {
   }
 
   // ===== Modal de cupón con contador destacado =====
-  function CouponInfoModal({ open, onClose, data }) {
-    const [countdown, setCountdown] = useState("");
-    const [secondsLeft, setSecondsLeft] = useState(null);
+function CouponInfoModal({ open, onClose, data }) {
+  const [countdown, setCountdown] = useState("");
+  const [secondsLeft, setSecondsLeft] = useState(null);
 
-    useEffect(() => {
-      if (!open || !data?.expiresAt) return;
-      let t = null;
-      const tick = () => {
-        const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
-        const sLeft = Math.floor(leftMs / 1000);
-        setSecondsLeft(sLeft);
+  useEffect(() => {
+    if (!open || !data?.expiresAt) return;
+    let t = null;
+    const tick = () => {
+      const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
+      const sLeft = Math.floor(leftMs / 1000);
+      setSecondsLeft(sLeft);
 
-        const h = Math.floor(sLeft / 3600);
-        const m = Math.floor((sLeft % 3600) / 60);
-        const s = sLeft % 60;
-        setCountdown(
-          `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`
-        );
-      };
-      tick();
-      t = setInterval(tick, 1000);
-      return () => clearInterval(t);
-    }, [open, data?.expiresAt]);
+      const h = Math.floor(sLeft / 3600);
+      const m = Math.floor((sLeft % 3600) / 60);
+      const s = sLeft % 60;
+      setCountdown(
+        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      );
+    };
+    tick();
+    t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [open, data?.expiresAt]);
 
-    if (!open || !data) return null;
+  if (!open || !data) return null;
 
-    const severity =
-      secondsLeft == null ? "ok" :
-      secondsLeft <= 15 * 60 ? "critical" :
-      secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
+  const severity =
+    secondsLeft == null ? "ok" :
+    secondsLeft <= 15 * 60 ? "critical" :
+    secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
 
-    const variant =
-      secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
+  const variant =
+    secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
 
-    const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+  const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
 
-    return (
-      <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
-        <div className="pc-content">
-          <p style={{marginBottom:6}}>
-            <b>Cupón:</b> <code>{data.code}</code>
-          </p>
-          <p style={{marginTop:0}}>
-            <b>Beneficio:</b>{" "}
-            {data.kind === "AMOUNT"
-              ? `Descuento fijo (−€${Number(data.amount||0).toFixed(2)})`
-              : `Descuento ${Number(data.percent||0)}%${data.maxAmount!=null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""}`
-            }
-          </p>
+  // Texto de beneficio según el tipo del cupón
+  const benefitText =
+    data.kind === "AMOUNT"
+      ? `Descuento fijo (−€${Number(data.amount || 0).toFixed(2)})`
+      : `Descuento ${Number(data.percent || 0)}%${
+          data.maxAmount != null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""
+        }`;
 
-          {expiresDate && (
-            <>
-              <p style={{marginBottom:10}}>
-                <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
-              </p>
-              <div className={`pc-timer pc-timer--${variant} pc-timer--${severity}`} role="status" aria-live="polite">
-                <div className="pc-timer__label">Quedan</div>
-                <div className="pc-timer__value">{countdown || "--:--:--"}</div>
-              </div>
-            </>
-          )}
+  return (
+    <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
+      <div className="pc-content">
+        <p style={{ marginBottom: 6 }}>
+          <b>Cupón:</b> <code>{data.code}</code>
+        </p>
 
-          <h4>Condiciones</h4>
-          <ul>
-            <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
-            <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
-            <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
-            <li>El cupón se marca como usado al confirmar el pago.</li>
-          </ul>
+        <p style={{ marginTop: 0 }}>
+          <b>Beneficio:</b> {benefitText}
+        </p>
 
-          <div className="pc-actions" style={{marginTop:12}}>
-            <button className="pc-btn" onClick={onClose}>Entendido</button>
-            <button
-              className="pc-btn pc-btn-ghost push"
-              onClick={() => {
-                setCoupon(null); setCouponOk(false); setCouponCode("");
-                setCouponMsg("");
-                onClose();
-              }}
+        {expiresDate && (
+          <>
+            <p style={{ marginBottom: 10 }}>
+              <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+            </p>
+            <div
+              className={`pc-timer pc-timer--${variant} pc-timer--${severity}`}
+              role="status"
+              aria-live="polite"
             >
-              Quitar cupón
-            </button>
-          </div>
+              <div className="pc-timer__label">Quedan</div>
+              <div className="pc-timer__value">{countdown || "--:--:--"}</div>
+            </div>
+          </>
+        )}
+
+        <h4>Condiciones</h4>
+        <ul>
+          <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
+          <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
+          <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
+          <li>El cupón se marca como usado al confirmar el pago.</li>
+        </ul>
+
+        <div className="pc-actions" style={{ marginTop: 12 }}>
+          <button className="pc-btn" onClick={onClose}>Entendido</button>
+          <button
+            className="pc-btn pc-btn-ghost push"
+            onClick={() => {
+              // estas setters existen en el componente padre
+              setCoupon(null);
+              setCouponOk(false);
+              setCouponCode("");
+              setCouponMsg("");
+              onClose();
+            }}
+          >
+            Quitar cupón
+          </button>
         </div>
-      </BaseModal>
-    );
-  }
+      </div>
+    </BaseModal>
+  );
+}
+
 
   // Paso 0: escoger modo
   const chooseMode = (
@@ -1179,14 +1192,46 @@ const onPlaceChanged = useCallback(async () => {
         return (item.pizzaId || item.name) ? item : null;
       })
       .filter(Boolean);
+const safeNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
+const parseOnceLocal = (v) => {
+  if (typeof v === "string") {
+    try { return JSON.parse(v); } catch { return v; }
+  }
+  return v;
+};
+const toArrayLocal = (v) => {
+  const p = parseOnceLocal(v);
+  if (Array.isArray(p)) return p;
+  if (p == null) return [];
+  if (typeof p === "object") return Object.values(p).length ? Object.values(p) : [p];
+  return [p];
+};
+
+const lineTotalWithExtras = (it) => {
+  const qty = safeNumber(it?.qty ?? it?.quantity ?? 1) || 1;
+  const unitBase = safeNumber(it?.price ?? it?.unitPrice ?? it?.unit_price);
+  const extrasArr = toArrayLocal(it?.extras ?? it?.extra ?? it?.toppings ?? it?.addons ?? it?.adiciones);
+  const unitExtras = extrasArr.reduce((s, e) => s + safeNumber(e?.price ?? e?.amount ?? e?.value), 0);
+  // Si el backend ya mandó subtotal de la línea, lo respetamos
+  const given = Number(it?.subtotal);
+  if (Number.isFinite(given)) return given;
+  return (unitBase + unitExtras) * qty;
+};
+
+const computeProductsSubtotal = (items = []) =>
+  (Array.isArray(items) ? items : []).reduce((sum, it) => sum + lineTotalWithExtras(it), 0);
   // Paso 3: review + pagar
   const isDelivery = mode === "deliveryLocate";
   const qtyTotal = pending?.items?.reduce((s, x) => s + Number(x.qty || 0), 0) || 0;
   const deliveryBlocks = isDelivery && qtyTotal > 0 ? Math.ceil(qtyTotal / DELIVERY_BLOCK) : 0;
   const deliveryFeeTotal = isDelivery ? deliveryBlocks * DELIVERY_FEE : 0;
 
-  const productsSubtotal = pending ? Number(pending.total || 0) : 0;
+  const productsSubtotal = pending
+  ? (Number.isFinite(Number(pending.total)) && Number(pending.total) > 0
+      ? Number(pending.total)
+      : computeProductsSubtotal(pending.items))
+  : 0;
 
   let discountTotal = 0;
   if (coupon && couponOk && productsSubtotal > 0) {
@@ -1399,27 +1444,34 @@ const onPlaceChanged = useCallback(async () => {
             </tbody>
           </table>
 
-          <div className="pc-totals">
-            <div>Subtotal: €{productsSubtotal.toFixed(2)}</div>
+      <div className="pc-totals">
+        <div>Subtotal productos: {fmtEur(productsSubtotal)}</div>
 
-            {coupon && couponOk && discountTotal > 0 && (
-              <div>
-                Cupón {coupon.code}
-                {coupon.kind === "PERCENT"
-                  ? ` (${Number(coupon.percent||0)}%${coupon.maxAmount != null ? ` · tope €${Number(coupon.maxAmount).toFixed(2)}` : ""})`
-                  : ` (−€${Number(coupon.amount||0).toFixed(2)})`
-                }
-                : −€{discountTotal.toFixed(2)}
-              </div>
-            )}
-
-            {isDelivery && (
-              <div>
-                Gastos de envío ({deliveryBlocks} envío{deliveryBlocks > 1 ? "s" : ""} · {DELIVERY_FEE.toFixed(2)} € cada {DELIVERY_BLOCK} pizzas): €{deliveryFeeTotal.toFixed(2)}
-              </div>
-            )}
-            <div className="pc-total">Total: €{reviewTotal.toFixed(2)}</div>
+        {coupon && couponOk && discountTotal > 0 && (
+          <div>
+            Cupón {coupon.code}
+            {coupon.kind === "PERCENT"
+              ? ` (${Number(coupon.percent || 0)}%` +
+                (coupon.maxAmount != null ? ` · tope ${fmtEur(Number(coupon.maxAmount))}` : "") +
+                `)`
+              : ` (−${fmtEur(Number(coupon.amount || 0))})`
+            }
+            : −{fmtEur(discountTotal)}
           </div>
+        )}
+
+        {coupon && couponOk && (
+          <div>Productos tras cupón: {fmtEur(reviewNetProducts)}</div>
+        )}
+
+        {isDelivery && (
+          <div>
+            Gastos de envío ({deliveryBlocks} envío{deliveryBlocks > 1 ? "s" : ""} · {fmtEur(DELIVERY_FEE)} cada {DELIVERY_BLOCK} pizzas): {fmtEur(deliveryFeeTotal)}
+          </div>
+        )}
+
+        <div className="pc-total">Total: {fmtEur(reviewTotal)}</div>
+      </div>
 
           <p className="pc-note" style={{ marginTop: 8 }}>
             Pagos seguros: el cobro se realiza a través de una pasarela certificada.
