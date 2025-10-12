@@ -362,61 +362,67 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ===================== VALIDATE (público) ===================== */
-  // GET /api/coupons/validate?code=XXXX[&customerId=123][&segment=S2]
-  // Responde: { valid, kind, percent?, amount?, expiresAt, reason? }
-  router.get('/validate', async (req, res) => {
-    const code = String(req.query.code || '').trim().toUpperCase();
-    if (!code) return res.status(400).json({ error: 'bad_request' });
+// GET /api/coupons/validate?code=XXXX[&customerId=123][&segment=S2]
+// Responde SOLO en el modelo nuevo
+router.get('/validate', async (req, res) => {
+  const code = String(req.query.code || '').trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: 'bad_request' });
 
-    const customerId = req.query.customerId ? Number(req.query.customerId) : null;
-    const segment    = req.query.segment ? String(req.query.segment) : null;
-    const refTime    = nowInTZ();
+  const customerId = req.query.customerId ? Number(req.query.customerId) : null;
+  const segment    = req.query.segment ? String(req.query.segment) : null;
+  const refTime    = nowInTZ();
 
-    try {
-      const row = await prisma.coupon.findUnique({ where: { code } });
-      if (!row) return res.json({ valid: false, reason: 'not_found' });
+  try {
+    const row = await prisma.coupon.findUnique({ where: { code } });
+    if (!row) return res.json({ valid: false, reason: 'not_found' });
 
-      // Estado/fechas
-      if (row.status === 'DISABLED') return res.json({ valid:false, reason:'disabled' });
-      if (row.status === 'USED' && (row.usageLimit ?? 1) <= (row.usedCount ?? 0)) {
-        return res.json({ valid:false, reason:'used', expiresAt: row.expiresAt || null });
-      }
-      if (!isActiveByDate(row, refTime)) {
-        return res.json({ valid:false, reason:'expired_or_not_yet', expiresAt: row.expiresAt || null, activeFrom: row.activeFrom || null });
-      }
-      if (!isWithinWindow(row, refTime)) {
-        return res.json({ valid:false, reason:'outside_time_window' });
-      }
+    if (row.status === 'DISABLED')
+      return res.json({ valid:false, reason:'disabled' });
 
-      // Asignación a cliente (si aplica)
-      if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId) {
-        return res.json({ valid:false, reason:'not_owner' });
-      }
+    if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0) && row.status === 'USED')
+      return res.json({ valid:false, reason:'used', expiresAt: row.expiresAt || null });
 
-      // Segmentos (si aplica y lo pasaron)
-      if (Array.isArray(row.segments) && row.segments.length && segment && !row.segments.includes(segment)) {
-        return res.json({ valid:false, reason:'segment_mismatch' });
-      }
-
-      // Compat: si es amount, devolvemos kind "FP" (front actual) + amount
-      const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
-
+    if (!isActiveByDate(row, refTime))
       return res.json({
-        valid: true,
-        kind: legacyKind, // compat v1
-        // v2
-        kindV2: row.kind,
-        percent: row.kind === 'PERCENT' ? Number(row.percent || 0) : undefined,
-        amount : row.kind === 'AMOUNT' ? Number(row.amount || 0)   : undefined,
-        maxAmount: row.maxAmount != null ? Number(row.maxAmount) : undefined,
-        expiresAt: row.expiresAt || null
+        valid:false,
+        reason:'expired_or_not_yet',
+        expiresAt: row.expiresAt || null,
+        activeFrom: row.activeFrom || null
       });
-    } catch (e) {
-      console.error('[coupons.validate] error', e);
-      return res.status(500).json({ error: 'server' });
-    }
-  });
+
+    if (!isWithinWindow(row, refTime))
+      return res.json({ valid:false, reason:'outside_time_window' });
+
+    if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId)
+      return res.json({ valid:false, reason:'not_owner' });
+
+    if (Array.isArray(row.segments) && row.segments.length && segment && !row.segments.includes(segment))
+      return res.json({ valid:false, reason:'segment_mismatch' });
+
+    // Derivar "type" para el front
+    const type =
+      row.kind === 'PERCENT' && row.variant === 'RANGE' ? 'RANDOM_PERCENT' :
+      row.kind === 'PERCENT' && row.variant === 'FIXED' ? 'FIXED_PERCENT'  :
+      row.kind === 'AMOUNT'  && row.variant === 'FIXED' ? 'FIXED_AMOUNT'   :
+      'UNKNOWN';
+
+    return res.json({
+      valid: true,
+      // modelo canónico
+      kind     : row.kind,        // 'PERCENT' | 'AMOUNT'
+      variant  : row.variant,     // 'FIXED' | 'RANGE'
+      type,                       // 'RANDOM_PERCENT' | 'FIXED_PERCENT' | 'FIXED_AMOUNT'
+      percent  : row.kind === 'PERCENT' ? Number(row.percent || 0) : undefined,
+      amount   : row.kind === 'AMOUNT'  ? Number(row.amount  || 0) : undefined,
+      maxAmount: row.maxAmount != null ? Number(row.maxAmount)      : undefined,
+      expiresAt: row.expiresAt || null
+    });
+  } catch (e) {
+    console.error('[coupons.validate] error', e);
+    return res.status(500).json({ error: 'server' });
+  }
+});
+
 
   /* ===================== REDEEM (público; llamado al confirmar pago) ===================== */
 router.post('/redeem', async (req, res) => {
