@@ -221,35 +221,35 @@ export default function PublicCheckout() {
 
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
-  const onPlaceChanged = useCallback(async () => {
-    const plc = acRef.current?.getPlace();
-    if (!plc?.geometry) return;
+const onPlaceChanged = useCallback(async () => {
+  const plc = acRef.current?.getPlace();
+  if (!plc?.geometry) return;
 
-    const fullAddr = plc.formatted_address?.toUpperCase() || "";
-    all
-    const lat = plc.geometry.location.lat();
-    const lng = plc.geometry.location.lng();
+  const fullAddr = plc.formatted_address?.toUpperCase() || "";
+  const lat = plc.geometry.location.lat();
+  const lng = plc.geometry.location.lng();
 
-    setQuery(fullAddr);
-    setCoords({ lat, lng });
+  setQuery(fullAddr);
+  setCoords({ lat, lng });
 
-    try {
-      const { data } = await api.get("/api/customers/search", { params: { q: fullAddr } });
-      setCustomer(data?.[0] ?? null);
-    } catch {
-      setCustomer(null);
-    }
+  try {
+    const { data } = await api.get("/api/customers/search", { params: { q: fullAddr } });
+    setCustomer(data?.[0] ?? null);
+  } catch {
+    setCustomer(null);
+  }
 
-    try {
-      const { data } = await api.get("/api/stores/nearest", { params: { lat, lng } });
-      setNearest(data);
-      const km = Number(data?.distanciaKm);
-      setOutOfRange(Number.isFinite(km) ? km > DELIVERY_MAX_KM : false);
-    } catch {
-      setNearest(null);
-      setOutOfRange(false);
-    }
-  }, []);
+  try {
+    const { data } = await api.get("/api/stores/nearest", { params: { lat, lng } });
+    setNearest(data);
+    const km = Number(data?.distanciaKm);
+    setOutOfRange(Number.isFinite(km) ? km > DELIVERY_MAX_KM : false);
+  } catch {
+    setNearest(null);
+    setOutOfRange(false);
+  }
+}, []);
+
 
   // ===== CUPÓN =====
   const [couponCode, setCouponCode] = useState("");
