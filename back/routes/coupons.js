@@ -419,71 +419,251 @@ module.exports = (prisma) => {
   });
 
   /* ===================== REDEEM (público; llamado al confirmar pago) ===================== */
-  // POST /api/coupons/redeem { code, orderId?, customerId?, segment? }
-  router.post('/redeem', async (req, res) => {
-    const code = String(req.body.code || '').trim().toUpperCase();
-    if (!code) return res.status(400).json({ error: 'bad_request' });
+// POST /api/coupons/redeem { code, saleId?, storeId?, customerId?, segmentAtRedeem?, discountValue? }
+router.post('/redeem', async (req, res) => {
+  const code = String(req.body.code || '').trim().toUpperCase();
+  if (!code) return res.status(400).json({ error: 'bad_request' });
 
-    const customerId = req.body.customerId ? Number(req.body.customerId) : null;
-    const segment    = req.body.segment ? String(req.body.segment) : null;
-    const nowRef     = nowInTZ();
+  const customerId      = req.body.customerId ? Number(req.body.customerId) : null;
+  const segmentFromBody = req.body.segmentAtRedeem ? String(req.body.segmentAtRedeem) : null;
+  const saleId          = req.body.saleId ? Number(req.body.saleId) : null;
+  const storeId         = req.body.storeId ? Number(req.body.storeId) : null;
+  const discountValueIn = req.body.discountValue != null ? Number(req.body.discountValue) : null;
 
-    try {
-      // Cargar para validar reglas contextuales
-      const row = await prisma.coupon.findUnique({ where: { code } });
-      if (!row) return res.status(404).json({ error: 'not_found' });
+  const nowRef = nowInTZ();
 
-      if (row.status === 'DISABLED') return res.status(409).json({ error: 'disabled' });
-      if (!isActiveByDate(row, nowRef)) return res.status(409).json({ error: 'expired_or_not_yet' });
-      if (!isWithinWindow(row, nowRef)) return res.status(409).json({ error: 'outside_time_window' });
+  try {
+    // 0) Cargar cupón para validar reglas contextuales
+    const row = await prisma.coupon.findUnique({ where: { code } });
+    if (!row) return res.status(404).json({ error: 'not_found' });
 
-      if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0)) {
-        return res.status(409).json({ error: 'already_used' });
-      }
+    if (row.status === 'DISABLED') return res.status(409).json({ error: 'disabled' });
+    if (!isActiveByDate(row, nowRef)) return res.status(409).json({ error: 'expired_or_not_yet' });
+    if (!isWithinWindow(row, nowRef)) return res.status(409).json({ error: 'outside_time_window' });
 
-      if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId) {
-        return res.status(409).json({ error: 'not_owner' });
-      }
-      if (Array.isArray(row.segments) && row.segments.length && segment && !row.segments.includes(segment)) {
-        return res.status(409).json({ error: 'segment_mismatch' });
-      }
-
-      // 1) Incremento atómico si sigue teniendo usos disponibles
-      const inc = await prisma.coupon.updateMany({
-        where: {
-          code,
-          status: 'ACTIVE',
-          usedCount: { lt: row.usageLimit || 1 },
-          OR: [{ expiresAt: null }, { expiresAt: { gt: nowRef } }],
-        },
-        data: {
-          usedCount: { increment: 1 },
-          usedAt: nowRef
-        }
-      });
-
-      if (inc.count === 0) {
-        // Revalidar estado para razón exacta
-        const cur = await prisma.coupon.findUnique({ where: { code } });
-        if (!cur) return res.status(404).json({ error: 'not_found' });
-        if ((cur.usageLimit ?? 1) <= (cur.usedCount ?? 0)) return res.status(409).json({ error: 'already_used' });
-        if (cur.status !== 'ACTIVE') return res.status(409).json({ error: 'invalid_state' });
-        if (cur.expiresAt && cur.expiresAt <= nowRef) return res.status(409).json({ error: 'expired' });
-        return res.status(409).json({ error: 'invalid_state' });
-      }
-
-      // 2) Si llegó al límite, marcar USED
-      const after = await prisma.coupon.findUnique({ where: { code } });
-      if ((after.usedCount ?? 0) >= (after.usageLimit ?? 1) && after.status !== 'USED') {
-        await prisma.coupon.update({ where: { code }, data: { status: 'USED' } });
-      }
-
-      return res.json({ ok: true, code });
-    } catch (e) {
-      console.error('[coupons.redeem] error', e);
-      return res.status(500).json({ error: 'server' });
+    if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0)) {
+      return res.status(409).json({ error: 'already_used' });
     }
-  });
+
+    if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId) {
+      return res.status(409).json({ error: 'not_owner' });
+    }
+    if (Array.isArray(row.segments) && row.segments.length && segmentFromBody && !row.segments.includes(segmentFromBody)) {
+      return res.status(409).json({ error: 'segment_mismatch' });
+    }
+
+    // 1) Incremento atómico si sigue teniendo usos disponibles
+    const inc = await prisma.coupon.updateMany({
+      where: {
+        code,
+        status: 'ACTIVE',
+        usedCount: { lt: row.usageLimit || 1 },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: nowRef } }],
+      },
+      data: {
+        usedCount: { increment: 1 },
+        usedAt: nowRef
+      }
+    });
+
+    if (inc.count === 0) {
+      // Revalidar estado para razón exacta
+      const cur = await prisma.coupon.findUnique({ where: { code } });
+      if (!cur) return res.status(404).json({ error: 'not_found' });
+      if ((cur.usageLimit ?? 1) <= (cur.usedCount ?? 0)) return res.status(409).json({ error: 'already_used' });
+      if (cur.status !== 'ACTIVE') return res.status(409).json({ error: 'invalid_state' });
+      if (cur.expiresAt && cur.expiresAt <= nowRef) return res.status(409).json({ error: 'expired' });
+      return res.status(409).json({ error: 'invalid_state' });
+    }
+
+    // 2) Si llegó al límite, marcar USED
+    const after = await prisma.coupon.findUnique({ where: { code } });
+    if ((after.usedCount ?? 0) >= (after.usageLimit ?? 1) && after.status !== 'USED') {
+      await prisma.coupon.update({ where: { code }, data: { status: 'USED' } });
+    }
+
+    // 3) Registrar el canje (best effort)
+    (async () => {
+      try {
+        // Determinar segmento snapshot
+        let segmentAtRedeem = segmentFromBody || null;
+        if (!segmentAtRedeem && customerId) {
+          const c = await prisma.customer.findUnique({
+            where: { id: Number(customerId) },
+            select: { segment: true }
+          });
+          if (c?.segment) segmentAtRedeem = c.segment; // S1..S4
+        }
+
+        // Definir snapshot de valores aplicados
+        const kind    = after.kind;      // 'PERCENT' | 'AMOUNT'
+        const variant = after.variant;   // 'FIXED' | 'RANGE'
+        let percentApplied = null;
+        let amountApplied  = null;
+
+        if (kind === 'PERCENT') {
+          // En tu `bulk-generate` fijamos percent al crear; lo registramos tal cual
+          percentApplied = Number(after.percent ?? 0) || null;
+        } else if (kind === 'AMOUNT') {
+          amountApplied = after.amount ? Number(after.amount) : null;
+        }
+
+        // Nota: discountValue (en €) es el descuento final aplicado (si ya lo sabes aquí)
+        const discountValue = (discountValueIn != null && !Number.isNaN(discountValueIn))
+          ? discountValueIn
+          : null;
+
+        await prisma.couponRedemption.create({
+          data: {
+            couponId: after.id,
+            couponCode: code,
+            saleId: saleId || null,
+            storeId: storeId || null,
+            customerId: customerId || null,
+
+            // snapshot
+            segmentAtRedeem,
+            kind,
+            variant,
+            percentApplied,
+            amountApplied,
+
+            discountValue: discountValue != null ? discountValue : null, // € opcional
+            redeemedAt: nowRef,
+            createdAt: nowRef
+          }
+        });
+      } catch (logErr) {
+        // no rompemos el canje si falla el log
+        console.error('[coupons.redeem] log redemption error', logErr);
+      }
+    })();
+
+    return res.json({ ok: true, code });
+  } catch (e) {
+    console.error('[coupons.redeem] error', e);
+    return res.status(500).json({ error: 'server' });
+  }
+});
+
+router.get('/metrics', async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
+    const to   = req.query.to   ? new Date(req.query.to)   : new Date();
+    const storeId  = req.query.storeId  ? Number(req.query.storeId)  : null;
+    const segment  = req.query.segment  ? String(req.query.segment)  : null;
+
+    const whereRedeem = {
+      redeemedAt: { gte: from, lte: to },
+      ...(storeId ? { storeId } : {}),
+      ...(segment ? { segmentAtRedeem: segment } : {}),
+    };
+
+    const [redeemed, discountSum, byKind, byCodeTop, dailyAgg] = await Promise.all([
+      prisma.couponRedemption.count({ where: whereRedeem }),
+      prisma.couponRedemption.aggregate({
+        _sum: { discountValue: true },
+        where: whereRedeem
+      }),
+      prisma.couponRedemption.groupBy({
+        by: ['kind'],
+        _count: { _all: true },
+        where: whereRedeem
+      }),
+      // ← Top códigos: agrupamos y luego ordenamos/limitamos en JS
+      prisma.couponRedemption.groupBy({
+        by: ['couponCode'],
+        _count: { _all: true },
+        where: whereRedeem
+      }),
+      prisma.couponRedemption.groupBy({
+        by: ['redeemedAt'],
+        where: whereRedeem,
+        _count: { _all: true }
+      }),
+    ]);
+
+    // Emitidos (aprox) en rango por createdAt de cupones
+    const issued = await prisma.coupon.count({
+      where: { createdAt: { gte: from, lte: to } }
+    });
+
+    // Compactar daily (yyyy-mm-dd)
+    const byDay = {};
+    for (const r of dailyAgg) {
+      const d = new Date(r.redeemedAt);
+      const key = d.toISOString().slice(0,10);
+      byDay[key] = (byDay[key] || 0) + r._count._all;
+    }
+    const days = [];
+    for (let t = new Date(from); t <= to; t = new Date(t.getTime()+864e5)) {
+      const k = t.toISOString().slice(0,10);
+      days.push({ day: k, value: byDay[k] || 0 });
+    }
+
+    // Top códigos (ordenar y limitar aquí)
+    const byCodeTopSorted = [...byCodeTop]
+      .sort((a, b) => (b._count? b._count._all : 0) - (a._count? a._count._all : 0))
+      .slice(0, 5);
+
+    const discountTotal = Number(discountSum._sum.discountValue || 0);
+    const kpi = {
+      issued,
+      redeemed,
+      redemptionRate: issued > 0 ? redeemed / issued : null,
+      discountTotal,
+      byKind: byKind.map(x => ({ kind: x.kind, count: x._count._all })),
+      byCodeTop: byCodeTopSorted.map(x => ({ code: x.couponCode, count: x._count._all })),
+      dailySpark: days
+    };
+
+    res.json({ ok: true, range: { from, to }, storeId, segment, kpi });
+  } catch (e) {
+    console.error('[coupons.metrics] error', e);
+    res.status(500).json({ ok: false, error: 'server' });
+  }
+});
+
+
+router.get('/redemptions', async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
+    const to   = req.query.to   ? new Date(req.query.to)   : new Date();
+    const storeId  = req.query.storeId  ? Number(req.query.storeId)  : null;
+    const segment  = req.query.segment  ? String(req.query.segment)  : null;
+    const take = Math.max(1, Math.min(Number(req.query.take)||50, 200));
+    const skip = Math.max(0, Number(req.query.skip)||0);
+
+    const where = {
+      redeemedAt: { gte: from, lte: to },
+      ...(storeId ? { storeId } : {}),
+      ...(segment ? { segmentAtRedeem: segment } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.couponRedemption.findMany({
+        where,
+        orderBy: { redeemedAt: 'desc' },
+        take, skip,
+        include: {
+          coupon:   { select: { code: true, kind: true, variant: true } },
+          sale:     { select: { id: true, code: true, total: true, date: true } },
+          store:    { select: { id: true, storeName: true } },
+          customer: { select: { id: true, code: true, name: true, phone: true, segment: true } },
+        }
+      }),
+      prisma.couponRedemption.count({ where })
+    ]);
+
+    res.json({ ok: true, total, items });
+  } catch (e) {
+    console.error('[coupons.redemptions] error', e);
+    res.status(500).json({ ok: false, error: 'server' });
+  }
+});
+
+
+
 
   return router;
 };

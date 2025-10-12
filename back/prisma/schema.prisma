@@ -9,8 +9,65 @@ generator client {
 }
 
 /**
- * ======================== MENÚ ========================
+ * ======================= ENUMS =======================
  */
+
+enum CustomerOrigin {
+  PHONE
+  WALKIN
+  UBER
+  GLOVO
+  QR
+}
+
+enum CustomerSegment {
+  S1 // Potencial: 0–1 compras
+  S2 // Inactivo: >1 compras y última > 30 días
+  S3 // Activo:   última ≤ 30 días
+  S4 // CMV:      S3 y ticket medio > ticket medio empresa
+}
+
+enum DeliveryMethod {
+  PICKUP
+  COURIER
+  UBER
+  GLOVO
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_PAYMENT
+  PAID
+  CANCELED
+}
+
+enum Channel {
+  WHATSAPP
+  PHONE
+  WEB
+}
+
+enum CouponKind {
+  PERCENT
+  AMOUNT
+}
+
+enum CouponVariant {
+  FIXED
+  RANGE
+}
+
+enum CouponStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  DISABLED
+}
+
+/**
+ * ======================= MODELOS =======================
+ */
+
 model MenuPizza {
   id            Int      @id @default(autoincrement())
   name          String
@@ -26,9 +83,6 @@ model MenuPizza {
   stocks StorePizzaStock[]
 }
 
-/**
- * ====================== INVENTARIO =====================
- */
 model Ingredient {
   id        Int      @id @default(autoincrement())
   name      String
@@ -40,11 +94,8 @@ model Ingredient {
   updatedAt DateTime @updatedAt
 }
 
-/**
- * ======================== TIENDA =======================
- */
 model Store {
-  id              Int               @id @default(autoincrement())
+  id              Int      @id @default(autoincrement())
   storeName       String
   address         String
   latitude        Float?
@@ -53,46 +104,27 @@ model Store {
   zipCode         String?
   email           String?
   tlf             String?
-  active          Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  acceptingOrders Boolean           @default(true)
-  stocks          StorePizzaStock[]
-  sales           Sale[]
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  acceptingOrders Boolean  @default(true)
+
+  stocks      StorePizzaStock[]
+  sales       Sale[]
+  redemptions CouponRedemption[] @relation("StoreToRedemptions")
 }
 
-/**
- * junction table: stock por tienda + pizza
- */
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
-  stock     Int       @default(0)
-  updatedAt DateTime  @updatedAt
-  createdAt DateTime  @default(now())
-  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  pizza     MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
+  stock     Int      @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  pizza MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
 
   @@id([storeId, pizzaId])
-}
-
-/**
- * ======================== CLIENTE ======================
- */
-enum CustomerOrigin {
-  PHONE
-  WALKIN
-  UBER
-  GLOVO
-  QR
-}
-
-// ── nuevo enum
-enum CustomerSegment {
-  S1 // Potencial: 0–1 compras
-  S2 // Inactivo: >1 compras y última > 30 días
-  S3 // Activo:   última ≤ 30 días
-  S4 // CMV:      S3 y ticket medio > ticket medio empresa
 }
 
 model Customer {
@@ -116,100 +148,9 @@ model Customer {
   segment           CustomerSegment @default(S1)
   segmentUpdatedAt  DateTime?
 
-  // ← relación inversa necesaria
-  assignedCoupons Coupon[] @relation("CustomerAssignedCoupons")
-
-  sales Sale[] @relation("CustomerSales")
-}
-
-/**
- * ========================= VENTA =======================
- */
-enum DeliveryMethod {
-  PICKUP
-  COURIER
-  UBER
-  GLOVO
-}
-
-enum OrderStatus {
-  PENDING
-  AWAITING_PAYMENT
-  PAID
-  CANCELED
-}
-
-enum Channel {
-  WHATSAPP
-  PHONE
-  WEB
-}
-
-// Enums
-enum CouponKind {
-  PERCENT 
-  AMOUNT 
-}
-
-enum CouponVariant {
-  FIXED 
-  RANGE 
-}
-
-enum CouponStatus {
-  ACTIVE
-  USED
-  EXPIRED
-  DISABLED
-}
-
-// Tabla principal
-model Coupon {
-  id   Int    @id @default(autoincrement())
-  code String @unique
-
-  // tipo y variante
-  kind    CouponKind    @default(PERCENT)
-  variant CouponVariant @default(FIXED)
-
-  // valores según el tipo/variante
-  percent    Int? // FIXED + PERCENT
-  amount     Decimal? @db.Decimal(10, 2) // FIXED + AMOUNT
-  percentMin Int? // RANDOM -> mínimo
-  percentMax Int? // RANDOM -> máximo
-  maxAmount  Decimal? @db.Decimal(10, 2) // tope de descuento si aplica
-
-  // targeting
-  segments     Json? // ["S1","S2",...]
-  assignedToId Int? // para Customized
-  assignedTo   Customer? @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
-
-  // ventana de validez
-  activeFrom  DateTime?
-  expiresAt   DateTime?
-  daysActive  Json? // ["lunes","martes",...]
-  windowStart Int? // HHmm, ej. 1100
-  windowEnd   Int? // HHmm, ej. 2330
-
-  // uso
-  usageLimit Int          @default(1) // nº de usos permitidos
-  usedCount  Int          @default(0)
-  status     CouponStatus @default(ACTIVE)
-
-  // auditoría
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([status])
-  @@index([assignedToId])
-  @@index([expiresAt])
-}
-
-model AppMeta {
-  id              Int      @id @default(1)
-  acceptingOrders Boolean  @default(true)
-  closedMessage   String?  @db.Text
-  updatedAt       DateTime @updatedAt
+  assignedCoupons Coupon[]           @relation("CustomerAssignedCoupons")
+  sales           Sale[]             @relation("CustomerSales")
+  redemptions     CouponRedemption[] @relation("CustomerToRedemptions")
 }
 
 model Sale {
@@ -242,5 +183,90 @@ model Sale {
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
 
+  redemptions CouponRedemption[] @relation("SaleToRedemptions")
+
   @@index([date])
+}
+
+model Coupon {
+  id   Int    @id @default(autoincrement())
+  code String @unique
+
+  kind    CouponKind    @default(PERCENT)
+  variant CouponVariant @default(FIXED)
+
+  percent    Int?
+  amount     Decimal? @db.Decimal(10, 2)
+  percentMin Int?
+  percentMax Int?
+  maxAmount  Decimal? @db.Decimal(10, 2)
+
+  segments     Json?
+  assignedToId Int?
+  assignedTo   Customer? @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  activeFrom  DateTime?
+  expiresAt   DateTime?
+  daysActive  Json?
+  windowStart Int?
+  windowEnd   Int?
+
+  usageLimit Int          @default(1)
+  usedCount  Int          @default(0)
+  status     CouponStatus @default(ACTIVE)
+
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  redemptions CouponRedemption[] @relation("CouponToRedemptions")
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([expiresAt])
+}
+
+model AppMeta {
+  id              Int      @id @default(1)
+  acceptingOrders Boolean  @default(true)
+  closedMessage   String?  @db.Text
+  updatedAt       DateTime @updatedAt
+}
+
+/**
+ * ======================= LOG DE REDEMPTIONS =======================
+ */
+
+model CouponRedemption {
+  id Int @id @default(autoincrement())
+
+  couponId Int?
+  coupon   Coupon? @relation("CouponToRedemptions", fields: [couponId], references: [id], onDelete: SetNull)
+
+  saleId Int?
+  sale   Sale? @relation("SaleToRedemptions", fields: [saleId], references: [id], onDelete: SetNull)
+
+  customerId Int?
+  customer   Customer? @relation("CustomerToRedemptions", fields: [customerId], references: [id], onDelete: SetNull)
+
+  storeId Int?
+  store   Store? @relation("StoreToRedemptions", fields: [storeId], references: [id], onDelete: SetNull)
+
+  couponCode String
+
+  segmentAtRedeem CustomerSegment?
+  kind            CouponKind
+  variant         CouponVariant
+  percentApplied  Int?
+  amountApplied   Decimal?         @db.Decimal(10, 2)
+
+  discountValue Decimal? @db.Decimal(10, 2)
+
+  redeemedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([couponCode])
+  @@index([redeemedAt])
+  @@index([saleId])
+  @@index([customerId])
+  @@index([storeId])
 }
