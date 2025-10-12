@@ -419,7 +419,6 @@ module.exports = (prisma) => {
   });
 
   /* ===================== REDEEM (público; llamado al confirmar pago) ===================== */
-// POST /api/coupons/redeem { code, saleId?, storeId?, customerId?, segmentAtRedeem?, discountValue? }
 router.post('/redeem', async (req, res) => {
   const code = String(req.body.code || '').trim().toUpperCase();
   if (!code) return res.status(400).json({ error: 'bad_request' });
@@ -545,86 +544,150 @@ router.post('/redeem', async (req, res) => {
     return res.status(500).json({ error: 'server' });
   }
 });
-
 router.get('/metrics', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
     const to   = req.query.to   ? new Date(req.query.to)   : new Date();
-    const storeId  = req.query.storeId  ? Number(req.query.storeId)  : null;
-    const segment  = req.query.segment  ? String(req.query.segment)  : null;
+    const storeId = req.query.storeId ? Number(req.query.storeId) : null;
+    const segment = req.query.segment ? String(req.query.segment) : null;
 
-    const whereRedeem = {
-      redeemedAt: { gte: from, lte: to },
-      ...(storeId ? { storeId } : {}),
-      ...(segment ? { segmentAtRedeem: segment } : {}),
+    // ---- helpers ----
+    const isoDay = (d) => new Date(d).toISOString().slice(0,10);
+    const safeParse = (v) => {
+      if (!v) return null;
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return null; }
+      }
+      return v; // podría venir ya como objeto
+    };
+    const isCouponLine = (line) => {
+      const code = String(line?.code || '').toUpperCase();
+      const lbl  = String(line?.label || '');
+      return code === 'COUPON' || /cup[oó]n/i.test(lbl);
+    };
+    const extractCouponCode = (line) => {
+      if (line?.coupon || line?.codeValue) return String(line.coupon || line.codeValue);
+      const m = String(line?.label || '').match(/cup[oó]n\s+([A-Z0-9\-]+)/i);
+      return m ? m[1].toUpperCase() : 'UNKNOWN';
+    };
+    const inferKind = (line, totalProducts) => {
+      const lbl = String(line?.label || '');
+      if (/%/.test(lbl)) return 'PERCENT';
+      // si no viene en label, inferimos por proporción
+      const amt = Math.abs(Number(line?.amount || 0));
+      if (totalProducts > 0) {
+        const rate = amt / totalProducts;
+        return rate > 0 && rate <= 1 ? 'PERCENT' : 'AMOUNT';
+      }
+      return 'AMOUNT';
     };
 
-    const [redeemed, discountSum, byKind, byCodeTop, dailyAgg] = await Promise.all([
-      prisma.couponRedemption.count({ where: whereRedeem }),
-      prisma.couponRedemption.aggregate({
-        _sum: { discountValue: true },
-        where: whereRedeem
-      }),
-      prisma.couponRedemption.groupBy({
-        by: ['kind'],
-        _count: { _all: true },
-        where: whereRedeem
-      }),
-      // ← Top códigos: agrupamos y luego ordenamos/limitamos en JS
-      prisma.couponRedemption.groupBy({
-        by: ['couponCode'],
-        _count: { _all: true },
-        where: whereRedeem
-      }),
-      prisma.couponRedemption.groupBy({
-        by: ['redeemedAt'],
-        where: whereRedeem,
-        _count: { _all: true }
-      }),
-    ]);
+    // ---- 1) Ventas del rango (impacto real) ----
+    const whereSales = {
+      date: { gte: from, lte: to },
+      status: 'PAID',
+      ...(storeId ? { storeId } : {}),
+      ...(segment ? { customer: { segment } } : {})  // join con Customer para filtrar por segmento
+    };
 
-    // Emitidos (aprox) en rango por createdAt de cupones
+    const sales = await prisma.sale.findMany({
+      where: whereSales,
+      select: {
+        id: true, date: true, total: true, totalProducts: true, discounts: true,
+        extras: true, channel: true, storeId: true
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    // ---- 2) Agregación en memoria a partir de extras ----
+    let ordersTotal = 0;
+    let ordersWithCoupon = 0;
+    let gross = 0;               // totalProducts
+    let net = 0;                 // total
+    let couponDiscountSum = 0;   // sum(abs(amount)) solo de líneas de cupón
+
+    const byKindCount = { PERCENT: 0, AMOUNT: 0 };
+    const topCodeMap = new Map();         // code -> {count}
+    const byDayCount = new Map();         // yyyy-mm-dd -> count (ventas con cupón)
+
+    for (const s of sales) {
+      ordersTotal += 1;
+      gross += Number(s.totalProducts || 0);
+      net   += Number(s.total || 0);
+
+      const extras = safeParse(s.extras) || [];
+      const couponLines = extras.filter(isCouponLine);
+      if (couponLines.length > 0) {
+        ordersWithCoupon += 1;
+
+        // sumar descuento de cupón y clasificar
+        const totalProducts = Number(s.totalProducts || 0);
+        let anyKindCounted = false;
+
+        for (const line of couponLines) {
+          const amt = Math.abs(Number(line?.amount || 0));
+          couponDiscountSum += amt;
+
+          const k = inferKind(line, totalProducts);
+          if (k === 'PERCENT') byKindCount.PERCENT += 1;
+          else byKindCount.AMOUNT += 1;
+          anyKindCounted = true;
+
+          const code = extractCouponCode(line);
+          const cur = topCodeMap.get(code) || { count: 0 };
+          cur.count += 1;
+          topCodeMap.set(code, cur);
+        }
+
+        // serie diaria
+        const dayKey = isoDay(s.date);
+        byDayCount.set(dayKey, (byDayCount.get(dayKey) || 0) + 1);
+      }
+    }
+
+    // Serie continua en el rango
+    const days = [];
+    for (let t = new Date(from); t <= to; t = new Date(t.getTime() + 864e5)) {
+      const key = t.toISOString().slice(0,10);
+      days.push({ day: key, value: byDayCount.get(key) || 0 });
+    }
+
+    // Top 5 códigos
+    const byCodeTop = Array
+      .from(topCodeMap.entries())
+      .map(([code, v]) => ({ code, count: v.count }))
+      .sort((a,b) => b.count - a.count)
+      .slice(0,5);
+
+    // By kind
+    const byKind = [
+      ...(byKindCount.PERCENT ? [{ kind: 'PERCENT', count: byKindCount.PERCENT }] : []),
+      ...(byKindCount.AMOUNT  ? [{ kind: 'AMOUNT',  count: byKindCount.AMOUNT  }] : [])
+    ];
+
+    // ---- 3) Emitidos (mantenemos este KPI como antes para compatibilidad) ----
     const issued = await prisma.coupon.count({
       where: { createdAt: { gte: from, lte: to } }
     });
 
-    // Compactar daily (yyyy-mm-dd)
-    const byDay = {};
-    for (const r of dailyAgg) {
-      const d = new Date(r.redeemedAt);
-      const key = d.toISOString().slice(0,10);
-      byDay[key] = (byDay[key] || 0) + r._count._all;
-    }
-    const days = [];
-    for (let t = new Date(from); t <= to; t = new Date(t.getTime()+864e5)) {
-      const k = t.toISOString().slice(0,10);
-      days.push({ day: k, value: byDay[k] || 0 });
-    }
-
-    // Top códigos (ordenar y limitar aquí)
-    const byCodeTopSorted = [...byCodeTop]
-      .sort((a, b) => (b._count? b._count._all : 0) - (a._count? a._count._all : 0))
-      .slice(0, 5);
-
-    const discountTotal = Number(discountSum._sum.discountValue || 0);
+    // ---- 4) Construcción de respuesta (MISMAS CLAVES) ----
     const kpi = {
       issued,
-      redeemed,
-      redemptionRate: issued > 0 ? redeemed / issued : null,
-      discountTotal,
-      byKind: byKind.map(x => ({ kind: x.kind, count: x._count._all })),
-      byCodeTop: byCodeTopSorted.map(x => ({ code: x.couponCode, count: x._count._all })),
+      redeemed: ordersWithCoupon,                           // ahora = pedidos con cupón
+      redemptionRate: issued > 0 ? ordersWithCoupon / issued : null,
+      discountTotal: Number(couponDiscountSum || 0),        // € de cupón aplicado
+      byKind,
+      byCodeTop,
       dailySpark: days
     };
 
-    res.json({ ok: true, range: { from, to }, storeId, segment, kpi });
+    return res.json({ ok: true, range: { from, to }, storeId, segment, kpi });
   } catch (e) {
     console.error('[coupons.metrics] error', e);
-    res.status(500).json({ ok: false, error: 'server' });
+    return res.status(500).json({ ok: false, error: 'server' });
   }
 });
-
-
 router.get('/redemptions', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
