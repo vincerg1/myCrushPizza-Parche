@@ -8,8 +8,7 @@ import "../styles/PublicCheckout.css";
 import logo from "../logo/nuevoLogoMyCrushPizza.jpeg";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
-import { faMobileScreenButton } from "@fortawesome/free-solid-svg-icons";
-import { faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faMobileScreenButton, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ||
@@ -75,30 +74,31 @@ export default function PublicCheckout() {
     phone: ""
   });
 
-const checkRestriction = useCallback(async (rawPhone) => {
-  const phone = (rawPhone || "").replace(/\D/g, "");
-  if (!phone || phone.length < 7) {
-    return { checked: true, isRestricted: 0, reason: "", code: "" };
-  }
+  const checkRestriction = useCallback(async (rawPhone) => {
+    const phone = (rawPhone || "").replace(/\D/g, "");
+    if (!phone || phone.length < 7) {
+      return { checked: true, isRestricted: 0, reason: "", code: "" };
+    }
 
-  try {
-    const { data } = await api.get("/api/customers/restriction", { params: { phone } });
-    const isRestrictedNum = Number(
-      data?.isRestricted ??
-      (typeof data?.restricted === "boolean" ? (data.restricted ? 1 : 0) : data?.restricted) ??
-      0
-    );
-    return {
-      checked: true,
-      isRestricted: isRestrictedNum,
-      reason: data?.reason || data?.message || "",
-      code: data?.code || ""
-    };
-  } catch {
-    // si falla el endpoint, dejamos continuar (el backend cortará si aplica)
-    return { checked: true, isRestricted: 0, reason: "", code: "" };
-  }
-}, []);
+    try {
+      const { data } = await api.get("/api/customers/restriction", { params: { phone } });
+      const isRestrictedNum = Number(
+        data?.isRestricted ??
+          (typeof data?.restricted === "boolean" ? (data.restricted ? 1 : 0) : data?.restricted) ??
+          0
+      );
+      return {
+        checked: true,
+        isRestricted: isRestrictedNum,
+        reason: data?.reason || data?.message || "",
+        code: data?.code || ""
+      };
+    } catch {
+      // si falla el endpoint, dejamos continuar (el backend cortará si aplica)
+      return { checked: true, isRestricted: 0, reason: "", code: "" };
+    }
+  }, []);
+
   // ===== LEGALES / COOKIES =====
   const [showTermsPurchase, setShowTermsPurchase] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
@@ -131,7 +131,9 @@ const checkRestriction = useCallback(async (rawPhone) => {
     timer = setTimeout(loop, STATUS_POLL_MS);
 
     const onFocus = () => fetchStatus();
-    const onVis = () => { if (!document.hidden) fetchStatus(); };
+    const onVis = () => {
+      if (!document.hidden) fetchStatus();
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
@@ -145,7 +147,11 @@ const checkRestriction = useCallback(async (rawPhone) => {
 
   const CONSENT_KEY = "mcp_cookie_consent_v1";
   const getConsent = () => {
-    try { return JSON.parse(localStorage.getItem(CONSENT_KEY) || "null"); } catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem(CONSENT_KEY) || "null");
+    } catch {
+      return null;
+    }
   };
   const setConsent = (obj) => {
     localStorage.setItem(CONSENT_KEY, JSON.stringify(obj));
@@ -157,7 +163,11 @@ const checkRestriction = useCallback(async (rawPhone) => {
   // ===== helpers tienda =====
   const parseOnce = (v) => {
     if (typeof v !== "string") return v;
-    try { return JSON.parse(v); } catch { return v; }
+    try {
+      return JSON.parse(v);
+    } catch {
+      return v;
+    }
   };
   const arrFrom = (v) => {
     const a = parseOnce(v);
@@ -188,25 +198,27 @@ const checkRestriction = useCallback(async (rawPhone) => {
     },
     [getStoreById]
   );
+
   const handleNextClick = async () => {
     setTriedNext(true);
     const ok = nextGuard();
     if (!ok) return;
 
-const rchk = await checkRestriction(customer?.phone);
-if (Number(rchk?.isRestricted) === 1) {
-  setRestrictModal({
-    open: true,
-    reason: rchk.reason || "",
-    code: rchk.code || "",
-    phone: customer?.phone || ""
-  });
-  setIsPaying(false);
-  return;
-}
+    const rchk = await checkRestriction(customer?.phone);
+    if (Number(rchk?.isRestricted) === 1) {
+      setRestrictModal({
+        open: true,
+        reason: rchk.reason || "",
+        code: rchk.code || "",
+        phone: customer?.phone || ""
+      });
+      setIsPaying(false);
+      return;
+    }
 
     setStep("order");
   };
+
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
   const onPlaceChanged = useCallback(async () => {
@@ -214,6 +226,7 @@ if (Number(rchk?.isRestricted) === 1) {
     if (!plc?.geometry) return;
 
     const fullAddr = plc.formatted_address?.toUpperCase() || "";
+    all
     const lat = plc.geometry.location.lat();
     const lng = plc.geometry.location.lng();
 
@@ -240,7 +253,7 @@ if (Number(rchk?.isRestricted) === 1) {
 
   // ===== CUPÓN =====
   const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null); // { code, kind, percent?, value?, expiresAt? }
+  const [coupon, setCoupon] = useState(null); // v2
   const [couponMsg, setCouponMsg] = useState("");
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
@@ -253,9 +266,7 @@ if (Number(rchk?.isRestricted) === 1) {
   }, [couponOk, coupon]);
 
   const formatCoupon = useCallback((v) => {
-    const raw = (v || "")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "");
+    const raw = (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
     const parts = [];
     let i = 0;
     for (const g of COUPON_GROUPS) {
@@ -266,42 +277,43 @@ if (Number(rchk?.isRestricted) === 1) {
     return parts.join("-");
   }, []);
 
-const checkCoupon = useCallback(async () => {
-  const code = (couponCode || "").trim().toUpperCase();
-  if (!code) {
-    setCoupon(null); setCouponOk(false); setCouponMsg("Introduce un cupón.");
-    return;
-  }
-  try {
-    const { data } = await api.get("/api/coupons/validate", { params: { code } });
-    if (data?.valid) {
-      // v2 -> copiamos propiedades relevantes
-      const c = {
-        code,
-        kind    : data.kind,      // 'PERCENT' | 'AMOUNT'
-        variant : data.variant,   // 'FIXED' | 'RANGE'
-        percent : Number(data.percent ?? 0) || undefined,
-        amount  : Number(data.amount  ?? 0) || undefined,
-        maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
-        expiresAt: data.expiresAt || null,
-      };
-      setCoupon(c);
-      setCouponOk(true);
-      setCouponMsg("Cupón aplicado");
-      setShowCouponToast(false);
-    } else {
-      setCoupon(null); setCouponOk(false);
-      setCouponMsg(
-        data?.reason === "expired" ? "Cupón caducado." :
-        data?.reason === "used" ? "Cupón ya usado." :
-        "Cupón inválido."
-      );
+  const checkCoupon = useCallback(async () => {
+    const code = (couponCode || "").trim().toUpperCase();
+    if (!code) {
+      setCoupon(null);
+      setCouponOk(false);
+      setCouponMsg("Introduce un cupón.");
+      return;
     }
-  } catch {
-    setCoupon(null); setCouponOk(false); setCouponMsg("No se pudo validar el cupón.");
-  }
-}, [couponCode]);
-
+    try {
+      const { data } = await api.get("/api/coupons/validate", { params: { code } });
+      if (data?.valid) {
+        const c = {
+          code,
+          kind: data.kind, // 'AMOUNT' | 'PERCENT'
+          variant: data.variant,
+          percent: data.percent != null ? Number(data.percent) : undefined,
+          amount: data.amount != null ? Number(data.amount) : undefined,
+          maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
+          expiresAt: data.expiresAt || null
+        };
+        setCoupon(c);
+        setCouponOk(true);
+        setCouponMsg("Cupón aplicado");
+        setShowCouponToast(false);
+      } else {
+        setCoupon(null);
+        setCouponOk(false);
+        setCouponMsg(
+          data?.reason === "expired" ? "Cupón caducado." : data?.reason === "used" ? "Cupón ya usado." : "Cupón inválido."
+        );
+      }
+    } catch {
+      setCoupon(null);
+      setCouponOk(false);
+      setCouponMsg("No se pudo validar el cupón.");
+    }
+  }, [couponCode]);
 
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
@@ -389,7 +401,7 @@ const checkCoupon = useCallback(async () => {
   const onTouchMove = (e) => {
     if (!tStart.current.target || isInteractive(tStart.current.target)) return;
     const touch = e.touches[0];
-    const dx = touch.clientX - tStart.current.x;
+       const dx = touch.clientX - tStart.current.x;
     const dy = Math.abs(touch.clientY - tStart.current.y);
     if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
   };
@@ -688,44 +700,42 @@ const checkCoupon = useCallback(async () => {
   }
 
   function RestrictionModal({ open, info, onClose }) {
-  if (!open) return null;
-  const msg = info?.reason || "No podemos continuar con este número.";
-  const ref = info?.code ? `Ref.: ${info.code}` : "";
-  const waText = encodeURIComponent(
-    `Hola, tengo restringido mi número ${info?.phone || ""}. ${ref}`.trim()
-  );
+    if (!open) return null;
+    const msg = info?.reason || "No podemos continuar con este número.";
+    const ref = info?.code ? `Ref.: ${info.code}` : "";
+    const waText = encodeURIComponent(
+      `Hola, tengo restringido mi número ${info?.phone || ""}. ${ref}`.trim()
+    );
 
-  return (
-    <BaseModal
-      open={open}
-      title="Acceso restringido"
-      onClose={onClose}
-      width={520}
-      hideFooter
-      overlayClassName="pc-modal-overlay--danger"
-    >
-      <div className="pc-content">
-        <p className="pc-lead" style={{display:"flex",alignItems:"center",gap:8}}>
-          <FontAwesomeIcon icon={faTriangleExclamation} />
-          {msg}
-        </p>
-        {ref && <p className="pc-note" style={{marginTop:-6}}>{ref}</p>}
+    return (
+      <BaseModal
+        open={open}
+        title="Acceso restringido"
+        onClose={onClose}
+        width={520}
+        hideFooter
+        overlayClassName="pc-modal-overlay--danger"
+      >
+        <div className="pc-content">
+          <p className="pc-lead" style={{display:"flex",alignItems:"center",gap:8}}>
+            <FontAwesomeIcon icon={faTriangleExclamation} />
+            {msg}
+          </p>
+          {ref && <p className="pc-note" style={{marginTop:-6}}>{ref}</p>}
 
-        <div className="pc-actions" style={{ marginTop: 12 }}>
-          
-          <a
-            className="pc-btn pc-btn-primary push"
-            href={`https://wa.me/34694301433?text=${waText}`}
-            target="_blank" rel="noopener noreferrer"
-          >
-            Contactar soporte
-          </a>
+          <div className="pc-actions" style={{ marginTop: 12 }}>
+            <a
+              className="pc-btn pc-btn-primary push"
+              href={`https://wa.me/34694301433?text=${waText}`}
+              target="_blank" rel="noopener noreferrer"
+            >
+              Contactar soporte
+            </a>
+          </div>
         </div>
-      </div>
-    </BaseModal>
-  );
-}
-
+      </BaseModal>
+    );
+  }
 
   // ===== Modal de cupón con contador destacado =====
   function CouponInfoModal({ open, onClose, data }) {
@@ -762,13 +772,6 @@ const checkCoupon = useCallback(async () => {
     const variant =
       secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
 
-    <p style={{marginTop:0}}>
-  <b>Beneficio:</b>{" "}
-  {data.kind === "AMOUNT"
-    ? `Descuento fijo (−€${Number(data.amount||0).toFixed(2)})`
-    : `Descuento ${Number(data.percent||0)}%${data.maxAmount!=null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""}`
-  }
-</p>
     const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
 
     return (
@@ -779,8 +782,10 @@ const checkCoupon = useCallback(async () => {
           </p>
           <p style={{marginTop:0}}>
             <b>Beneficio:</b>{" "}
-            {isFp ? `Pizza gratis (−€${FP_VALUE_EUR.toFixed(2)})`
-                  : `${Number(data.percent||0)}% de descuento`}
+            {data.kind === "AMOUNT"
+              ? `Descuento fijo (−€${Number(data.amount||0).toFixed(2)})`
+              : `Descuento ${Number(data.percent||0)}%${data.maxAmount!=null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""}`
+            }
           </p>
 
           {expiresDate && (
@@ -799,7 +804,6 @@ const checkCoupon = useCallback(async () => {
           <ul>
             <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
             <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
-            {isFp && <li>Valor fijo de descuento: <b>€{FP_VALUE_EUR.toFixed(2)}</b>.</li>}
             <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
             <li>El cupón se marca como usado al confirmar el pago.</li>
           </ul>
@@ -960,13 +964,13 @@ const checkCoupon = useCallback(async () => {
           Datos del cliente
         </button>
 
-      <button
-        className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-        onClick={handleNextClick}
-        disabled={outOfRange ? true : false}
-      >
-        Siguiente → productos
-      </button>
+        <button
+          className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+          onClick={handleNextClick}
+          disabled={outOfRange ? true : false}
+        >
+          Siguiente → productos
+        </button>
       </div>
 
       {showCus && (
@@ -1082,12 +1086,12 @@ const checkCoupon = useCallback(async () => {
               Datos del cliente
             </button>
 
-          <button
-            className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-            onClick={handleNextClick}
-          >
-            Siguiente → productos
-          </button>
+            <button
+              className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
+              onClick={handleNextClick}
+            >
+              Siguiente → productos
+            </button>
           </div>
         </div>
       </div>
@@ -1138,89 +1142,85 @@ const checkCoupon = useCallback(async () => {
     </div>
   );
 
+  const parseJsonMaybe = (v) => {
+    if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
+    return v;
+  };
+  const toArray = (v) => {
+    if (Array.isArray(v)) return v;
+    if (v == null) return [];
+    const p = parseJsonMaybe(v);
+    if (Array.isArray(p)) return p;
+    if (p && typeof p === "object") return Object.values(p).length ? Object.values(p) : [p];
+    return [p];
+  };
+  const normalizeExtra = (e, i = 0) => ({
+    code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
+    label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
+    amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
+  });
 
-const parseJsonMaybe = (v) => {
-  if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
-  return v;
-};
-const toArray = (v) => {
-  if (Array.isArray(v)) return v;
-  if (v == null) return [];
-  const p = parseJsonMaybe(v);
-  if (Array.isArray(p)) return p;
-  if (p && typeof p === "object") return Object.values(p).length ? Object.values(p) : [p];
-  return [p];
-};
-const normalizeExtra = (e, i = 0) => ({
-  code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
-  label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
-  amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio del extra (0 permitido)
-});
+  const buildItemsForApi = (lines = []) =>
+    (Array.isArray(lines) ? lines : [])
+      .map((x) => {
+        const pizzaId = Number(x?.pizzaId ?? x?.id ?? x?.productId);
+        const name = String(x?.name ?? x?.pizzaName ?? "").trim();
+        const size = String(x?.size ?? x?.tamano ?? "").trim();
+        const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
+        const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
+        const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
+        const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
 
-const buildItemsForApi = (lines = []) =>
-  (Array.isArray(lines) ? lines : [])
-    .map((x) => {
-      const pizzaId = Number(x?.pizzaId ?? x?.id ?? x?.productId);
-      const name = String(x?.name ?? x?.pizzaName ?? "").trim();
-      const size = String(x?.size ?? x?.tamano ?? "").trim();
-      const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
-      const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
-      const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
-      const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
+        const item = { size, qty, extras };
+        if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
+        else if (name) item.name = name;
+        if (Number.isFinite(price)) item.price = price;
 
-      const item = { size, qty, extras };
-      if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
-      else if (name) item.name = name;
-      if (Number.isFinite(price)) item.price = price;
+        return (item.pizzaId || item.name) ? item : null;
+      })
+      .filter(Boolean);
 
-      return (item.pizzaId || item.name) ? item : null;
-    })
-    .filter(Boolean);
-
-
-  // Paso 3: review + pagar — bloques de 5
+  // Paso 3: review + pagar
   const isDelivery = mode === "deliveryLocate";
   const qtyTotal = pending?.items?.reduce((s, x) => s + Number(x.qty || 0), 0) || 0;
   const deliveryBlocks = isDelivery && qtyTotal > 0 ? Math.ceil(qtyTotal / DELIVERY_BLOCK) : 0;
   const deliveryFeeTotal = isDelivery ? deliveryBlocks * DELIVERY_FEE : 0;
 
+  const productsSubtotal = pending ? Number(pending.total || 0) : 0;
 
-const productsSubtotal = pending ? Number(pending.total || 0) : 0;
-
-let discountTotal = 0;
-if (coupon && couponOk && productsSubtotal > 0) {
-  if (coupon.kind === "AMOUNT") {
-    const amt = Number(coupon.amount || 0);
-    discountTotal = Math.min(Math.max(amt, 0), productsSubtotal);
-  } else if (coupon.kind === "PERCENT") {
-    const pct = Math.max(0, Math.min(100, Number(coupon.percent || 0)));
-    const raw = (productsSubtotal * pct) / 100;
-    const cap = coupon.maxAmount != null ? Math.max(0, Number(coupon.maxAmount)) : Infinity;
-    discountTotal = Math.min(raw, cap, productsSubtotal);
+  let discountTotal = 0;
+  if (coupon && couponOk && productsSubtotal > 0) {
+    if (coupon.kind === "AMOUNT") {
+      const amt = Number(coupon.amount || 0);
+      discountTotal = Math.min(Math.max(amt, 0), productsSubtotal);
+    } else if (coupon.kind === "PERCENT") {
+      const pct = Math.max(0, Math.min(100, Number(coupon.percent || 0)));
+      const raw = (productsSubtotal * pct) / 100;
+      const cap = coupon.maxAmount != null ? Math.max(0, Number(coupon.maxAmount)) : Infinity;
+      discountTotal = Math.min(raw, cap, productsSubtotal);
+    }
   }
-}
 
-const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
-const reviewTotal = reviewNetProducts + deliveryFeeTotal;
+  const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
+  const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 
   const fmtEur = (n) =>
     Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
 
   const startPayment = useCallback(async () => {
     const rchk = await checkRestriction(customer?.phone);
-if (Number(rchk?.isRestricted) === 1) {
-  alert(
-    "No podemos iniciar el pago con este número.\n" +
-    (rchk?.reason ? `${rchk.reason}\n` : "") +
-    (rchk?.code ? `Ref.: ${rchk.code}` : "")
-  );
-  setIsPaying(false);
-  return;
-}
+    if (Number(rchk?.isRestricted) === 1) {
+      alert(
+        "No podemos iniciar el pago con este número.\n" +
+        (rchk?.reason ? `${rchk.reason}\n` : "") +
+        (rchk?.code ? `Ref.: ${rchk.code}` : "")
+      );
+      setIsPaying(false);
+      return;
+    }
     if (!pending || isPaying) return;
     setIsPaying(true);
     try {
-      // 🔒 Chequeo global antes de crear pedido
       const { data: app } = await api.get("/api/app/status");
       if (!app?.accepting) {
         alert(app?.message || "La app está cerrada. Volvemos en breve.");
@@ -1228,7 +1228,7 @@ if (Number(rchk?.isRestricted) === 1) {
         return;
       }
 
-      // 🔁 Revalidar cupón justo antes de pagar
+      // Revalidar cupón justo antes de pagar
       let validCouponCode = null;
       if (couponOk && coupon?.code) {
         try {
@@ -1245,8 +1245,7 @@ if (Number(rchk?.isRestricted) === 1) {
         }
       }
 
-      // 👉 items con EXTRAS embebidos
-      const itemsForApi = buildItemsForApi(pending.items).map((it, idx) => ({
+      const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
         ...it,
         size: String(it.size || "M").trim(),
         qty: Number(it.qty) || 1,
@@ -1255,14 +1254,12 @@ if (Number(rchk?.isRestricted) === 1) {
               id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
               code: "EXTRA",
               label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
-              amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0), // precio unitario
+              amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
             }))
           : [],
       }));
 
       if (!itemsForApi.length) {
-        console.warn("pending.items →", pending?.items);
-        console.warn("itemsForApi →", itemsForApi);
         alert("No hay productos en el carrito.");
         setIsPaying(false);
         return;
@@ -1282,11 +1279,7 @@ if (Number(rchk?.isRestricted) === 1) {
               lng: coords?.lng,
             }
           : { phone: customer?.phone, name: customer?.name },
-
-        // ⬇ productos con extras DENTRO
         items: itemsForApi,
-
-        // extra de envío por bloques (fuera de cada item)
         extras: isDelivery
           ? [{
               code: "DELIVERY_FEE",
@@ -1294,17 +1287,11 @@ if (Number(rchk?.isRestricted) === 1) {
               amount: Number(deliveryFeeTotal) || 0,
             }]
           : [],
-
         ...(validCouponCode ? { coupon: validCouponCode } : {}),
         notes: "",
       };
 
-      console.log("PAYLOAD ENVIADO →", JSON.parse(JSON.stringify(payload)));
-
-      // 1) Crear venta (AWAITING_PAYMENT)
       const { data: created } = await api.post("/api/venta/pedido", payload);
-
-      // 2) Crear sesión de pago
       const { data: pay } = await api.post("/api/venta/checkout-session", {
         orderId: created?.id,
         code: created?.code,
@@ -1313,10 +1300,7 @@ if (Number(rchk?.isRestricted) === 1) {
       if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
       window.location.href = pay.url;
     } catch (e) {
-      const msg =
-        e?.response?.data?.error ||
-        e?.message ||
-        "No se pudo iniciar el pago";
+      const msg = e?.response?.data?.error || e?.message || "No se pudo iniciar el pago";
       if (/Stripe no configurado/i.test(msg)) {
         alert("Pago no disponible (Stripe no configurado).");
       } else if (/fuera.*zona|servicio/i.test(msg)) {
@@ -1418,16 +1402,16 @@ if (Number(rchk?.isRestricted) === 1) {
           <div className="pc-totals">
             <div>Subtotal: €{productsSubtotal.toFixed(2)}</div>
 
-        {coupon && couponOk && discountTotal > 0 && (
-          <div>
-            Cupón {coupon.code}
-            {coupon.kind === "PERCENT"
-              ? ` (${Number(coupon.percent||0)}%` + (coupon.maxAmount != null ? ` · tope €${Number(coupon.maxAmount).toFixed(2)}` : "") + `)`
-              : ` (−€${Number(coupon.amount||0).toFixed(2)})`
-            }
-            : −€{discountTotal.toFixed(2)}
-          </div>
-        )}
+            {coupon && couponOk && discountTotal > 0 && (
+              <div>
+                Cupón {coupon.code}
+                {coupon.kind === "PERCENT"
+                  ? ` (${Number(coupon.percent||0)}%${coupon.maxAmount != null ? ` · tope €${Number(coupon.maxAmount).toFixed(2)}` : ""})`
+                  : ` (−€${Number(coupon.amount||0).toFixed(2)})`
+                }
+                : −€{discountTotal.toFixed(2)}
+              </div>
+            )}
 
             {isDelivery && (
               <div>
@@ -1497,19 +1481,19 @@ if (Number(rchk?.isRestricted) === 1) {
   }
 
   // === Toast Cupón ===
-const CouponToast = showCouponToast ? (
-  <div
-    className="pc-toast pc-toast--brand pc-toast--blink"
-    role="status"
-    onClick={() => setShowCouponToast(false)}
-  >
-    ✅ {coupon?.code} aplicado:{" "}
-    {coupon?.kind === "AMOUNT"
-      ? `-€${Number(coupon?.amount||0).toFixed(2)}`
-      : `${Number(coupon?.percent||0)}%${coupon?.maxAmount!=null ? ` (tope €${Number(coupon.maxAmount).toFixed(2)})` : ""}`
-    }
-  </div>
-) : null;
+  const CouponToast = showCouponToast ? (
+    <div
+      className="pc-toast pc-toast--brand pc-toast--blink"
+      role="status"
+      onClick={() => setShowCouponToast(false)}
+    >
+      ✅ {coupon?.code} aplicado:{" "}
+      {coupon?.kind === "AMOUNT"
+        ? `-€${Number(coupon?.amount||0).toFixed(2)}`
+        : `${Number(coupon?.percent||0)}%${coupon?.maxAmount!=null ? ` (tope €${Number(coupon.maxAmount).toFixed(2)})` : ""}`
+      }
+    </div>
+  ) : null;
 
   // === Caja de Cupón (solo portada) ===
   const CouponCard = (
@@ -1518,7 +1502,7 @@ const CouponToast = showCouponToast ? (
       <div className="pc-actions" style={{ alignItems: "center", gap: 8 }}>
         <input
           className="pc-input"
-          placeholder="Escribe tu código (p. ej. MCP-FPXX-XXXX)"
+          placeholder="Escribe tu código (p. ej. MCP-XXXX-YYYY)"
           value={couponCode}
           onChange={(e) => setCouponCode(formatCoupon(e.target.value))}
           onKeyDown={(e) => e.key === "Enter" && checkCoupon()}
@@ -1608,19 +1592,20 @@ const CouponToast = showCouponToast ? (
       <CookiesPolicyModal open={showCookiesPolicy} onClose={() => setShowCookiesPolicy(false)} />
 
       {/* Modal de condiciones del cupón */}
-    <CouponInfoModal
-      open={showCouponInfo}
-      onClose={() => setShowCouponInfo(false)}
-      data={coupon ? {
-        code: coupon.code,
-        kind: coupon.kind,
-        variant: coupon.variant,
-        percent: coupon.percent,
-        amount: coupon.amount,
-        maxAmount: coupon.maxAmount,
-        expiresAt: coupon?.expiresAt || null
-      } : null}
-    />
+      <CouponInfoModal
+        open={showCouponInfo}
+        onClose={() => setShowCouponInfo(false)}
+        data={coupon ? {
+          code: coupon.code,
+          kind: coupon.kind,
+          variant: coupon.variant,
+          percent: coupon.percent,
+          amount: coupon.amount,
+          maxAmount: coupon.maxAmount,
+          expiresAt: coupon?.expiresAt || null
+        } : null}
+      />
+
       <RestrictionModal
         open={restrictModal.open}
         info={restrictModal}
