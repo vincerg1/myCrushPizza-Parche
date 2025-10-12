@@ -10,6 +10,7 @@ import { useAuth }     from "./AuthContext";
 import CustomerInfo    from "./CustomerInfo";
 import CustomersPanel  from "./CustomersPanel";
 import OfferCreatePanel from "./OfferCreatePanel";
+import OffersOverview  from "./OffersOverview"; // ← NUEVO: panel del padre “Ofertas”
 import "../styles/Backoffice.css";
 
 const LS_KEY_SIDEBAR_W = "bo.sidebarW";
@@ -109,6 +110,7 @@ export default function Backoffice() {
       case "pizzaCreator":    return <PizzaCreator   />;
       case "storeCreator":    return <StoreCreator   />;
       case "customers":       return <CustomersPanel />;
+      case "offers":          return <OffersOverview onNavigate={(key)=>setActive(key)} />; // ← AQUÍ
       case "offers/sms":      return <MyOffersPanel  />;
       case "offers/create":   return <OfferCreatePanel />;
       case "myOrders":        return <MyOrdersGate   />;
@@ -126,7 +128,7 @@ export default function Backoffice() {
         </div>
 
         {menu.map(item => {
-          // Ítems simples
+          // Ítems simples (sin hijos)
           if (!item.children) {
             return (
               <SidebarButton
@@ -139,36 +141,45 @@ export default function Backoffice() {
           }
 
           // Grupos con hijos
-          const isOpen = !!open[item.key];
-          // resalta la cabecera si algún hijo está activo
           const hasActiveChild = item.children?.some(ch => active === ch.key);
+          const isOpen = !!open[item.key];                
+          const headerActive = active === item.key || hasActiveChild;
 
-          return (
-            <div key={item.key} className={`sidebar-group ${isOpen ? "open" : ""}`} data-key={item.key}>
-              <SidebarButton
-                label={item.label}
-                group
-                open={isOpen}
-                active={active === item.key || hasActiveChild}
-                onClick={() => setOpen(o => ({ ...o, [item.key]: !o[item.key] }))}
-              />
+     return (
+        <div key={item.key} className={`sidebar-group ${isOpen ? "open" : ""}`} data-key={item.key}>
+          <SidebarButton
+            label={item.label}
+            group
+            open={isOpen}
+            active={headerActive}
+            onClick={() => {
+              setOpen(o => {
+                const next = !o[item.key];             // toggle limpio
+                if (next) setActive(item.key);         // al abrir, mostrar panel-resumen del padre
+                return { ...o, [item.key]: next };
+              });
+            }}
+          />
 
-              {isOpen && (
-                <div className="sidebar-children">
-                  {item.children.map(child => (
-                    <div key={child.key} className="sidebar-child" data-active={active === child.key}>
-                      <SidebarButton
-                        label={child.label}
-                        active={active === child.key}
-                        depth={1}
-                        onClick={() => setActive(child.key)}
-                      />
-                    </div>
-                  ))}
+          {isOpen && (
+            <div className="sidebar-children">
+              {item.children.map(child => (
+                <div key={child.key} className="sidebar-child" data-active={active === child.key}>
+                  <SidebarButton
+                    label={child.label}
+                    active={active === child.key}
+                    depth={1}
+                    onClick={() => {
+                      setActive(child.key);            // activar hijo
+                      setOpen(o => ({ ...o, [item.key]: true })); // mantener grupo abierto
+                    }}
+                  />
                 </div>
-              )}
+              ))}
             </div>
-          );
+          )}
+        </div>
+      );
         })}
       </aside>
 

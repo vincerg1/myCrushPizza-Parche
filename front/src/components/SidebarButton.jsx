@@ -6,9 +6,9 @@ export default function SidebarButton({
   label,
   active = false,
   onClick,
-  group = false,   // cabecera de grupo
-  open  = false,   // estado del grupo
-  depth = 0        // nivel de indentación (0=raíz, 1=hijo, etc.)
+  group = false,   
+  open  = false,   
+  depth = 0       
 }) {
   return (
     <button

@@ -1,65 +1,23 @@
-.backoffice-wrapper {
-  height: 100vh;
-  display: flex;
-  background: #f5f5f5;
-  font-family: sans-serif;
-}
-
-/* --- sidebar --- */
-/* ---- sidebar desplegable ---- */
-.sidebar-btn {
-  width: 100%;
-  text-align: left;
-  padding: 10px 12px;
-  border: 0;
-  background: #fff;
-  border-radius: 10px;
-  margin: 6px 8px;
-  cursor: pointer;
-  font-size: 15px;
-  transition: background .15s ease, color .15s ease;
-}
-.sidebar-btn:hover { background: #f5f6f7; }
-.sidebar-btn.active {
-  background: #ffe3ee;
-  color: #e5005a;
-  font-weight: 700;
-}
-.sidebar-btn.group {
-  font-weight: 700;
-  background: #fff4f8;
-}
-.sidebar-btn .chev {
-  display: inline-block;
-  margin-right: 6px;
-  transform: rotate(0deg);
-  transition: transform .15s ease;
-}
-.sidebar-btn .chev.open { transform: rotate(90deg); }
-
-/* indentación para hijos del grupo */
-.sidebar-btn.depth-1 { padding-left: 28px; font-size: 14.5px; }
-.sidebar-btn.depth-2 { padding-left: 44px; font-size: 14px; }
-
-
-/* --- main panel --- */
-.panel {
-  flex: 1;
-  margin: 20px;
-  border-radius: 32px;
-  background: #ffffff;
-  padding: 40px;
-  box-shadow: 0 0 10px rgba(0,0,0,.05);
-}
-.bo-header{
+/* ===== Layout base ===== */
+.backoffice-wrapper{
+  height:100vh;
   display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:8px 16px;
+  align-items:stretch;
+  gap:0;
   background:#f5f5f5;
-  border-bottom:1px solid #ddd;
-  font-weight:600;
+  --sidebar-w:220px; /* fallback */
 }
+
+/* ===== Sidebar ===== */
+.sidebar{
+  width:var(--sidebar-w);
+  min-width:160px;
+  max-width:420px;
+  overflow:auto;
+  transition:width .08s ease;
+}
+
+/* Cabecera (logout, etc) */
 .sidebar-head{
   display:flex;
   flex-direction:column;
@@ -69,186 +27,122 @@
 }
 .small{ font-size:13px; font-weight:600; }
 .logout-btn{
-  background:#ff5959;
-  color:#fff;
-  border:none;
-  padding:4px 8px;
-  border-radius:12px;
-  cursor:pointer;
-  font-size:12px;
+  background:#ff5959; color:#fff; border:0; padding:4px 8px;
+  border-radius:12px; cursor:pointer; font-size:12px;
 }
 .logout-btn:hover{ background:#e14b4b; }
 
-
-/* ====== Split layout con sidebar ajustable ====== */
-.backoffice-wrapper {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  height: 100%;
-  /* fallback por si no viene el inline style */
-  --sidebar-w: 220px;
+/* ===== Panel principal ===== */
+.panel{
+  flex:1 1 auto;
+  min-width:0;
+  margin:20px;
+  background:#fff;
+  border-radius:32px;
+  padding:40px;
+  box-shadow:0 0 10px rgba(0,0,0,.05);
 }
 
-.backoffice-wrapper .sidebar {
-  width: var(--sidebar-w);
-  min-width: 160px;
-  max-width: 420px;
-  overflow: auto;
-  /* transiciones suaves al soltar el drag */
-  transition: width .08s ease;
-}
-
-/* línea/agarre entre sidebar y panel */
-.backoffice-wrapper .splitter {
-  flex: 0 0 8px;       /* zona cómoda de arrastre */
-  cursor: col-resize;
-  position: relative;
-  background: transparent;
-}
-.backoffice-wrapper .splitter::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  margin: 0 3px;       /* la línea visual del centro */
-  border-left: 1px solid #e5e7eb;
-}
-.backoffice-wrapper .splitter:hover {
-  background: #f3f4f6;
-}
-.backoffice-wrapper .splitter.dragging {
-  background: #e5e7eb;
-}
-
-/* panel principal */
-.backoffice-wrapper .panel {
-  flex: 1 1 auto;
-  min-width: 0;       /* importante para que no crezca y permita el overflow interno */
-  overflow: auto;
-}
-
-/* -------- Sidebar layout (ya lo tienes) -------- */
-
-.sidebar-children{
-  margin: 6px 0 10px 0;
-  padding-left: 10px;
-  border-left: 2px solid #f0f2f6; /* guía muy sutil */
-  overflow: visible; /* no mini-scroll */
-}
-
-/* Cuando la CABECERA DE GRUPO está activa (o la marcamos activa desde JSX),
-   damos un leve tono al contenedor de hijos: */
-.sidebar-btn.is-group.is-active + .sidebar-children{
-  border-left-color: #fde2e8;            /* tono acorde con el activo */
-}
-
-/* ====== BOTONES DEL SIDEBAR ====== */
-.sidebar-btn{
-  width: 100%;
-  text-align: left;
-  background: #fff;
-  border: 1px solid #eee;
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin: 6px 8px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
-  box-sizing: border-box;
-}
-
-/* Hover unificado */
-.sidebar-btn:hover{
-  background: #f6f7fb;
-  border-color: #e7e9f1;
-}
-
-/* ACTIVO = rosado (para cualquier botón: simple, cabecera de grupo o hijo) */
-.sidebar-btn.is-active{
-  background: #ffe6ee;
-  border-color: #ffc8d8;
-  box-shadow: 0 0 0 2px rgba(255,46,115,.12) inset;
-}
-
-/* Cabecera de grupo por defecto NEUTRA (sin rosado si no está activa) */
-.sidebar-group .sidebar-btn.is-group{
-  background: #fff;
-  border-color: #eee;
-}
-
-/* Apariencia de los hijos: un poco más indentados */
-.sidebar-child .sidebar-btn{
-  margin: 6px 6px 6px 10px; /* desplaza ligeramente a la derecha */
-}
-
-/* Profundidad/indent (por si quieres más niveles en el futuro) */
-.sidebar-btn.depth-1{ padding-left: 10px; }
-
-/* ====== FLECHA DEL ACORDEÓN ====== */
-/* Cerrado: ˅  —  Abierto: ˄  (tal cual pediste) */
-.sidebar-btn.is-group .chev{
-  display: inline-block;
-  width: 18px;
-  margin-right: 4px;
-  opacity: .9;
-  text-align: center;
-}
-.sidebar-btn.is-group .chev.closed::before{ content: "˅"; } /* grupo cerrado */
-.sidebar-btn.is-group .chev.open::before  { content: "˄"; } /* grupo abierto */
-
-/* ====== ESTADOS DEL GRUPO ====== */
-/* El contenedor del grupo en sí mismo no fuerza color de fondo */
-.sidebar-group{ border-radius: 12px; }
-.sidebar-group.open{ background: transparent; }
-
-/* ====== SPLITTER (BARRA DE RESIZE) ====== */
+/* ===== Splitter (resizer) ===== */
 .splitter{
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  position: relative;
+  flex:0 0 8px;
+  cursor:col-resize;
+  position:relative;
+  background:transparent;
 }
 .splitter::after{
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: 2px;
-  margin: 0 auto;
-  background: #e5e7eb; /* línea sutil centrada */
-  transition: background .15s ease, width .15s ease;
+  content:"";
+  position:absolute; inset:0;
+  margin:0 3px;                 /* línea visual al centro */
+  border-left:1px solid #e5e7eb;
+  transition:border-color .15s ease, width .15s ease;
 }
 .splitter:hover::after,
 .splitter.dragging::after{
-  background: #ff2e73;
-  width: 3px;
+  border-left-color:#ff2e73;    /* highlight rosa al hover/drag */
+  width:3px;
 }
 
-/* ====== ASEGURAR QUE NADA DESBORDE LATERALMENTE ====== */
-.sidebar{
-  overflow-x: hidden; /* evita scroll horizontal */
+/* ===== Botones del sidebar ===== */
+/* Usa: .sidebar-btn, .is-group, .is-active, .depth-1 */
+.sidebar-btn{
+  display:block;
+  width:calc(100% - 16px);
+  text-align:left;
+  background:#fff;
+  border:1px solid #eee;
+  border-radius:10px;
+  padding:10px 12px;
+  margin:6px 8px;
+  font-size:14px;
+  cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  box-sizing:border-box;
+}
+.sidebar-btn:hover{
+  background:#f6f7fb;
+  border-color:#e7e9f1;
 }
 
-
-/* (opcional) responsive: en pantallas muy pequeñas, forzar ancho mínimo */
-@media (max-width: 860px) {
-  .backoffice-wrapper .sidebar {
-    min-width: 140px;
-  }
+/* Activo (simple, cabecera de grupo o hijo) */
+.sidebar-btn.is-active{
+  background:#ffe6ee;
+  border-color:#ffc8d8;
+  box-shadow:0 0 0 2px rgba(255,46,115,.12) inset;
 }
 
-/* Backoffice.css  ─ añadir al final */
-@media (max-width: 768px) {
-  .sidebar.non-admin {
-    display: none;
-  }
-  .sidebar.non-admin + .panel {
-    width: 100%;
-    padding: 0 16px;   /* margen lateral opcional */
-  }
-  html, body,
-.backoffice-wrapper,
-.panel,
-.orders-dashboard {
-  overflow-x: hidden;    /* impide scroll lateral de la página entera */
+/* Cabecera de grupo neutra si no está activa */
+.sidebar-group .sidebar-btn.is-group{
+  background:#fff;
+  border-color:#eee;
 }
+
+/* Flecha del acordeón: cerrado ˅ / abierto ˄ (via data-open) */
+.sidebar-btn.is-group .chev{
+  display:inline-block;
+  width:18px;
+  margin-right:4px;
+  opacity:.9;
+  text-align:center;
+  pointer-events:none;
+}
+.sidebar-btn.is-group[data-open="false"] .chev::before { content:"˅"; } /* cerrado */
+.sidebar-btn.is-group[data-open="true"]  .chev::before { content:"˄"; } /* abierto */
+
+/* Contenedor de hijos (sin mini scroll y con guía sutil) */
+.sidebar-children{
+  margin:6px 0 10px 0;
+  padding-left:10px;
+  border-left:2px solid #f0f2f6;
+  overflow:visible;
+}
+/* Si la cabecera está activa, acentuar guía */
+.sidebar-btn.is-group.is-active + .sidebar-children{
+  border-left-color:#fde2e8;
+}
+
+/* Apariencia de hijos + indentación */
+.sidebar-child .sidebar-btn{ margin:6px 6px 6px 10px; }
+.sidebar-btn.depth-1{ padding-left:10px; }
+
+/* Contenedor del grupo con “caja” cuando está abierto */
+.sidebar-group{ border-radius:12px; }
+.sidebar-group.open{
+  background:#fff5f8;
+  border:1px solid #fde2e8;
+  border-radius:12px;
+  padding:6px;                  /* separa botones del borde */
+}
+
+/* Evita scroll horizontal global */
+.sidebar{ overflow-x:hidden; }
+
+/* ===== Responsive ===== */
+@media (max-width:860px){
+  .sidebar{ min-width:140px; }
+}
+@media (max-width:768px){
+  .sidebar.non-admin{ display:none; }
+  .sidebar.non-admin + .panel{ width:100%; padding:0 16px; }
+  html, body, .backoffice-wrapper, .panel{ overflow-x:hidden; }
 }
