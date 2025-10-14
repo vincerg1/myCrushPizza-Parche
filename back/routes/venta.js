@@ -24,9 +24,7 @@ const ts  = () => new Date().toISOString();
 const logI = (m, x={}) => console.info(`[venta][${ts()}] ${m}`, x);
 const logW = (m, x={}) => console.warn(`[venta][${ts()}] ${m}`, x);
 const logE = (m, e)     => console.error(`[venta][${ts()}] ${m}`, e?.message || e);
-
 const FRONT_BASE_URL = process.env.FRONT_BASE_URL || 'http://localhost:3000';
-
 const onlyDigits = s => (s || '').replace(/\D/g, '');
 const clean = v => (v === undefined || v === '' ? null : v);
 const upper = s => String(s || '').trim().toUpperCase();
@@ -42,7 +40,6 @@ const toPrice = v => {
 };
 const parseMaybe = (v, fb = {}) => { try { return v==null?fb : (typeof v==='string' ? JSON.parse(v) : v); } catch { return fb; } };
 const round2 = n => Math.round(Number(n) * 100) / 100;
-
 const DELIVERY_MAX_KM = Number(process.env.DELIVERY_MAX_KM ?? 7);
 function haversineKm(lat1, lon1, lat2, lon2){
   const R=6371,toRad=d=>(d*Math.PI)/180;
@@ -50,9 +47,7 @@ function haversineKm(lat1, lon1, lat2, lon2){
   const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-
 const normPhone = (s='') => s.replace(/[^\d+]/g, '');
-
 async function getRestrictionByPhone(db, rawPhone) {
   const phone = normPhone(rawPhone || '');
   if (!phone) return { restricted:false };
@@ -66,12 +61,8 @@ async function getRestrictionByPhone(db, rawPhone) {
     code      : c?.code || null
   };
 }
-
-/* ───────── generadores ───────── */
 async function genOrderCode(db){ let code; do{ code='ORD-'+Math.floor(10000+Math.random()*90000);} while(await db.sale.findUnique({where:{code}})); return code; }
 async function genCustomerCode(db){ let code; do{ code='CUS-'+Math.floor(10000+Math.random()*90000);} while(await db.customer.findUnique({where:{code}})); return code; }
-
-/* ───────── helpers de SMS ───────── */
 const firstName = (raw) => {
   if (!raw || typeof raw !== 'string') return '';
   const cleanName = raw.replace(/\s+/g, ' ').trim();
@@ -85,8 +76,6 @@ function buildPaidMsg({ name, code, storeName, isDelivery }) {
     ? `${saludo}hemos recibido tu pago del pedido ${code}. Lo estamos preparando en ${storeName}. Te avisaremos cuando salga a reparto. ¡Gracias!`
     : `${saludo}hemos recibido tu pago del pedido ${code}. Lo estamos preparando en ${storeName}. Te avisaremos cuando esté listo para recoger. ¡Gracias!`;
 }
-
-/* ───────── helpers de tiempo (alineados con coupons.js) ───────── */
 const TZ = process.env.TIMEZONE || 'Europe/Madrid';
 function nowInTZ() {
   const s = new Date().toLocaleString('sv-SE', { timeZone: TZ }); // “YYYY-MM-DD HH:mm:ss”
@@ -129,8 +118,6 @@ function isActiveByDate(row, ref = nowInTZ()) {
   if (row.expiresAt && new Date(row.expiresAt).getTime() <= t) return false;
   return true;
 }
-
-/* ───────── cálculo de descuento del NUEVO sistema ───────── */
 function computeCouponDiscount(row, totalProducts){
   const tp = Math.max(0, Number(totalProducts||0));
   if(tp<=0) return { discount:0, percentApplied:null, amountApplied:null, label:null };
@@ -156,8 +143,6 @@ function computeCouponDiscount(row, totalProducts){
     label: `Cupón ${row.code} (-${p}%)`
   };
 }
-
-/* ───────── items: normalización/stock/total ───────── */
 async function normalizeItems(db, items){
   const src = Array.isArray(items) ? items : [];
   if (!src.length) throw new Error('items vacío');
@@ -202,7 +187,6 @@ async function normalizeItems(db, items){
 
   return [...direct, ...byName];
 }
-
 async function assertStock(tx, storeId, items){
   for (const it of items){
     const stk = await tx.storePizzaStock.findUnique({
@@ -214,7 +198,6 @@ async function assertStock(tx, storeId, items){
     }
   }
 }
-
 async function recalcTotals(tx, storeId, items){
   const ids = [...new Set(items.map(i => Number(i.pizzaId)))];
   const pizzas = await tx.menuPizza.findMany({ where: { id: { in: ids } } });
@@ -235,140 +218,128 @@ async function recalcTotals(tx, storeId, items){
   return { lineItems, totalProducts, total: totalProducts };
 }
 
+const GAME_AMOUNT_PREFIXES = ['MCP-CD']; // cupones emitidos por el juego
+const isGameCoupon = (code) =>
+  GAME_AMOUNT_PREFIXES.some(pfx => String(code || '').toUpperCase().startsWith(pfx));
+const assertGameCouponShape = (coup, code) => {
+  if (isGameCoupon(code)) {
+    if (!(coup?.kind === 'AMOUNT' && coup?.variant === 'FIXED')) {
+      throw new Error('Cupón del juego inválido: debe ser valor fijo');
+    }
+  }
+};
+
 /* ───────────────────────────────────────────────────────────── */
 module.exports = (prisma) => {
 
-  /* ============================================================
-   *  A) CREA LA VENTA (AWAITING_PAYMENT)  →  Checkout
-   * ============================================================ */
-  // POST /api/venta/pedido
-  router.post('/pedido', async (req, res) => {
-    const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
-    if (appMeta && appMeta.acceptingOrders === false) {
-      const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
-      return res.status(503).json({ error: msg });
+
+router.post('/pedido', async (req, res) => {
+  const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
+  if (appMeta && appMeta.acceptingOrders === false) {
+    const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
+    return res.status(503).json({ error: msg });
+  }
+
+  const {
+    storeId,
+    type = 'DELIVERY',
+    delivery = 'COURIER',
+    customer,
+    items = [],
+    extras = [],
+    notes = '',
+    channel = 'WHATSAPP',
+    coupon: rawCoupon,
+    couponCode: rawCouponCode
+  } = req.body || {};
+  logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
+
+  try {
+    if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+
+    // Cobertura (solo delivery)
+    if (customer?.phone?.trim()) {
+      const r = await getRestrictionByPhone(prisma, customer.phone);
+      if (r.restricted) {
+        return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+      }
+    }
+    if (String(delivery).toUpperCase() === 'COURIER') {
+      const lat = Number(customer?.lat), lng = Number(customer?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        return res.status(400).json({ error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
+      }
+      const activeStores = await prisma.store.findMany({
+        where: { active: true, latitude: { not: null }, longitude: { not: null } },
+        select: { id: true, latitude: true, longitude: true }
+      });
+      if (!activeStores.length) return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
+
+      let nearest = { id: null, km: Infinity };
+      for (const s of activeStores) {
+        const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
+        if (km < nearest.km) nearest = { id: s.id, km };
+      }
+      if (!nearest || nearest.km > DELIVERY_MAX_KM) {
+        logW('Pedido fuera de cobertura', { lat, lng, nearestKm: Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm: DELIVERY_MAX_KM, nearestStoreId: nearest?.id || null });
+        return res.status(400).json({ error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
+      }
     }
 
-    const {
-      storeId,
-      type = 'DELIVERY',
-      delivery = 'COURIER',
-      customer,
-      items = [],
-      extras = [],
-      notes = '',
-      channel = 'WHATSAPP',
-      coupon: rawCoupon,
-      couponCode: rawCouponCode
-    } = req.body || {};
-    logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
+    // Cliente
+    let customerId = null, snapshot = null;
+    const isDelivery =
+      String(type).toUpperCase() === 'DELIVERY' ||
+      String(delivery).toUpperCase() === 'COURIER';
 
-    try {
-      if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+    if (customer?.phone?.trim()) {
+      const phone = onlyDigits(customer.phone);
+      const name = (customer.name || '').trim();
 
-      // Cobertura (solo delivery)
-      if (customer?.phone?.trim()) {
-        const r = await getRestrictionByPhone(prisma, customer.phone);
-        if (r.restricted) {
-          return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
-        }
-      }
-      if (String(delivery).toUpperCase() === 'COURIER') {
-        const lat = Number(customer?.lat), lng = Number(customer?.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-          return res.status(400).json({ error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
-        }
-        const activeStores = await prisma.store.findMany({
-          where: { active: true, latitude: { not: null }, longitude: { not: null } },
-          select: { id: true, latitude: true, longitude: true }
-        });
-        if (!activeStores.length) return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
+      const createAddress = isDelivery
+        ? (customer.address_1 || 'SIN DIRECCIÓN')
+        : `(PICKUP) ${phone}`;
 
-        let nearest = { id: null, km: Infinity };
-        for (const s of activeStores) {
-          const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
-          if (km < nearest.km) nearest = { id: s.id, km };
-        }
-        if (!nearest || nearest.km > DELIVERY_MAX_KM) {
-          logW('Pedido fuera de cobertura', { lat, lng, nearestKm: Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm: DELIVERY_MAX_KM, nearestStoreId: nearest?.id || null });
-          return res.status(400).json({ error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
-        }
-      }
-
-      // Cliente
-      let customerId = null, snapshot = null;
-      const isDelivery =
-        String(type).toUpperCase() === 'DELIVERY' ||
-        String(delivery).toUpperCase() === 'COURIER';
-
-      if (customer?.phone?.trim()) {
-        const phone = onlyDigits(customer.phone);
-        const name = (customer.name || '').trim();
-
-        const createAddress = isDelivery
-          ? (customer.address_1 || 'SIN DIRECCIÓN')
-          : `(PICKUP) ${phone}`;
-
-        const c = await prisma.customer.upsert({
-          where: { phone },
-          update: {
-            phone,
-            name,
-            ...(isDelivery && {
-              address_1: customer.address_1 || 'SIN DIRECCIÓN',
-              lat: clean(customer.lat),
-              lng: clean(customer.lng),
-            }),
-            portal: clean(customer.portal),
-            observations: clean(customer.observations),
-          },
-          create: {
-            code: await genCustomerCode(prisma),
-            phone,
-            name,
-            address_1: createAddress,
-            portal: clean(customer.portal),
-            observations: clean(customer.observations),
-            lat: isDelivery ? clean(customer.lat) : null,
-            lng: isDelivery ? clean(customer.lng) : null,
-          },
-        });
-        customerId = c.id;
-        snapshot = {
-          phone: c.phone, name: c.name,
-          address_1: c.address_1, portal: c.portal, observations: c.observations,
-          lat: c.lat, lng: c.lng
-        };
-      }
-
-      // Ítems (solo pizzas base/size/qty/precio)
-      const normItems = await normalizeItems(prisma, items);
-
-      // Extras desde ítems (aplanados) + embebidos para cada línea
-      const collectExtrasFromItems = (rawItems = []) => {
-        const out = [];
-        for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
-          const qty = Math.max(1, Number(it?.qty || 1));
-          const pools = []
-            .concat(it?.extras || [])
-            .concat(it?.toppings || [])
-            .concat(it?.addOns || it?.addons || [])
-            .concat(it?.options || [])
-            .concat(it?.modifiers || [])
-            .concat(it?.ingredients || [])
-            .concat(it?.complements || [])
-            .concat(it?.sides || []);
-          for (const ex of pools) {
-            const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-            if (!Number.isFinite(parsed) || parsed < 0) continue;
-            const code = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
-            const label = String(ex?.label || ex?.name || ex?.title || code);
-            out.push({ code, label, amount: round2(parsed * qty) });
-          }
-        }
-        return out;
+      const c = await prisma.customer.upsert({
+        where: { phone },
+        update: {
+          phone,
+          name,
+          ...(isDelivery && {
+            address_1: customer.address_1 || 'SIN DIRECCIÓN',
+            lat: clean(customer.lat),
+            lng: clean(customer.lng),
+          }),
+          portal: clean(customer.portal),
+          observations: clean(customer.observations),
+        },
+        create: {
+          code: await genCustomerCode(prisma),
+          phone,
+          name,
+          address_1: createAddress,
+          portal: clean(customer.portal),
+          observations: clean(customer.observations),
+          lat: isDelivery ? clean(customer.lat) : null,
+          lng: isDelivery ? clean(customer.lng) : null,
+        },
+      });
+      customerId = c.id;
+      snapshot = {
+        phone: c.phone, name: c.name,
+        address_1: c.address_1, portal: c.portal, observations: c.observations,
+        lat: c.lat, lng: c.lng
       };
-      const unitExtrasForItem = (it = {}) => {
+    }
+
+    // Ítems (solo pizzas base/size/qty/precio)
+    const normItems = await normalizeItems(prisma, items);
+
+    // Extras desde ítems (aplanados) + embebidos para cada línea
+    const collectExtrasFromItems = (rawItems = []) => {
+      const out = [];
+      for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
+        const qty = Math.max(1, Number(it?.qty || 1));
         const pools = []
           .concat(it?.extras || [])
           .concat(it?.toppings || [])
@@ -378,134 +349,153 @@ module.exports = (prisma) => {
           .concat(it?.ingredients || [])
           .concat(it?.complements || [])
           .concat(it?.sides || []);
-        return pools
-          .map((ex) => {
-            const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-            if (!Number.isFinite(parsed) || parsed < 0) return null;
-            const id = Number(ex?.id ?? ex?.pizzaId ?? ex?.productId ?? 0) || undefined;
-            const label = String(ex?.label || ex?.name || ex?.title || 'Extra');
-            return { id, code: 'EXTRA', label, amount: round2(parsed) };
-          })
-          .filter(Boolean);
-      };
+        for (const ex of pools) {
+          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
+          if (!Number.isFinite(parsed) || parsed < 0) continue;
+          const code = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
+          const label = String(ex?.label || ex?.name || ex?.title || code);
+          out.push({ code, label, amount: round2(parsed * qty) });
+        }
+      }
+      return out;
+    };
+    const unitExtrasForItem = (it = {}) => {
+      const pools = []
+        .concat(it?.extras || [])
+        .concat(it?.toppings || [])
+        .concat(it?.addOns || it?.addons || [])
+        .concat(it?.options || [])
+        .concat(it?.modifiers || [])
+        .concat(it?.ingredients || [])
+        .concat(it?.complements || [])
+        .concat(it?.sides || []);
+      return pools
+        .map((ex) => {
+          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
+          if (!Number.isFinite(parsed) || parsed < 0) return null;
+          const id = Number(ex?.id ?? ex?.pizzaId ?? ex?.productId ?? 0) || undefined;
+          const label = String(ex?.label || ex?.name || ex?.title || 'Extra');
+          return { id, code: 'EXTRA', label, amount: round2(parsed) };
+        })
+        .filter(Boolean);
+    };
 
-      const created = await prisma.$transaction(async (tx) => {
-        await assertStock(tx, Number(storeId), normItems);
-        const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
+    const created = await prisma.$transaction(async (tx) => {
+      await assertStock(tx, Number(storeId), normItems);
+      const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-        const itemExtras = collectExtrasFromItems(items);
-        const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
-          ...li,
-          extras: unitExtrasForItem(items[idx]) || [],
-        }));
+      const itemExtras = collectExtrasFromItems(items);
+      const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
+        ...li,
+        extras: unitExtrasForItem(items[idx]) || [],
+      }));
 
-        const orderLevelExtras = (Array.isArray(extras) ? extras : [])
-          .map(ex => {
-            const amountNum = toPrice(ex?.amount);
-            const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
-            if (!Number.isFinite(amount)) return null;
-            return { code: String(ex?.code || 'EXTRA'), label: String(ex?.label || 'Extra'), amount };
-          })
-          .filter(Boolean);
+      const orderLevelExtras = (Array.isArray(extras) ? extras : [])
+        .map(ex => {
+          const amountNum = toPrice(ex?.amount);
+          const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
+          if (!Number.isFinite(amount)) return null;
+          return { code: String(ex?.code || 'EXTRA'), label: String(ex?.label || 'Extra'), amount };
+        })
+        .filter(Boolean);
 
-        const extrasSanitized = [...itemExtras, ...orderLevelExtras];
+      const extrasSanitized = [...itemExtras, ...orderLevelExtras];
 
-        // Cupón (preview) — sin canjear
-        let discounts = 0;
-        let couponEntry = null;
-        const couponCode = upper(rawCoupon || rawCouponCode || '');
-        if (couponCode) {
-          const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-          const nowRef = nowInTZ();
+      // Cupón (preview) — sin canjear
+      let discounts = 0;
+      let couponEntry = null;
+      const couponCode = upper(rawCoupon || rawCouponCode || '');
+      if (couponCode) {
+        const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+        const nowRef = nowInTZ();
 
-          // Validación fuerte (activa/fechas/ventana/uso)
-          const valid =
-            !!coup &&
-            coup.status === 'ACTIVE' &&
-            (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
-            isActiveByDate(coup, nowRef) &&
-            isWithinWindow(coup, nowRef);
+        // Validación fuerte (activa/fechas/ventana/uso)
+        const valid =
+          !!coup &&
+          coup.status === 'ACTIVE' &&
+          (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
+          isActiveByDate(coup, nowRef) &&
+          isWithinWindow(coup, nowRef);
 
-          if (!valid) {
-            throw new Error('Cupón inválido, deshabilitado o fuera de fecha/ventana');
-          }
-
-          const { discount, percentApplied, amountApplied, label } =
-            computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
-
-          if (discount > 0) {
-            discounts = discount;
-            couponEntry = {
-              code: 'COUPON',
-              label,
-              amount: -discounts,
-              couponCode,
-              percentApplied,
-              amountApplied
-            };
-          }
+        if (!valid) {
+          throw new Error('Cupón inválido, deshabilitado o fuera de fecha/ventana');
         }
 
-        const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
+        // 🚦 Blindaje adicional: si es del juego (MCP-CD), exigir AMOUNT/FIXED
+        assertGameCouponShape(coup, couponCode);
 
-        const extrasChargeableTotal = round2(
-          extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-        );
+        const { discount, percentApplied, amountApplied, label } =
+          computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
 
-        logI('PRODUCTS & TOTALS', {
-          totalProducts,
-          discountsPreview: discounts,
-          saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal)
-        });
-
-        const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
-
-        const sale = await tx.sale.create({
-          data: {
-            code: await genOrderCode(tx),
-            storeId: Number(storeId),
-            customerId,
-            type,
-            delivery,
-            customerData: snapshot,
-            products: lineItemsWithExtras,
-            totalProducts,
-            discounts,
-            total: saleTotal,
-            extras: extrasFinal,
-            notes,
-            channel,
-            status: 'AWAITING_PAYMENT',
-            address_1: snapshot?.address_1 ?? null,
-            lat: snapshot?.lat ?? null,
-            lng: snapshot?.lng ?? null,
-          },
-          select: { id: true, code: true, total: true, currency: true, discounts: true },
-        });
-        return sale;
-      });
-
-      const storeRow = await prisma.store.findUnique({
-        where: { id: Number(storeId) },
-        select: { id: true, acceptingOrders: true, storeName: true }
-      });
-      if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
-      if (!storeRow.acceptingOrders) {
-        return res.status(403).json({ error: 'La tienda no está aceptando pedidos ahora mismo.' });
+        if (discount > 0) {
+          discounts = discount;
+          couponEntry = {
+            code: 'COUPON',
+            label,
+            amount: -discounts,
+            couponCode,
+            percentApplied,
+            amountApplied
+          };
+        }
       }
 
-      logI('→ pedido creado', created);
-      res.json(created);
-    } catch (e) {
-      logE('[POST /api/venta/pedido] error', e);
-      res.status(400).json({ error: e.message });
-    }
-  });
+      const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
 
-  /* ============================================================
-   *  B) CHECKOUT SESSION
-   * ============================================================ */
-  router.post('/checkout-session', async (req, res) => {
+      const extrasChargeableTotal = round2(
+        extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      );
+
+      logI('PRODUCTS & TOTALS', {
+        totalProducts,
+        discountsPreview: discounts,
+        saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal)
+      });
+
+      const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
+
+      const sale = await tx.sale.create({
+        data: {
+          code: await genOrderCode(tx),
+          storeId: Number(storeId),
+          customerId,
+          type,
+          delivery,
+          customerData: snapshot,
+          products: lineItemsWithExtras,
+          totalProducts,
+          discounts,
+          total: saleTotal,
+          extras: extrasFinal,
+          notes,
+          channel,
+          status: 'AWAITING_PAYMENT',
+          address_1: snapshot?.address_1 ?? null,
+          lat: snapshot?.lat ?? null,
+          lng: snapshot?.lng ?? null,
+        },
+        select: { id: true, code: true, total: true, currency: true, discounts: true },
+      });
+      return sale;
+    });
+
+    const storeRow = await prisma.store.findUnique({
+      where: { id: Number(storeId) },
+      select: { id: true, acceptingOrders: true, storeName: true }
+    });
+    if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
+    if (!storeRow.acceptingOrders) {
+      return res.status(403).json({ error: 'La tienda no está aceptando pedidos ahora mismo.' });
+    }
+
+    logI('→ pedido creado', created);
+    res.json(created);
+  } catch (e) {
+    logE('[POST /api/venta/pedido] error', e);
+    res.status(400).json({ error: e.message });
+  }
+});
+router.post('/checkout-session', async (req, res) => {
     if (!stripeReady){
       logW('checkout-session llamado sin Stripe listo');
       return res.status(503).json({ error:'Stripe no configurado' });
@@ -767,13 +757,8 @@ module.exports = (prisma) => {
       logE('[POST /api/venta/checkout-session] error', e);
       res.status(400).json({ error:e.message });
     }
-  });
-
-  /* ============================================================
-   *  B.1) Confirmación manual (doble seguro)
-   *  (No canjea cupones; lo hace el webhook)
-   * ============================================================ */
-  router.post('/checkout/confirm', async (req, res) => {
+});
+router.post('/checkout/confirm', async (req, res) => {
     if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
 
     try {
@@ -861,13 +846,8 @@ module.exports = (prisma) => {
       logE('[POST /api/venta/checkout/confirm] error', e);
       res.status(400).json({ error: e.message });
     }
-  });
-
-
-  /* ============================================================
-   *  C) Webhook Stripe — ÚNICO punto de CANJE
-   * ============================================================ */
-  router.post(
+});
+router.post(
     '/stripe/webhook',
     express.raw({ type: 'application/json' }),
     async (req, res) => {
@@ -1175,21 +1155,17 @@ module.exports = (prisma) => {
 
       return res.json({ received: true });
     }
-  );
-
-  // Estado rápido por código
-  router.get('/status/:code', async (req, res) => {
+);
+router.get('/status/:code', async (req, res) => {
     try {
       const sale = await prisma.sale.findUnique({ where:{ code:req.params.code }, select:{ status:true, processed:true, deliveredAt:true } });
       if (!sale) return res.status(404).json({ error:'not found' });
       res.json(sale);
     } catch (e) { logE('[GET /status/:code] error', e); res.status(400).json({ error:'bad request' }); }
-  });
-
-  // Healthcheck
-  router.get('/_health', (req, res) => {
+});
+router.get('/_health', (req, res) => {
     res.json({ ok:true, stripeReady, frontBaseUrl: FRONT_BASE_URL });
-  });
+});
 
   return router;
 };

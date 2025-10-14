@@ -188,10 +188,32 @@ model Sale {
   @@index([date])
 }
 
+model AppMeta {
+  id              Int      @id @default(1)
+  acceptingOrders Boolean  @default(true)
+  closedMessage   String?  @db.Text
+  updatedAt       DateTime @updatedAt
+}
+
+/**
+ * ======================= GESTION DE CUPONES =======================
+ */
+
+enum CouponAcquisition {
+  GRATIS   
+  COMPRA   
+  JUEGO    
+}
+enum CouponLogic {
+  RANDOM   
+  PERCENT  
+  AMOUNT   
+}
 model Coupon {
   id   Int    @id @default(autoincrement())
   code String @unique
 
+  // Mantiene compatibilidad con tu cálculo actual
   kind    CouponKind    @default(PERCENT)
   variant CouponVariant @default(FIXED)
 
@@ -200,6 +222,13 @@ model Coupon {
   percentMin Int?
   percentMax Int?
   maxAmount  Decimal? @db.Decimal(10, 2)
+
+  // NUEVO: clasificación de negocio (opcionales para no romper datos viejos)
+  acquisition CouponAcquisition?
+  logic       CouponLogic?
+
+  // (opcional útil para snapshot/metadata visual del cupón)
+  meta Json?
 
   segments     Json?
   assignedToId Int?
@@ -223,19 +252,11 @@ model Coupon {
   @@index([status])
   @@index([assignedToId])
   @@index([expiresAt])
+
+  // NUEVOS índices para filtros en backoffice/portal
+  @@index([acquisition])
+  @@index([logic])
 }
-
-model AppMeta {
-  id              Int      @id @default(1)
-  acceptingOrders Boolean  @default(true)
-  closedMessage   String?  @db.Text
-  updatedAt       DateTime @updatedAt
-}
-
-/**
- * ======================= LOG DE REDEMPTIONS =======================
- */
-
 model CouponRedemption {
   id Int @id @default(autoincrement())
 

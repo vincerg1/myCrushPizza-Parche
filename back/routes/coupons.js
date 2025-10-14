@@ -7,19 +7,13 @@ const sendSMS = require('../utils/sendSMS'); // usa Messaging Service SID
 
 // ====== Helpers ======
 const TZ = process.env.TIMEZONE || 'Europe/Madrid';
-
-// Compat temporal con el front actual (muestra “pizza gratis”)
 const LEGACY_FP_LABEL = 'FP';
 const LEGACY_PERCENT_LABEL = 'PERCENT';
-
-// Prefijos por tipo
 const PREFIX = {
   RANDOM_PERCENT: 'MCP-RC',
   FIXED_PERCENT : 'MCP-PF',
   FIXED_AMOUNT  : 'MCP-CD',
 };
-
-// Día de semana a número 0..6 (dom=0)
 const esDayToNum = (d) => {
   const map = {
     domingo:0, lunes:1, martes:2, miercoles:3, miércoles:3,
@@ -28,8 +22,6 @@ const esDayToNum = (d) => {
   const k = String(d || '').toLowerCase();
   return (k in map) ? map[k] : null;
 };
-
-// Convierte cualquier JSON de daysActive a array de 0..6
 function normalizeDaysActive(v) {
   if (!v) return [];
   let a = v;
@@ -45,14 +37,11 @@ function normalizeDaysActive(v) {
   }
   return Array.from(new Set(out)).sort();
 }
-
-// “Fecha/hora actual” en TZ como Date local (con workaround)
 function nowInTZ() {
   // Truco: formatear a string en TZ y volver a Date (pierde TZ pero conserva campos)
   const s = new Date().toLocaleString('sv-SE', { timeZone: TZ }); // “YYYY-MM-DD HH:mm:ss”
   return new Date(s.replace(' ', 'T'));
 }
-
 function fmtExpiry(d) {
   try {
     return new Date(d).toLocaleString('es-ES', {
@@ -63,12 +52,10 @@ function fmtExpiry(d) {
     return new Date(d).toISOString();
   }
 }
-
 function minutesOfDay(dateLike) {
   const d = (dateLike instanceof Date) ? dateLike : new Date(dateLike);
   return d.getHours() * 60 + d.getMinutes();
 }
-
 function isWithinWindow(row, ref = nowInTZ()) {
   const days = normalizeDaysActive(row.daysActive);
   if (!days.length && row.windowStart == null && row.windowEnd == null) return true;
@@ -84,7 +71,6 @@ function isWithinWindow(row, ref = nowInTZ()) {
   // Ventana que cruza medianoche (ej. 22:00–03:00)
   return m >= start || m < end;
 }
-
 function isActiveByDate(row, ref = nowInTZ()) {
   const t = ref.getTime();
   if (row.activeFrom && new Date(row.activeFrom).getTime() > t) return false;
@@ -101,8 +87,6 @@ function codePattern(prefix) {
   const tag = String(prefix || '').replace(/^MCP-/, '').slice(0, 2).toUpperCase();
   return `MCP-${tag}${pick(2)}-${pick(4)}`;
 }
-
-// --- API Key SOLO para endpoints internos (issue/assign/bulk-generate)
 function requireApiKey(req, res, next) {
   const want = process.env.SALES_API_KEY;
   const got  = req.header('x-api-key');
@@ -112,11 +96,8 @@ function requireApiKey(req, res, next) {
 }
 
 module.exports = (prisma) => {
-  /* ==========================================================
-   * ================  CREACIÓN MASIVA (nuevo)  ================
-   * ========================================================== */
 
-  router.post('/bulk-generate', requireApiKey, async (req, res) => {
+router.post('/bulk-generate', requireApiKey, async (req, res) => {
     try {
       const {
         type,
@@ -238,101 +219,110 @@ module.exports = (prisma) => {
       console.error('[coupons.bulk-generate] error', e);
       return res.status(500).json({ error: 'server' });
     }
-  });
-
-  /* ===================== ISSUE (compat juego) ===================== */
-  router.post('/issue', requireApiKey, async (req, res) => {
-    try {
-      const prefix = String(req.body.prefix || PREFIX.FIXED_AMOUNT).toUpperCase();
-      const hours  = Number(req.body.hours || 24);
-      if (!Number.isFinite(hours) || hours <= 0) {
-        return res.status(400).json({ error: 'bad_request' });
-      }
-
-      const now = nowInTZ();
-      const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
-
-      // buscar cupón disponible por prefijo, activo y sin agotar usos
-      const row = await prisma.coupon.findFirst({
-        where: {
-          code: { startsWith: prefix },
-          status: 'ACTIVE',
-          usedCount: { lt: prisma.coupon.fields.usageLimit }, // prisma v5: field ref
-          OR: [{ expiresAt: null }, { expiresAt: { lt: now } }],
-        },
-        orderBy: { id: 'asc' }
-      });
-
-      if (!row) return res.status(409).json({ error: 'out_of_stock' });
-
-      await prisma.coupon.update({
-        where: { code: row.code },
-        data : { expiresAt }
-      });
-
-      // Notificaciones
-      const contact     = String(req.body.contact || '').trim();
-      const gameNumber  = req.body.gameNumber ?? null;
-      const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
-      const adminPhone  = process.env.ADMIN_PHONE || '';
-      const whenTxt     = fmtExpiry(expiresAt);
-      const code        = row.code;
-      const notify = { user: { tried: false }, admin: { tried: false } };
-
-      if (contact) {
-        notify.user.tried = true;
-        const userMsg =
-          `Felicidades 🎉 Has obtenido un cupón.\n` +
-          `Canjéalo en ${siteUrl} con el código: ${code}\n` +
-          `Vence ${whenTxt}.`;
-        try {
-          const resp = await sendSMS(contact, userMsg);
-          notify.user.ok  = true;
-          notify.user.sid = resp.sid;
-        } catch (err) {
-          notify.user.ok = false;
-          notify.user.error = err.message;
-        }
-      }
-      if (adminPhone) {
-        notify.admin.tried = true;
-        const adminMsg =
-          `ALERTA MCP 🎯 Cupón emitido\n` +
-          `Code: ${code} (vence ${whenTxt})\n` +
-          `Tel cliente: ${contact || '-'}\n` +
-          `Game#: ${gameNumber ?? '-'}`;
-        try {
-          const resp = await sendSMS(adminPhone, adminMsg);
-          notify.admin.ok  = true;
-          notify.admin.sid = resp.sid;
-        } catch (err) {
-          notify.admin.ok = false;
-          notify.admin.error = err.message;
-        }
-      }
-
-      // Compat: en validate devolvemos “FP” si es amount
-      const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
-
-      return res.json({
-        ok: true,
-        code,
-        // v2
-        kindV2: row.kind, amount: row.amount ? Number(row.amount) : null, percent: row.percent || null,
-        // compat v1 (front actual)
-        kind: legacyKind,
-        value: row.amount ? Number(row.amount) : 0,
-        expiresAt,
-        notify
-      });
-    } catch (e) {
-      console.error('[coupons.issue] error', e);
-      return res.status(500).json({ error: 'server' });
+});
+router.post('/issue', requireApiKey, async (req, res) => {
+  try {
+    // Por compat seguimos aceptando "prefix", pero forzamos AMOUNT/FIXED
+    const prefix = String(req.body.prefix || PREFIX.FIXED_AMOUNT).toUpperCase();
+    const hours  = Number(req.body.hours || 24);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return res.status(400).json({ error: 'bad_request' });
     }
-  });
 
-  /* ===================== ASSIGN (compat admin) ===================== */
-  router.post('/assign', requireApiKey, async (req, res) => {
+    const now = nowInTZ();
+    const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
+
+    // Buscar cupón disponible:
+    //  - mismo prefijo
+    //  - ACTIVO
+    //  - kind = AMOUNT
+    //  - variant = FIXED
+    //  - con usos disponibles
+    //  - sin expirar (expiresAt null o futura)
+    const row = await prisma.coupon.findFirst({
+      where: {
+        code:    { startsWith: prefix },
+        status:  'ACTIVE',
+        kind:    'AMOUNT',
+        variant: 'FIXED',
+        usedCount: { lt: prisma.coupon.fields.usageLimit }, // prisma v5: field ref
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    if (!row) return res.status(409).json({ error: 'out_of_stock' });
+
+    // Marcar la fecha de expiración “dinámica” para este cupón emitido
+    await prisma.coupon.update({
+      where: { code: row.code },
+      data : { expiresAt }
+    });
+
+    // Notificaciones (opcionales)
+    const contact     = String(req.body.contact || '').trim();
+    const gameNumber  = req.body.gameNumber ?? null;
+    const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+    const adminPhone  = process.env.ADMIN_PHONE || '';
+    const whenTxt     = fmtExpiry(expiresAt);
+    const code        = row.code;
+    const notify = { user: { tried: false }, admin: { tried: false } };
+
+    if (contact) {
+      notify.user.tried = true;
+      const userMsg =
+        `Felicidades 🎉 Has obtenido un cupón.\n` +
+        `Canjéalo en ${siteUrl} con el código: ${code}\n` +
+        `Vence ${whenTxt}.`;
+      try {
+        const resp = await sendSMS(contact, userMsg);
+        notify.user.ok  = true;
+        notify.user.sid = resp.sid;
+      } catch (err) {
+        notify.user.ok = false;
+        notify.user.error = err.message;
+      }
+    }
+
+    if (adminPhone) {
+      notify.admin.tried = true;
+      const adminMsg =
+        `ALERTA MCP 🎯 Cupón emitido\n` +
+        `Code: ${code} (vence ${whenTxt})\n` +
+        `Tel cliente: ${contact || '-'}\n` +
+        `Game#: ${gameNumber ?? '-'}`;
+      try {
+        const resp = await sendSMS(adminPhone, adminMsg);
+        notify.admin.ok  = true;
+        notify.admin.sid = resp.sid;
+      } catch (err) {
+        notify.admin.ok = false;
+        notify.admin.error = err.message;
+      }
+    }
+
+    // Compat legado: si es AMOUNT devolvemos 'FP' (front viejo)
+    const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
+
+    return res.json({
+      ok: true,
+      code,
+      // v2 canónico
+      kindV2: row.kind,                 // 'AMOUNT'
+      amount: row.amount ? Number(row.amount) : null,
+      percent: null,
+      expiresAt,
+      // compat v1 (front actual)
+      kind: legacyKind,                 // 'FP'
+      value: row.amount ? Number(row.amount) : 0,
+      notify
+    });
+  } catch (e) {
+    console.error('[coupons.issue] error', e);
+    return res.status(500).json({ error: 'server' });
+  }
+});
+router.post('/assign', requireApiKey, async (req, res) => {
     try {
       const code  = String(req.body.code || '').trim().toUpperCase();
       const hours = Number(req.body.hours || 24);
@@ -360,10 +350,7 @@ module.exports = (prisma) => {
       console.error('[coupons.assign] error', e);
       return res.status(500).json({ error: 'server' });
     }
-  });
-
-// GET /api/coupons/validate?code=XXXX[&customerId=123][&segment=S2]
-// Responde SOLO en el modelo nuevo
+});
 router.get('/validate', async (req, res) => {
   const code = String(req.query.code || '').trim().toUpperCase();
   if (!code) return res.status(400).json({ error: 'bad_request' });
@@ -422,9 +409,6 @@ router.get('/validate', async (req, res) => {
     return res.status(500).json({ error: 'server' });
   }
 });
-
-
-  /* ===================== REDEEM (público; llamado al confirmar pago) ===================== */
 router.post('/redeem', async (req, res) => {
   const code = String(req.body.code || '').trim().toUpperCase();
   if (!code) return res.status(400).json({ error: 'bad_request' });
@@ -730,7 +714,89 @@ router.get('/redemptions', async (req, res) => {
     res.status(500).json({ ok: false, error: 'server' });
   }
 });
+router.get('/gallery', async (_req, res) => {
+  try {
+    const now = nowInTZ();
 
+    // Traemos sólo lo necesario y filtramos stock disponible
+    const rows = await prisma.coupon.findMany({
+      where: {
+        status: 'ACTIVE',
+        usedCount: { lt: prisma.coupon.fields.usageLimit },  // prisma v5
+      },
+      select: {
+        code: true, kind: true, variant: true,
+        percent: true, percentMin: true, percentMax: true,
+        amount: true, maxAmount: true,
+        daysActive: true, windowStart: true, windowEnd: true,
+        usageLimit: true, usedCount: true,
+        activeFrom: true, expiresAt: true
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    // Filtrar por fecha/ventana (JSON) en memoria
+    const active = rows.filter(r => isActiveByDate(r, now) && isWithinWindow(r, now));
+
+    // Agrupar
+    const groups = new Map(); // key -> { type, title, subtitle, cta, remaining, constraints[] }
+    const keyFor = (r) => {
+      if (r.kind === 'PERCENT' && r.variant === 'RANGE')  return `RANDOM_PERCENT:${r.percentMin}-${r.percentMax}`;
+      if (r.kind === 'PERCENT' && r.variant === 'FIXED')  return `FIXED_PERCENT:${r.percent}`;
+      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED')  return `FIXED_AMOUNT:${Number(r.amount).toFixed(2)}`;
+      return 'UNKNOWN';
+    };
+    const titleFor = (r) => {
+      if (r.kind === 'PERCENT' && r.variant === 'RANGE')  return `${r.percentMin}–${r.percentMax}%`;
+      if (r.kind === 'PERCENT' && r.variant === 'FIXED')  return `${r.percent}%`;
+      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED')  return `${Number(r.amount).toFixed(2)} €`;
+      return 'Cupón';
+    };
+    const typeFor = (r) =>
+      (r.kind === 'PERCENT' && r.variant === 'RANGE') ? 'RANDOM_PERCENT' :
+      (r.kind === 'PERCENT' && r.variant === 'FIXED') ? 'FIXED_PERCENT'  :
+      (r.kind === 'AMOUNT'  && r.variant === 'FIXED') ? 'FIXED_AMOUNT'   : 'UNKNOWN';
+
+    for (const r of active) {
+      const k = keyFor(r);
+      const g = groups.get(k) || {
+        type: typeFor(r),
+        key: k.split(':')[1],
+        title: titleFor(r),
+        subtitle: (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
+        cta: (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
+        remaining: 0,
+        constraints: []
+      };
+      g.remaining += Math.max(0, (r.usageLimit ?? 1) - (r.usedCount ?? 0));
+      g.constraints.push({
+        daysActive : normalizeDaysActive(r.daysActive),
+        windowStart: r.windowStart ?? null,
+        windowEnd  : r.windowEnd ?? null
+      });
+      groups.set(k, g);
+    }
+
+    // Si todas las constraints del grupo son iguales, dejamos una sola; si no, las omitimos
+    const same = (a, b) =>
+      (a.windowStart ?? null) === (b.windowStart ?? null) &&
+      (a.windowEnd   ?? null) === (b.windowEnd   ?? null) &&
+      JSON.stringify(a.daysActive||[]) === JSON.stringify(b.daysActive||[]);
+    const cards = Array.from(groups.values()).map(g => {
+      let constraints = null;
+      if (g.constraints.length) {
+        const first = g.constraints[0];
+        constraints = g.constraints.every(c => same(c, first)) ? first : null;
+      }
+      return { type: g.type, key: g.key, title: g.title, subtitle: g.subtitle, cta: g.cta, remaining: g.remaining, constraints };
+    }).sort((a,b) => a.title.localeCompare(b.title, 'es'));
+
+    res.json({ ok: true, cards });
+  } catch (e) {
+    console.error('[coupons.gallery] error', e);
+    res.status(500).json({ ok:false, error: 'server' });
+  }
+});
 
 
 
