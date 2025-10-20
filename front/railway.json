@@ -5,5 +5,7 @@
     "installCommand": "npm install",
     "buildCommand": "CI=false npm run build"
   },
-  "deploy": { "startCommand": "npx serve --single --listen $PORT build" }
+  "deploy": {
+  "startCommand": "npx serve -s build -l tcp://0.0.0.0:${PORT}"
+}
 }
