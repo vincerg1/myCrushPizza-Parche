@@ -61,8 +61,6 @@ const notifyRouter          = require('./routes/notify')(prisma);
 
 const appRouter = require('./routes/app')(prisma);
 
-
-
 /* Montaje */
 app.use('/api/pizzas',          pizzasRouter);
 app.use('/api/menu_pizzas',     pizzasRouter);
