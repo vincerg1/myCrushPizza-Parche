@@ -394,40 +394,40 @@ module.exports = (prisma) => {
   });
 
   /* ─────────────── PATCH /api/sales/:id/ready ─────────────── */
-r.patch('/:id/ready', auth(), async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: 'id inválido' });
-
-    // marcamos la venta como procesada para que deje de aparecer en "pending"
-    const sale = await prisma.sale.update({
-      where: { id },
-      data : { processed: true }, // (no asumimos otras columnas como processedAt/status)
-      include: { customer: { select: { phone: true, name: true } } }
-    });
-
-    // Aviso por SMS (best-effort; no bloquea la respuesta)
+  r.patch('/:id/ready', auth(), async (req, res) => {
     try {
-      const phone =
-        sale?.customer?.phone ||
-        sale?.customerData?.phone ||
-        null;
+      const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ error: 'id inválido' });
 
-      if (phone) {
-        const who   = sale?.customer?.name || sale?.customerData?.name || '';
-        const short = sale?.code ? ` ${sale.code}` : '';
-        await sendSMS(phone, `¡${who || 'Tu pedido'}${short} está listo!`);
+      // marcamos la venta como procesada para que deje de aparecer en "pending"
+      const sale = await prisma.sale.update({
+        where: { id },
+        data : { processed: true }, 
+        include: { customer: { select: { phone: true, name: true } } }
+      });
+
+      // Aviso por SMS (best-effort; no bloquea la respuesta)
+      try {
+        const phone =
+          sale?.customer?.phone ||
+          sale?.customerData?.phone ||
+          null;
+
+        if (phone) {
+          const who   = sale?.customer?.name || sale?.customerData?.name || '';
+          const short = sale?.code ? ` ${sale.code}` : '';
+          await sendSMS(phone, `¡${who || 'Tu pedido'}${short} está listo!`);
+        }
+      } catch (smsErr) {
+        console.warn('[SMS READY] fallo no bloqueante:', smsErr);
       }
-    } catch (smsErr) {
-      console.warn('[SMS READY] fallo no bloqueante:', smsErr);
-    }
 
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('[PATCH /api/sales/:id/ready]', e);
-    res.status(400).json({ error: 'No se pudo marcar como listo' });
-  }
-});
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('[PATCH /api/sales/:id/ready]', e);
+      res.status(400).json({ error: 'No se pudo marcar como listo' });
+    }
+  });
 
 
   return r;
