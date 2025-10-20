@@ -1,11 +1,9 @@
 // back/routes/app.js
 const express = require('express');
-const auth    = require('../middleware/auth'); // ← usa la factory
+const auth    = require('../middleware/auth'); 
 
 module.exports = (prisma) => {
   const router = express.Router();
-
-  // GET público: si no existe la tabla, devolvemos abierto por defecto
   router.get('/status', async (_req, res) => {
     try {
       const meta = await prisma.appMeta.findUnique({
@@ -24,8 +22,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error: e.message });
     }
   });
-
-  // PATCH protegido: SOLO admin
   router.patch('/status', auth(['admin']), async (req, res) => {
     try {
       const data = {};
@@ -51,6 +47,5 @@ module.exports = (prisma) => {
       res.status(400).json({ error: e.message || 'error' });
     }
   });
-
   return router;
 };
