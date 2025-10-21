@@ -286,7 +286,9 @@ const checkCoupon = useCallback(async () => {
     return;
   }
   try {
-    const { data } = await api.get("/api/coupons/validate", { params: { code } });
+    const { data } = await api.get("/api/coupons/validate", {
+        params: { code, _cb: Date.now() }, headers: { "Cache-Control": "no-cache" }
+      });
     if (data?.valid) {
       const c = {
         code,
@@ -1318,7 +1320,9 @@ const startPayment = useCallback(async () => {
     let validCouponCode = null;
     if (couponOk && coupon?.code) {
       try {
-        const { data: v } = await api.get("/api/coupons/validate", { params: { code: coupon.code } });
+         const { data: v } = await api.get("/api/coupons/validate", {
+          params: { code: coupon.code, _cb: Date.now() }, headers: { "Cache-Control": "no-cache" }
+        });
         if (v?.valid) {
           validCouponCode = coupon.code;
         } else {
