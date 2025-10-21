@@ -1,6 +1,7 @@
 // index.js
 require('dotenv').config();
 require('./cron/updateDaysOff');
+require('./cron/couponsTick'); 
 
 const express = require('express');
 const cors    = require('cors');
@@ -58,7 +59,6 @@ const publicRoutes          = require('./routes/public')(prisma);
 const ventaRouter           = require('./routes/venta')(prisma);
 const couponsRouter         = require('./routes/coupons')(prisma);
 const notifyRouter          = require('./routes/notify')(prisma);
-
 const appRouter = require('./routes/app')(prisma);
 
 /* Montaje */
