@@ -266,9 +266,25 @@ module.exports = (prisma) => {
           isActiveByDate(coup, nowRef) &&
           isWithinWindow(coup, nowRef);
 
-        if (!valid) {
-          return res.status(400).json({ error: 'Cupón inválido, deshabilitado o fuera de fecha/ventana' });
-        }
+if (!valid) {
+  const rej = buildCouponRejection(coup, nowRef) || { reason:'INVALID', message:'Cupón inválido' };
+  return res.status(422).json({
+    error: 'INVALID_COUPON',
+    reason: rej.reason,
+    message: rej.message,
+    details: {
+      code,
+      activeFrom: coup?.activeFrom, expiresAt: coup?.expiresAt,
+      daysActive: normalizeDaysActive(coup?.daysActive),
+      windowStart: coup?.windowStart ?? null, windowEnd: coup?.windowEnd ?? null,
+      usageLimit: coup?.usageLimit ?? null, usedCount: coup?.usedCount ?? null, usedAt: coup?.usedAt ?? null
+    }
+  });
+}
+const shapeErr = assertGameCouponShapeExplain(coup, code);
+if (shapeErr){
+  return res.status(422).json({ error:'INVALID_COUPON', ...shapeErr, details:{ code } });
+}
 
         // Blindaje por canal de juego
         assertGameCouponShape(coup, code);

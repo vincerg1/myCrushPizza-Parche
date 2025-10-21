@@ -417,9 +417,34 @@ router.post('/pedido', async (req, res) => {
           isActiveByDate(coup, nowRef) &&
           isWithinWindow(coup, nowRef);
 
-        if (!valid) {
-          throw new Error('Cupón inválido, deshabilitado o fuera de fecha/ventana');
-        }
+       if (!valid) {
+        const rej = buildCouponRejection(coup, nowRef) || { reason:'INVALID', message:'Cupón inválido' };
+        return res.status(422).json({
+          error: 'INVALID_COUPON',
+          reason: rej.reason,
+          message: rej.message,
+          details: {
+            code: couponCode,
+            activeFrom: coup?.activeFrom, expiresAt: coup?.expiresAt,
+            daysActive: normalizeDaysActive(coup?.daysActive),
+            windowStart: coup?.windowStart ?? null, windowEnd: coup?.windowEnd ?? null,
+            usageLimit: coup?.usageLimit ?? null, usedCount: coup?.usedCount ?? null, usedAt: coup?.usedAt ?? null
+          }
+        });
+      }
+      const shapeErr = assertGameCouponShapeExplain(coup, couponCode);
+      if (shapeErr){
+        return res.status(422).json({ error:'INVALID_COUPON', ...shapeErr, details:{ code: couponCode } });
+      }
+
+if (discount <= 0){
+  return res.status(422).json({
+    error:'INVALID_COUPON',
+    reason:'NO_DISCOUNT',
+    message:'El cupón no aplica a este carrito.'
+  });
+}
+
 
         // 🚦 Blindaje adicional: si es del juego (MCP-CD), exigir AMOUNT/FIXED
         assertGameCouponShape(coup, couponCode);
