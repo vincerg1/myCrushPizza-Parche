@@ -286,23 +286,30 @@ const checkCoupon = useCallback(async () => {
     return;
   }
   try {
-    const { data } = await api.get("/api/coupons/validate", {
-        params: { code, _cb: Date.now() }, headers: { "Cache-Control": "no-cache" }
-      });
+    const { data, status } = await api.get("/api/coupons/validate", {
+      // fuerza que NO se use respuesta cacheada
+      headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+      params: { code, _nc: Date.now() } // rompe caches intermedios
+      // Si quisieras aceptar 304 como "válido", podrías usar validateStatus aquí.
+    });
+
+    // Si algún proxy devolviera 304 pero axios NO lanzara, caemos aquí
+    if (status === 304) throw new Error("not_modified");
+
     if (data?.valid) {
       const c = {
         code,
-        kind: data.kind, // 'AMOUNT' | 'PERCENT'
+        kind: data.kind,         // 'AMOUNT' | 'PERCENT'
         variant: data.variant,
         percent: data.percent != null ? Number(data.percent) : undefined,
-        amount: data.amount != null ? Number(data.amount) : undefined,
+        amount:  data.amount  != null ? Number(data.amount)  : undefined,
         maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
-        expiresAt: data.expiresAt || null
+        expiresAt: data.expiresAt || null,
       };
       setCoupon(c);
       setCouponOk(true);
       setCouponMsg("Cupón aplicado");
-      setShowCouponToast(true); // mostrar toast ✅
+      setShowCouponToast(true);
     } else {
       setCoupon(null);
       setCouponOk(false);
@@ -313,12 +320,18 @@ const checkCoupon = useCallback(async () => {
       });
       setCouponMsg(msg);
     }
-  } catch {
+  } catch (err) {
     setCoupon(null);
     setCouponOk(false);
-    setCouponMsg("No se pudo validar el cupón.");
+    // Mensaje más claro si fue 304
+    if (err?.response?.status === 304 || err?.message === "not_modified") {
+      setCouponMsg("No se pudo validar el cupón (respuesta cacheada). Vuelve a intentar.");
+    } else {
+      setCouponMsg("No se pudo validar el cupón.");
+    }
   }
 }, [couponCode]);
+
 
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
@@ -1317,25 +1330,31 @@ const startPayment = useCallback(async () => {
     }
 
     // Revalidar cupón justo antes de pagar (no esperamos 422 aquí)
-    let validCouponCode = null;
-    if (couponOk && coupon?.code) {
-      try {
-         const { data: v } = await api.get("/api/coupons/validate", {
-          params: { code: coupon.code, _cb: Date.now() }, headers: { "Cache-Control": "no-cache" }
-        });
-        if (v?.valid) {
-          validCouponCode = coupon.code;
-        } else {
-          setCouponOk(false);
-          const friendly = explainCouponRejection({ reason: v?.reason, message: v?.message, details: v?.details });
-          setCouponMsg(friendly);
-          alert(friendly + "\nPuedes continuar sin cupón.");
-        }
-      } catch {
-        // si falla la validación, seguimos sin cupón
-        setCouponOk(false);
-      }
+// Revalidar cupón justo antes de pagar (sin caché)
+let validCouponCode = null;
+if (couponOk && coupon?.code) {
+  try {
+    const { data, status } = await api.get("/api/coupons/validate", {
+      headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
+      params: { code: coupon.code, _nc: Date.now() }
+    });
+
+    if (status === 304) throw new Error("not_modified");
+
+    if (data?.valid) {
+      validCouponCode = coupon.code;
+    } else {
+      setCouponOk(false);
+      const friendly = explainCouponRejection({ reason: data?.reason, message: data?.message, details: data?.details });
+      setCouponMsg(friendly);
+      alert(friendly + "\nPuedes continuar sin cupón.");
     }
+  } catch (e) {
+    // si falla la validación (incl. 304), seguimos sin cupón
+    setCouponOk(false);
+  }
+}
+
 
     const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
       ...it,
