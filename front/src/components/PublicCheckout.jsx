@@ -277,43 +277,46 @@ const onPlaceChanged = useCallback(async () => {
     return parts.join("-");
   }, []);
 
-  const checkCoupon = useCallback(async () => {
-    const code = (couponCode || "").trim().toUpperCase();
-    if (!code) {
+const checkCoupon = useCallback(async () => {
+  const code = (couponCode || "").trim().toUpperCase();
+  if (!code) {
+    setCoupon(null);
+    setCouponOk(false);
+    setCouponMsg("Introduce un cupón.");
+    return;
+  }
+  try {
+    const { data } = await api.get("/api/coupons/validate", { params: { code } });
+    if (data?.valid) {
+      const c = {
+        code,
+        kind: data.kind, // 'AMOUNT' | 'PERCENT'
+        variant: data.variant,
+        percent: data.percent != null ? Number(data.percent) : undefined,
+        amount: data.amount != null ? Number(data.amount) : undefined,
+        maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
+        expiresAt: data.expiresAt || null
+      };
+      setCoupon(c);
+      setCouponOk(true);
+      setCouponMsg("Cupón aplicado");
+      setShowCouponToast(true); // mostrar toast ✅
+    } else {
       setCoupon(null);
       setCouponOk(false);
-      setCouponMsg("Introduce un cupón.");
-      return;
+      const msg = explainCouponRejection({
+        reason: data?.reason,
+        message: data?.message,
+        details: data?.details
+      });
+      setCouponMsg(msg);
     }
-    try {
-      const { data } = await api.get("/api/coupons/validate", { params: { code } });
-      if (data?.valid) {
-        const c = {
-          code,
-          kind: data.kind, // 'AMOUNT' | 'PERCENT'
-          variant: data.variant,
-          percent: data.percent != null ? Number(data.percent) : undefined,
-          amount: data.amount != null ? Number(data.amount) : undefined,
-          maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
-          expiresAt: data.expiresAt || null
-        };
-        setCoupon(c);
-        setCouponOk(true);
-        setCouponMsg("Cupón aplicado");
-        setShowCouponToast(false);
-      } else {
-        setCoupon(null);
-        setCouponOk(false);
-        setCouponMsg(
-          data?.reason === "expired" ? "Cupón caducado." : data?.reason === "used" ? "Cupón ya usado." : "Cupón inválido."
-        );
-      }
-    } catch {
-      setCoupon(null);
-      setCouponOk(false);
-      setCouponMsg("No se pudo validar el cupón.");
-    }
-  }, [couponCode]);
+  } catch {
+    setCoupon(null);
+    setCouponOk(false);
+    setCouponMsg("No se pudo validar el cupón.");
+  }
+}, [couponCode]);
 
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
@@ -1248,125 +1251,177 @@ const computeProductsSubtotal = (items = []) =>
 
   const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
+// === COUPON REASONS UI (helpers de mensajes) ===
+const mmToHHMM = (m) => {
+  if (m == null) return null;
+  const h = String(Math.floor(m / 60)).padStart(2,'0');
+  const mi = String(m % 60).padStart(2,'0');
+  return `${h}:${mi}`;
+};
+const dayShort = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+function buildWindowText(details = {}) {
+  const days = Array.isArray(details.daysActive) ? details.daysActive : [];
+  const hours = (details.windowStart!=null || details.windowEnd!=null)
+    ? ` de ${mmToHHMM(details.windowStart ?? 0)} a ${mmToHHMM(details.windowEnd ?? 24*60)}`
+    : '';
+  const daysTxt = days.length ? ` (solo ${days.map(d => dayShort[d] || '').filter(Boolean).join(', ')})` : '';
+  return `${hours}${daysTxt}`.trim();
+}
+
+function explainCouponRejection({ reason, message, details } = {}) {
+  if (message) return message; // el backend ya trae texto bonito
+
+  const f = (d) => d ? new Date(d).toLocaleString('es-ES') : null;
+
+  switch (String(reason || '').toUpperCase()) {
+    case 'NOT_FOUND':        return 'El cupón no existe.';
+    case 'DISABLED':         return 'Cupón deshabilitado.';
+    case 'NOT_YET_ACTIVE':   return `Cupón válido desde ${f(details?.activeFrom) || 'más tarde'}.`;
+    case 'EXPIRED':          return `Cupón expiró el ${f(details?.expiresAt) || '—'}.`;
+    case 'OUT_OF_WINDOW':    return `Cupón fuera de horario${buildWindowText(details) ? ` (${buildWindowText(details)})` : ''}.`;
+    case 'ALREADY_USED':     return `Cupón ya utilizado${details?.usedAt ? ` el ${f(details.usedAt)}` : ''}.`;
+    case 'USAGE_LIMIT':      return 'Se alcanzó el límite de usos del cupón.';
+    case 'GAME_SHAPE':       return 'Cupón del juego inválido: debe ser de valor fijo.';
+    case 'NO_DISCOUNT':      return 'El cupón no aplica a este carrito.';
+    default:                 return 'Cupón inválido.';
+  }
+}
 
   const fmtEur = (n) =>
     Number(n || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
 
-  const startPayment = useCallback(async () => {
-    const rchk = await checkRestriction(customer?.phone);
-    if (Number(rchk?.isRestricted) === 1) {
-      alert(
-        "No podemos iniciar el pago con este número.\n" +
-        (rchk?.reason ? `${rchk.reason}\n` : "") +
-        (rchk?.code ? `Ref.: ${rchk.code}` : "")
-      );
+const startPayment = useCallback(async () => {
+  const rchk = await checkRestriction(customer?.phone);
+  if (Number(rchk?.isRestricted) === 1) {
+    alert(
+      "No podemos iniciar el pago con este número.\n" +
+      (rchk?.reason ? `${rchk.reason}\n` : "") +
+      (rchk?.code ? `Ref.: ${rchk.code}` : "")
+    );
+    setIsPaying(false);
+    return;
+  }
+
+  if (!pending || isPaying) return;
+  setIsPaying(true);
+
+  try {
+    const { data: app } = await api.get("/api/app/status");
+    if (!app?.accepting) {
+      alert(app?.message || "La app está cerrada. Volvemos en breve.");
       setIsPaying(false);
       return;
     }
-    if (!pending || isPaying) return;
-    setIsPaying(true);
-    try {
-      const { data: app } = await api.get("/api/app/status");
-      if (!app?.accepting) {
-        alert(app?.message || "La app está cerrada. Volvemos en breve.");
-        setIsPaying(false);
-        return;
-      }
 
-      // Revalidar cupón justo antes de pagar
-      let validCouponCode = null;
-      if (couponOk && coupon?.code) {
-        try {
-          const { data: v } = await api.get("/api/coupons/validate", { params: { code: coupon.code } });
-          if (v?.valid) {
-            validCouponCode = coupon.code;
-          } else {
-            setCouponOk(false);
-            setCouponMsg(v?.reason === "expired" ? "Cupón caducado." : "Cupón inválido.");
-            alert("El cupón ha caducado o ya fue usado. Puedes continuar sin cupón.");
-          }
-        } catch {
+    // Revalidar cupón justo antes de pagar (no esperamos 422 aquí)
+    let validCouponCode = null;
+    if (couponOk && coupon?.code) {
+      try {
+        const { data: v } = await api.get("/api/coupons/validate", { params: { code: coupon.code } });
+        if (v?.valid) {
+          validCouponCode = coupon.code;
+        } else {
           setCouponOk(false);
+          const friendly = explainCouponRejection({ reason: v?.reason, message: v?.message, details: v?.details });
+          setCouponMsg(friendly);
+          alert(friendly + "\nPuedes continuar sin cupón.");
         }
+      } catch {
+        // si falla la validación, seguimos sin cupón
+        setCouponOk(false);
       }
-
-      const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
-        ...it,
-        size: String(it.size || "M").trim(),
-        qty: Number(it.qty) || 1,
-        extras: Array.isArray(it.extras)
-          ? it.extras.map((e, i) => ({
-              id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
-              code: "EXTRA",
-              label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
-              amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
-            }))
-          : [],
-      }));
-
-      if (!itemsForApi.length) {
-        alert("No hay productos en el carrito.");
-        setIsPaying(false);
-        return;
-      }
-
-      const payload = {
-        storeId: Number(pending.storeId),
-        type: isDelivery ? "DELIVERY" : "LOCAL",
-        delivery: isDelivery ? "COURIER" : "PICKUP",
-        channel: "WHATSAPP",
-        customer: isDelivery
-          ? {
-              phone: customer?.phone,
-              name: customer?.name,
-              address_1: customer?.address_1 || query,
-              lat: coords?.lat,
-              lng: coords?.lng,
-            }
-          : { phone: customer?.phone, name: customer?.name },
-        items: itemsForApi,
-        extras: isDelivery
-          ? [{
-              code: "DELIVERY_FEE",
-              label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
-              amount: Number(deliveryFeeTotal) || 0,
-            }]
-          : [],
-        ...(validCouponCode ? { coupon: validCouponCode } : {}),
-        notes: "",
-      };
-
-      const { data: created } = await api.post("/api/venta/pedido", payload);
-      const { data: pay } = await api.post("/api/venta/checkout-session", {
-        orderId: created?.id,
-        code: created?.code,
-      });
-
-      if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
-      window.location.href = pay.url;
-    } catch (e) {
-      const msg = e?.response?.data?.error || e?.message || "No se pudo iniciar el pago";
-      if (/Stripe no configurado/i.test(msg)) {
-        alert("Pago no disponible (Stripe no configurado).");
-      } else if (/fuera.*zona|servicio/i.test(msg)) {
-        alert("La dirección está fuera del área de servicio.");
-      } else {
-        alert(msg);
-      }
-      setIsPaying(false);
     }
-  }, [
-    pending,
-    isPaying,
-    isDelivery,
-    customer,
-    query,
-    coords,
-    deliveryBlocks,
-    deliveryFeeTotal,
-    couponOk,
-    coupon,
-  ]);
+
+    const itemsForApi = buildItemsForApi(pending.items).map((it) => ({
+      ...it,
+      size: String(it.size || "M").trim(),
+      qty: Number(it.qty) || 1,
+      extras: Array.isArray(it.extras)
+        ? it.extras.map((e, i) => ({
+            id: Number(e?.id ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
+            code: "EXTRA",
+            label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
+            amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
+          }))
+        : [],
+    }));
+
+    if (!itemsForApi.length) {
+      alert("No hay productos en el carrito.");
+      setIsPaying(false);
+      return;
+    }
+
+    const payload = {
+      storeId: Number(pending.storeId),
+      type: isDelivery ? "DELIVERY" : "LOCAL",
+      delivery: isDelivery ? "COURIER" : "PICKUP",
+      channel: "WHATSAPP",
+      customer: isDelivery
+        ? {
+            phone: customer?.phone,
+            name: customer?.name,
+            address_1: customer?.address_1 || query,
+            lat: coords?.lat,
+            lng: coords?.lng,
+          }
+        : { phone: customer?.phone, name: customer?.name },
+      items: itemsForApi,
+      extras: isDelivery
+        ? [{
+            code: "DELIVERY_FEE",
+            label: `Gastos de envío (${deliveryBlocks} envío${deliveryBlocks > 1 ? "s" : ""})`,
+            amount: Number(deliveryFeeTotal) || 0,
+          }]
+        : [],
+      ...(validCouponCode ? { coupon: validCouponCode } : {}),
+      notes: "",
+    };
+
+    const { data: created } = await api.post("/api/venta/pedido", payload);
+    const { data: pay } = await api.post("/api/venta/checkout-session", {
+      orderId: created?.id,
+      code: created?.code,
+    });
+
+    if (!pay?.url) throw new Error("No se pudo crear la sesión de pago");
+    window.location.href = pay.url;
+  } catch (e) {
+    // 422 con detalle rico del cupón desde /api/venta/pedido
+    if (e?.response?.status === 422 && e?.response?.data?.error === 'INVALID_COUPON') {
+      const { reason, message, details } = e.response.data;
+      const friendly = explainCouponRejection({ reason, message, details });
+      setCouponOk(false);
+      setCouponMsg(friendly);
+      alert(friendly + "\nPuedes continuar sin cupón.");
+      setIsPaying(false);
+      return;
+    }
+
+    const msg = e?.response?.data?.error || e?.message || "No se pudo iniciar el pago";
+    if (/Stripe no configurado/i.test(msg)) {
+      alert("Pago no disponible (Stripe no configurado).");
+    } else if (/fuera.*zona|servicio/i.test(msg)) {
+      alert("La dirección está fuera del área de servicio.");
+    } else {
+      alert(msg);
+    }
+    setIsPaying(false);
+  }
+}, [
+  pending,
+  isPaying,
+  isDelivery,
+  customer,
+  query,
+  coords,
+  deliveryBlocks,
+  deliveryFeeTotal,
+  couponOk,
+  coupon,
+]);
+
 
   const reviewView = (
     <div className="pc-card">
