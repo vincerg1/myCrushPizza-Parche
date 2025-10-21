@@ -304,7 +304,10 @@ const checkCoupon = useCallback(async () => {
       setCoupon(c);
       setCouponOk(true);
       setCouponMsg("Cupón aplicado");
-      setShowCouponToast(true);
+      setShowCouponToast(
+  (c.kind === "AMOUNT" && Number(c.amount || 0) > 0) ||
+  (c.kind === "PERCENT" && Number(c.percent || 0) > 0)
+);
     } else {
       setCoupon(null);
       setCouponOk(false);
