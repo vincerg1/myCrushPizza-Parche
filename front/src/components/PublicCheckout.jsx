@@ -286,25 +286,20 @@ const checkCoupon = useCallback(async () => {
     return;
   }
   try {
-    const { data, status } = await api.get("/api/coupons/validate", {
-      // fuerza que NO se use respuesta cacheada
-      headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
-      params: { code, _nc: Date.now() } // rompe caches intermedios
-      // Si quisieras aceptar 304 como "válido", podrías usar validateStatus aquí.
+    const { data } = await api.get("/api/coupons/validate", {
+      params: { code, _nc: Date.now() }, // rompe caché
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
     });
-
-    // Si algún proxy devolviera 304 pero axios NO lanzara, caemos aquí
-    if (status === 304) throw new Error("not_modified");
 
     if (data?.valid) {
       const c = {
         code,
-        kind: data.kind,         // 'AMOUNT' | 'PERCENT'
+        kind: data.kind, // 'AMOUNT' | 'PERCENT'
         variant: data.variant,
         percent: data.percent != null ? Number(data.percent) : undefined,
-        amount:  data.amount  != null ? Number(data.amount)  : undefined,
+        amount: data.amount != null ? Number(data.amount) : undefined,
         maxAmount: data.maxAmount != null ? Number(data.maxAmount) : undefined,
-        expiresAt: data.expiresAt || null,
+        expiresAt: data.expiresAt || null
       };
       setCoupon(c);
       setCouponOk(true);
@@ -313,24 +308,21 @@ const checkCoupon = useCallback(async () => {
     } else {
       setCoupon(null);
       setCouponOk(false);
+      // Pasamos el body completo como details para cubrir activeFrom/expiresAt en raíz
       const msg = explainCouponRejection({
         reason: data?.reason,
         message: data?.message,
-        details: data?.details
+        details: data // <- importante
       });
       setCouponMsg(msg);
     }
-  } catch (err) {
+  } catch {
     setCoupon(null);
     setCouponOk(false);
-    // Mensaje más claro si fue 304
-    if (err?.response?.status === 304 || err?.message === "not_modified") {
-      setCouponMsg("No se pudo validar el cupón (respuesta cacheada). Vuelve a intentar.");
-    } else {
-      setCouponMsg("No se pudo validar el cupón.");
-    }
+    setCouponMsg("No se pudo validar el cupón.");
   }
 }, [couponCode]);
+
 
 
   // ===== PICKUP: cargar tiendas activas =====
@@ -1267,6 +1259,7 @@ const computeProductsSubtotal = (items = []) =>
   const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 // === COUPON REASONS UI (helpers de mensajes) ===
+// === COUPON REASONS UI (helpers de mensajes) ===
 const mmToHHMM = (m) => {
   if (m == null) return null;
   const h = String(Math.floor(m / 60)).padStart(2,'0');
@@ -1285,17 +1278,32 @@ function buildWindowText(details = {}) {
 }
 
 function explainCouponRejection({ reason, message, details } = {}) {
-  if (message) return message; // el backend ya trae texto bonito
+  if (message) return message; 
+  const d = details || {};
+  const get = (k) => d[k] ?? details?.[k];
 
-  const f = (d) => d ? new Date(d).toLocaleString('es-ES') : null;
+  const f = (v) => v ? new Date(v).toLocaleString('es-ES') : null;
 
   switch (String(reason || '').toUpperCase()) {
     case 'NOT_FOUND':        return 'El cupón no existe.';
     case 'DISABLED':         return 'Cupón deshabilitado.';
-    case 'NOT_YET_ACTIVE':   return `Cupón válido desde ${f(details?.activeFrom) || 'más tarde'}.`;
-    case 'EXPIRED':          return `Cupón expiró el ${f(details?.expiresAt) || '—'}.`;
-    case 'OUT_OF_WINDOW':    return `Cupón fuera de horario${buildWindowText(details) ? ` (${buildWindowText(details)})` : ''}.`;
-    case 'ALREADY_USED':     return `Cupón ya utilizado${details?.usedAt ? ` el ${f(details.usedAt)}` : ''}.`;
+    case 'NOT_YET_ACTIVE':   return `Cupón válido desde ${f(get('activeFrom')) || 'más tarde'}.`;
+    case 'EXPIRED':          return `Cupón expiró el ${f(get('expiresAt')) || '—'}.`;
+    case 'EXPIRED_OR_NOT_YET': // <- NUEVO
+    case 'EXPIRED_OR_NOT_YET_ACTIVE': {
+      const af = get('activeFrom');  // puede venir en raíz
+      const ex = get('expiresAt');
+      // Si ya tenemos ambas fechas, damos un mensaje claro
+      if (af && new Date(af) > new Date()) {
+        return `Cupón válido desde ${f(af)}.`;
+      }
+      if (ex && new Date(ex) < new Date()) {
+        return `Cupón expiró el ${f(ex)}.`;
+      }
+      return 'Cupón fuera de vigencia.';
+    }
+    case 'OUT_OF_WINDOW':    return `Cupón fuera de horario${buildWindowText(d) ? ` (${buildWindowText(d)})` : ''}.`;
+    case 'ALREADY_USED':     return `Cupón ya utilizado${get('usedAt') ? ` el ${f(get('usedAt'))}` : ''}.`;
     case 'USAGE_LIMIT':      return 'Se alcanzó el límite de usos del cupón.';
     case 'GAME_SHAPE':       return 'Cupón del juego inválido: debe ser de valor fijo.';
     case 'NO_DISCOUNT':      return 'El cupón no aplica a este carrito.';
@@ -1330,27 +1338,23 @@ const startPayment = useCallback(async () => {
     }
 
     // Revalidar cupón justo antes de pagar (no esperamos 422 aquí)
-// Revalidar cupón justo antes de pagar (sin caché)
 let validCouponCode = null;
 if (couponOk && coupon?.code) {
   try {
-    const { data, status } = await api.get("/api/coupons/validate", {
-      headers: { "Cache-Control": "no-cache", "Pragma": "no-cache" },
-      params: { code: coupon.code, _nc: Date.now() }
+    const { data: v } = await api.get("/api/coupons/validate", {
+      params: { code: coupon.code, _nc: Date.now() },
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
     });
-
-    if (status === 304) throw new Error("not_modified");
-
-    if (data?.valid) {
+    if (v?.valid) {
       validCouponCode = coupon.code;
     } else {
       setCouponOk(false);
-      const friendly = explainCouponRejection({ reason: data?.reason, message: data?.message, details: data?.details });
+      const friendly = explainCouponRejection({ reason: v?.reason, message: v?.message, details: v });
       setCouponMsg(friendly);
       alert(friendly + "\nPuedes continuar sin cupón.");
     }
-  } catch (e) {
-    // si falla la validación (incl. 304), seguimos sin cupón
+  } catch {
+    // si falla la validación, seguimos sin cupón
     setCouponOk(false);
   }
 }
