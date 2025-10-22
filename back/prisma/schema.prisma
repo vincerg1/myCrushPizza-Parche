@@ -19,51 +19,53 @@ enum CustomerOrigin {
   GLOVO
   QR
 }
-
 enum CustomerSegment {
   S1 // Potencial: 0–1 compras
   S2 // Inactivo: >1 compras y última > 30 días
   S3 // Activo:   última ≤ 30 días
   S4 // CMV:      S3 y ticket medio > ticket medio empresa
 }
-
 enum DeliveryMethod {
   PICKUP
   COURIER
   UBER
   GLOVO
 }
-
 enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
   PAID
   CANCELED
 }
-
 enum Channel {
   WHATSAPP
   PHONE
   WEB
 }
-
 enum CouponKind {
   PERCENT
   AMOUNT
 }
-
 enum CouponVariant {
   FIXED
   RANGE
 }
-
 enum CouponStatus {
   ACTIVE
   USED
   EXPIRED
   DISABLED
 }
-
+enum CouponAcquisition {
+  GRATIS   
+  COMPRA   
+  JUEGO    
+}
+enum CouponLogic {
+  RANDOM   
+  PERCENT  
+  AMOUNT   
+}
 /**
  * ======================= MODELOS =======================
  */
@@ -82,7 +84,6 @@ model MenuPizza {
 
   stocks StorePizzaStock[]
 }
-
 model Ingredient {
   id        Int      @id @default(autoincrement())
   name      String
@@ -93,7 +94,6 @@ model Ingredient {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
 model Store {
   id              Int      @id @default(autoincrement())
   storeName       String
@@ -113,7 +113,6 @@ model Store {
   sales       Sale[]
   redemptions CouponRedemption[] @relation("StoreToRedemptions")
 }
-
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
@@ -126,7 +125,6 @@ model StorePizzaStock {
 
   @@id([storeId, pizzaId])
 }
-
 model Customer {
   id                Int             @id @default(autoincrement())
   code              String          @unique
@@ -152,7 +150,6 @@ model Customer {
   sales           Sale[]             @relation("CustomerSales")
   redemptions     CouponRedemption[] @relation("CustomerToRedemptions")
 }
-
 model Sale {
   id                      Int            @id @default(autoincrement())
   code                    String         @unique
@@ -187,27 +184,11 @@ model Sale {
 
   @@index([date])
 }
-
 model AppMeta {
   id              Int      @id @default(1)
   acceptingOrders Boolean  @default(true)
   closedMessage   String?  @db.Text
   updatedAt       DateTime @updatedAt
-}
-
-/**
- * ======================= GESTION DE CUPONES =======================
- */
-
-enum CouponAcquisition {
-  GRATIS   
-  COMPRA   
-  JUEGO    
-}
-enum CouponLogic {
-  RANDOM   
-  PERCENT  
-  AMOUNT   
 }
 model Coupon {
   id   Int    @id @default(autoincrement())

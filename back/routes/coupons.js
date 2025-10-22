@@ -22,6 +22,15 @@ const esDayToNum = (d) => {
   const k = String(d || '').toLowerCase();
   return (k in map) ? map[k] : null;
 };
+const toNum = (v) => {
+  if (v == null) return null;
+  // Prisma.Decimal
+  if (typeof v === 'object' && typeof v.toNumber === 'function') {
+    try { return v.toNumber(); } catch { /* no-op */ }
+  }
+  const n = Number(String(v));
+  return Number.isFinite(n) ? n : null;
+};
 function normalizeDaysActive(v) {
   if (!v) return [];
   let a = v;
@@ -718,119 +727,114 @@ router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
 
-    // 1) Traer solo lo necesario y con stock disponible
     const rows = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
+        // stock disponible
         usedCount: { lt: prisma.coupon.fields.usageLimit },
       },
       select: {
         code: true, kind: true, variant: true,
         percent: true, percentMin: true, percentMax: true,
         amount: true, maxAmount: true,
-
-        // restricciones diarias
         daysActive: true, windowStart: true, windowEnd: true,
-
-        // vida útil
         activeFrom: true, expiresAt: true,
-
-        // stock
         usageLimit: true, usedCount: true,
       },
       orderBy: { id: 'asc' }
     });
 
-    // 2) Filtrar por vida útil + ventana diaria actuales
     const active = rows.filter(r => isActiveByDate(r, now) && isWithinWindow(r, now));
 
-    // 3) Helpers de agrupación
     const keyFor = (r) => {
-      if (r.kind === 'PERCENT' && r.variant === 'RANGE')  return `RANDOM_PERCENT:${r.percentMin}-${r.percentMax}`;
-      if (r.kind === 'PERCENT' && r.variant === 'FIXED')  return `FIXED_PERCENT:${r.percent}`;
-      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED')  return `FIXED_AMOUNT:${Number(r.amount).toFixed(2)}`;
-      return 'UNKNOWN';
+      const pct   = toNum(r.percent);
+      const pMin  = toNum(r.percentMin);
+      const pMax  = toNum(r.percentMax);
+      const amt   = toNum(r.amount);
+
+      if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
+        return `RANDOM_PERCENT:${pMin}-${pMax}`;
+      if (r.kind === 'PERCENT' && r.variant === 'FIXED' && pct != null)
+        return `FIXED_PERCENT:${pct}`;
+      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED' && amt != null)
+        return `FIXED_AMOUNT:${amt.toFixed(2)}`;
+      return null; // <- si falta dato, no agrupamos
     };
+
     const titleFor = (r) => {
-      if (r.kind === 'PERCENT' && r.variant === 'RANGE')  return `${r.percentMin}–${r.percentMax}%`;
-      if (r.kind === 'PERCENT' && r.variant === 'FIXED')  return `${r.percent}%`;
-      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED')  return `${Number(r.amount).toFixed(2)} €`;
+      const pct   = toNum(r.percent);
+      const pMin  = toNum(r.percentMin);
+      const pMax  = toNum(r.percentMax);
+      const amt   = toNum(r.amount);
+
+      if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
+        return `${pMin}–${pMax}%`;
+      if (r.kind === 'PERCENT' && r.variant === 'FIXED' && pct != null)
+        return `${pct}%`;
+      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED' && amt != null)
+        return `${amt.toFixed(2)} €`;
       return 'Cupón';
     };
+
     const typeFor = (r) =>
       (r.kind === 'PERCENT' && r.variant === 'RANGE') ? 'RANDOM_PERCENT' :
       (r.kind === 'PERCENT' && r.variant === 'FIXED') ? 'FIXED_PERCENT'  :
       (r.kind === 'AMOUNT'  && r.variant === 'FIXED') ? 'FIXED_AMOUNT'   : 'UNKNOWN';
 
-    // 4) Agrupar acumulando “remaining” y el mejor sample por restricciones
-    const groups = new Map(); // key -> state
+    const groups = new Map();
+
     const scoreSample = (r) => {
-      // Preferimos cupones con restricciones visibles para mostrarlas en la tarjeta
       const hasDays = normalizeDaysActive(r.daysActive).length > 0;
       const hasWin  = (r.windowStart != null) || (r.windowEnd != null);
-      // Mayor score = más preferible
       return (hasDays ? 2 : 0) + (hasWin ? 1 : 0);
     };
 
     for (const r of active) {
       const k = keyFor(r);
+      if (!k) continue; // evita NaN/valores inválidos
+
       const cur = groups.get(k) || {
         type: typeFor(r),
-        key: k.split(':')[1],
+        key : k.split(':')[1],
         title: titleFor(r),
         subtitle: (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
-        cta:       (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
+        cta     : (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
         remaining: 0,
-        sample: null,      // almacenará el cupón “representativo” del grupo
+        sample: null,
         sampleScore: -1
       };
 
-      // sumatorio de unidades disponibles
-      cur.remaining += Math.max(0, (r.usageLimit ?? 1) - (r.usedCount ?? 0));
+      const limit = toNum(r.usageLimit) ?? 1;
+      const used  = toNum(r.usedCount)  ?? 0;
+      cur.remaining += Math.max(0, limit - used);
 
-      // seleccionar el mejor “sample”
       const sc = scoreSample(r);
-      if (sc > cur.sampleScore) {
-        cur.sample = r;
-        cur.sampleScore = sc;
-      }
+      if (sc > cur.sampleScore) { cur.sample = r; cur.sampleScore = sc; }
 
       groups.set(k, cur);
     }
 
-    // 5) Construir tarjetas: constraints (ventana diaria) + lifetime (vida útil) del sample
-    const cards = Array.from(groups.values())
-      .map(g => {
-        const s = g.sample || {};
-        const days = normalizeDaysActive(s.daysActive || null);
-        const constraints = {
-          daysActive: days,
-          windowStart: s.windowStart ?? null,
-          windowEnd:   s.windowEnd   ?? null
-        };
-        const lifetime = {
-          activeFrom: s.activeFrom || null,
-          expiresAt : s.expiresAt  || null
-        };
-        return {
-          type: g.type,
-          key: g.key,
-          title: g.title,
-          subtitle: g.subtitle,
-          cta: g.cta,
-          remaining: g.remaining,
-          constraints,
-          lifetime
-        };
-      })
-      .sort((a,b) => a.title.localeCompare(b.title, 'es'));
+    const cards = Array.from(groups.values()).map(g => {
+      const s = g.sample || {};
+      const constraints = {
+        daysActive : normalizeDaysActive(s.daysActive || null),
+        windowStart: s.windowStart ?? null,
+        windowEnd  : s.windowEnd   ?? null
+      };
+      const lifetime = {
+        activeFrom: s.activeFrom || null,
+        expiresAt : s.expiresAt  || null
+      };
+      return { ...g, constraints, lifetime };
+    }).sort((a,b) => a.title.localeCompare(b.title, 'es'));
 
-    res.json({ ok: true, cards });
+    res.json({ ok: true, cards, types: Array.from(new Set(cards.map(c => c.type))) });
   } catch (e) {
     console.error('[coupons.gallery] error', e);
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 
 
 
