@@ -718,17 +718,23 @@ router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
 
-    // helper seguro para Decimal/string/number
+    // Conversión robusta a número (Decimal, string, number)
     const toNum = (v) => {
       if (v == null) return null;
       if (typeof v === 'object' && typeof v.toNumber === 'function') {
-        try { return v.toNumber(); } catch {}
+        try { return v.toNumber(); } catch { /* noop */ }
       }
       const n = Number(String(v));
       return Number.isFinite(n) ? n : null;
     };
 
-    // 1) Traer activos (SIN filtrar por usedCount/usageLimit)
+    const variantOf = (r) => {
+      if (r.variant) return r.variant; // 'FIXED' | 'RANGE'
+      if (r.kind === 'PERCENT' && toNum(r.percentMin) != null && toNum(r.percentMax) != null) return 'RANGE';
+      return 'FIXED';
+    };
+
+    // 1) Traer activos (sin prefiltrar por stock)
     const rows = await prisma.coupon.findMany({
       where: { status: 'ACTIVE' },
       select: {
@@ -742,56 +748,98 @@ router.get('/gallery', async (_req, res) => {
       orderBy: { id: 'asc' }
     });
 
-    // 2) Vida útil + ventana diaria + stock > 0
+    // ===== DIAGNÓSTICO =====
+    const dbg = {
+      total: rows.length,
+      byKind: { PERCENT: 0, AMOUNT: 0 },
+      amount: {
+        total: 0, active: 0,
+        samplesRejected: [], // [{code, reason, usageLimit, usedCount, activeFrom, expiresAt}]
+        sampleAccepted: null
+      }
+    };
+    for (const r of rows) {
+      if (r.kind === 'PERCENT') dbg.byKind.PERCENT++;
+      if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
+    }
+
+    // 2) Vida útil + ventana diaria + stock > 0  (y rellenamos debug si son AMOUNT)
     const active = rows.filter(r => {
-      if (!isActiveByDate(r, now) || !isWithinWindow(r, now)) return false;
-      const limit = toNum(r.usageLimit) ?? 1;
-      const used  = toNum(r.usedCount)  ?? 0;
-      return (limit - used) > 0;
+      const inLife   = isActiveByDate(r, now);
+      const inWindow = isWithinWindow(r, now);
+      const limit    = toNum(r.usageLimit) ?? 1;
+      const used     = toNum(r.usedCount)  ?? 0;
+      const hasStock = (limit - used) > 0;
+
+      if (r.kind === 'AMOUNT') {
+        dbg.amount.total++;
+        if (!(inLife && inWindow && hasStock)) {
+          if (dbg.amount.samplesRejected.length < 5) {
+            dbg.amount.samplesRejected.push({
+              code: r.code,
+              reason: !inLife ? 'life' : !inWindow ? 'window' : !hasStock ? 'stock' : 'other',
+              usageLimit: limit, usedCount: used,
+              activeFrom: r.activeFrom || null, expiresAt: r.expiresAt || null,
+              daysActive: normalizeDaysActive(r.daysActive || null),
+              windowStart: r.windowStart ?? null, windowEnd: r.windowEnd ?? null,
+              amount: toNum(r.amount)
+            });
+          }
+        }
+      }
+
+      const ok = inLife && inWindow && hasStock;
+
+      if (ok && r.kind === 'AMOUNT' && !dbg.amount.sampleAccepted) {
+        dbg.amount.sampleAccepted = {
+          code: r.code,
+          usageLimit: limit, usedCount: used,
+          amount: toNum(r.amount),
+          variant: variantOf(r)
+        };
+      }
+      if (ok && r.kind === 'AMOUNT') dbg.amount.active++;
+
+      return ok;
     });
-      const variantOf = (r) => {
-        if (r.variant) return r.variant;                 // 'FIXED' | 'RANGE'
-        if (r.kind === 'PERCENT' && toNum(r.percentMin) != null && toNum(r.percentMax) != null)
-          return 'RANGE';
-        return 'FIXED';
-      };
+
     // 3) Helpers de agrupación
-const keyFor = (r) => {
-  const v    = variantOf(r);
-  const pct  = toNum(r.percent);
-  const pMin = toNum(r.percentMin);
-  const pMax = toNum(r.percentMax);
-  const amt  = toNum(r.amount);
+    const keyFor = (r) => {
+      const v    = variantOf(r);
+      const pct  = toNum(r.percent);
+      const pMin = toNum(r.percentMin);
+      const pMax = toNum(r.percentMax);
+      const amt  = toNum(r.amount);
 
-  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
-    return `RANDOM_PERCENT:${pMin}-${pMax}`;
-  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
-    return `FIXED_PERCENT:${pct}`;
-  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
-    return `FIXED_AMOUNT:${amt.toFixed(2)}`;
-  return null;
-};
+      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+        return `RANDOM_PERCENT:${pMin}-${pMax}`;
+      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+        return `FIXED_PERCENT:${pct}`;
+      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
+        return `FIXED_AMOUNT:${amt.toFixed(2)}`;
+      return null;
+    };
 
-const titleFor = (r) => {
-  const v    = variantOf(r);
-  const pct  = toNum(r.percent);
-  const pMin = toNum(r.percentMin);
-  const pMax = toNum(r.percentMax);
-  const amt  = toNum(r.amount);
+    const titleFor = (r) => {
+      const v    = variantOf(r);
+      const pct  = toNum(r.percent);
+      const pMin = toNum(r.percentMin);
+      const pMax = toNum(r.percentMax);
+      const amt  = toNum(r.amount);
 
-  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null) return `${pMin}–${pMax}%`;
-  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null) return `${pct}%`;
-  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null) return `${amt.toFixed(2)} €`;
-  return 'Cupón';
-};
+      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null) return `${pMin}–${pMax}%`;
+      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null) return `${pct}%`;
+      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null) return `${amt.toFixed(2)} €`;
+      return 'Cupón';
+    };
 
-  const typeFor = (r) => {
-  const v = variantOf(r);
-  if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
-  if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
-  if (r.kind === 'AMOUNT'  && v === 'FIXED') return 'FIXED_AMOUNT';
-  return 'UNKNOWN';
-};
+    const typeFor = (r) => {
+      const v = variantOf(r);
+      if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
+      if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
+      if (r.kind === 'AMOUNT'  && v === 'FIXED') return 'FIXED_AMOUNT';
+      return 'UNKNOWN';
+    };
 
     // 4) Agrupar
     const groups = new Map();
@@ -841,12 +889,18 @@ const titleFor = (r) => {
       return { ...g, constraints, lifetime };
     }).sort((a,b) => a.title.localeCompare(b.title, 'es'));
 
-    res.json({ ok: true, cards, types: Array.from(new Set(cards.map(c => c.type))) });
+    res.json({
+      ok: true,
+      cards,
+      types: Array.from(new Set(cards.map(c => c.type))),
+      debug: dbg   // ← quítalo cuando acabemos de diagnosticar
+    });
   } catch (e) {
     console.error('[coupons.gallery] error', e);
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 
 
 
