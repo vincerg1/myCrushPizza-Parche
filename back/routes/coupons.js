@@ -727,12 +727,19 @@ router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
 
+    // helper seguro para Decimal/string/number
+    const toNum = (v) => {
+      if (v == null) return null;
+      if (typeof v === 'object' && typeof v.toNumber === 'function') {
+        try { return v.toNumber(); } catch {}
+      }
+      const n = Number(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    // 1) Traer activos (SIN filtrar por usedCount/usageLimit)
     const rows = await prisma.coupon.findMany({
-      where: {
-        status: 'ACTIVE',
-        // stock disponible
-        usedCount: { lt: prisma.coupon.fields.usageLimit },
-      },
+      where: { status: 'ACTIVE' },
       select: {
         code: true, kind: true, variant: true,
         percent: true, percentMin: true, percentMax: true,
@@ -744,13 +751,20 @@ router.get('/gallery', async (_req, res) => {
       orderBy: { id: 'asc' }
     });
 
-    const active = rows.filter(r => isActiveByDate(r, now) && isWithinWindow(r, now));
+    // 2) Vida útil + ventana diaria + stock > 0
+    const active = rows.filter(r => {
+      if (!isActiveByDate(r, now) || !isWithinWindow(r, now)) return false;
+      const limit = toNum(r.usageLimit) ?? 1;
+      const used  = toNum(r.usedCount)  ?? 0;
+      return (limit - used) > 0;
+    });
 
+    // 3) Helpers de agrupación
     const keyFor = (r) => {
-      const pct   = toNum(r.percent);
-      const pMin  = toNum(r.percentMin);
-      const pMax  = toNum(r.percentMax);
-      const amt   = toNum(r.amount);
+      const pct  = toNum(r.percent);
+      const pMin = toNum(r.percentMin);
+      const pMax = toNum(r.percentMax);
+      const amt  = toNum(r.amount);
 
       if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
         return `RANDOM_PERCENT:${pMin}-${pMax}`;
@@ -758,14 +772,14 @@ router.get('/gallery', async (_req, res) => {
         return `FIXED_PERCENT:${pct}`;
       if (r.kind === 'AMOUNT'  && r.variant === 'FIXED' && amt != null)
         return `FIXED_AMOUNT:${amt.toFixed(2)}`;
-      return null; // <- si falta dato, no agrupamos
+      return null;
     };
 
     const titleFor = (r) => {
-      const pct   = toNum(r.percent);
-      const pMin  = toNum(r.percentMin);
-      const pMax  = toNum(r.percentMax);
-      const amt   = toNum(r.amount);
+      const pct  = toNum(r.percent);
+      const pMin = toNum(r.percentMin);
+      const pMax = toNum(r.percentMax);
+      const amt  = toNum(r.amount);
 
       if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
         return `${pMin}–${pMax}%`;
@@ -781,8 +795,8 @@ router.get('/gallery', async (_req, res) => {
       (r.kind === 'PERCENT' && r.variant === 'FIXED') ? 'FIXED_PERCENT'  :
       (r.kind === 'AMOUNT'  && r.variant === 'FIXED') ? 'FIXED_AMOUNT'   : 'UNKNOWN';
 
+    // 4) Agrupar
     const groups = new Map();
-
     const scoreSample = (r) => {
       const hasDays = normalizeDaysActive(r.daysActive).length > 0;
       const hasWin  = (r.windowStart != null) || (r.windowEnd != null);
@@ -791,14 +805,14 @@ router.get('/gallery', async (_req, res) => {
 
     for (const r of active) {
       const k = keyFor(r);
-      if (!k) continue; // evita NaN/valores inválidos
+      if (!k) continue;
 
       const cur = groups.get(k) || {
         type: typeFor(r),
-        key : k.split(':')[1],
+        key: k.split(':')[1],
         title: titleFor(r),
         subtitle: (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
-        cta     : (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
+        cta:       (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
         remaining: 0,
         sample: null,
         sampleScore: -1
@@ -814,6 +828,7 @@ router.get('/gallery', async (_req, res) => {
       groups.set(k, cur);
     }
 
+    // 5) Tarjetas
     const cards = Array.from(groups.values()).map(g => {
       const s = g.sample || {};
       const constraints = {
@@ -834,6 +849,7 @@ router.get('/gallery', async (_req, res) => {
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 
 
 
