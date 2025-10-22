@@ -237,7 +237,7 @@ router.post('/issue', requireApiKey, async (req, res) => {
     //  - ACTIVO
     //  - kind = AMOUNT
     //  - variant = FIXED
-    //  - con usos disponibles
+    //  - con usos disponibles (usageLimit null => ilimitado) o limitados con stock
     //  - sin expirar (expiresAt null o futura)
     const row = await prisma.coupon.findFirst({
       where: {
@@ -245,8 +245,10 @@ router.post('/issue', requireApiKey, async (req, res) => {
         status:  'ACTIVE',
         kind:    'AMOUNT',
         variant: 'FIXED',
-        usedCount: { lt: prisma.coupon.fields.usageLimit }, // prisma v5: field ref
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [
+          { OR: [{ usageLimit: null }, { usedCount: { lt: prisma.coupon.fields.usageLimit } }] },
+          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        ],
       },
       orderBy: { id: 'asc' }
     });
@@ -366,6 +368,7 @@ router.get('/validate', async (req, res) => {
     if (row.status === 'DISABLED')
       return res.json({ valid:false, reason:'disabled' });
 
+    // Mantener compat: si se marcó USED, lo devolvemos como usado
     if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0) && row.status === 'USED')
       return res.json({ valid:false, reason:'used', expiresAt: row.expiresAt || null });
 
@@ -430,7 +433,8 @@ router.post('/redeem', async (req, res) => {
     if (!isActiveByDate(row, nowRef)) return res.status(409).json({ error: 'expired_or_not_yet' });
     if (!isWithinWindow(row, nowRef)) return res.status(409).json({ error: 'outside_time_window' });
 
-    if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0)) {
+    // Stock disponible: ilimitado si usageLimit null
+    if (row.usageLimit != null && (row.usageLimit <= (row.usedCount ?? 0))) {
       return res.status(409).json({ error: 'already_used' });
     }
 
@@ -441,14 +445,16 @@ router.post('/redeem', async (req, res) => {
       return res.status(409).json({ error: 'segment_mismatch' });
     }
 
-    // 1) Incremento atómico si sigue teniendo usos disponibles
+    // 1) Incremento atómico: si ilimitado, no ponemos cláusula usedCount; si limitado, sí
+    const whereUpdate = {
+      code,
+      status: 'ACTIVE',
+      OR: [{ expiresAt: null }, { expiresAt: { gt: nowRef } }],
+      ...(row.usageLimit == null ? {} : { usedCount: { lt: row.usageLimit } }),
+    };
+
     const inc = await prisma.coupon.updateMany({
-      where: {
-        code,
-        status: 'ACTIVE',
-        usedCount: { lt: row.usageLimit || 1 },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: nowRef } }],
-      },
+      where: whereUpdate,
       data: {
         usedCount: { increment: 1 },
         usedAt: nowRef
@@ -459,15 +465,15 @@ router.post('/redeem', async (req, res) => {
       // Revalidar estado para razón exacta
       const cur = await prisma.coupon.findUnique({ where: { code } });
       if (!cur) return res.status(404).json({ error: 'not_found' });
-      if ((cur.usageLimit ?? 1) <= (cur.usedCount ?? 0)) return res.status(409).json({ error: 'already_used' });
+      if (cur.usageLimit != null && (cur.usageLimit <= (cur.usedCount ?? 0))) return res.status(409).json({ error: 'already_used' });
       if (cur.status !== 'ACTIVE') return res.status(409).json({ error: 'invalid_state' });
       if (cur.expiresAt && cur.expiresAt <= nowRef) return res.status(409).json({ error: 'expired' });
       return res.status(409).json({ error: 'invalid_state' });
     }
 
-    // 2) Si llegó al límite, marcar USED
+    // 2) Si llegó al límite, marcar USED (solo si NO es ilimitado)
     const after = await prisma.coupon.findUnique({ where: { code } });
-    if ((after.usedCount ?? 0) >= (after.usageLimit ?? 1) && after.status !== 'USED') {
+    if (after.usageLimit != null && (after.usedCount ?? 0) >= after.usageLimit && after.status !== 'USED') {
       await prisma.coupon.update({ where: { code }, data: { status: 'USED' } });
     }
 
@@ -613,7 +619,6 @@ router.get('/metrics', async (req, res) => {
 
         // sumar descuento de cupón y clasificar
         const totalProducts = Number(s.totalProducts || 0);
-        let anyKindCounted = false;
 
         for (const line of couponLines) {
           const amt = Math.abs(Number(line?.amount || 0));
@@ -622,7 +627,6 @@ router.get('/metrics', async (req, res) => {
           const k = inferKind(line, totalProducts);
           if (k === 'PERCENT') byKindCount.PERCENT += 1;
           else byKindCount.AMOUNT += 1;
-          anyKindCounted = true;
 
           const code = extractCouponCode(line);
           const cur = topCodeMap.get(code) || { count: 0 };
@@ -763,13 +767,13 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
     }
 
-    // 2) Vida útil + ventana diaria + stock > 0  (y rellenamos debug si son AMOUNT)
+    // 2) Vida útil + ventana diaria + stock (ilimitado = true)
     const active = rows.filter(r => {
       const inLife   = isActiveByDate(r, now);
       const inWindow = isWithinWindow(r, now);
-      const limit    = toNum(r.usageLimit) ?? 1;
-      const used     = toNum(r.usedCount)  ?? 0;
-      const hasStock = (limit - used) > 0;
+      const used     = toNum(r.usedCount) ?? 0;
+      const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
+      const hasStock = (limitNum == null) ? true : (limitNum > used);
 
       if (r.kind === 'AMOUNT') {
         dbg.amount.total++;
@@ -778,7 +782,7 @@ router.get('/gallery', async (_req, res) => {
             dbg.amount.samplesRejected.push({
               code: r.code,
               reason: !inLife ? 'life' : !inWindow ? 'window' : !hasStock ? 'stock' : 'other',
-              usageLimit: limit, usedCount: used,
+              usageLimit: limitNum, usedCount: used,
               activeFrom: r.activeFrom || null, expiresAt: r.expiresAt || null,
               daysActive: normalizeDaysActive(r.daysActive || null),
               windowStart: r.windowStart ?? null, windowEnd: r.windowEnd ?? null,
@@ -793,7 +797,7 @@ router.get('/gallery', async (_req, res) => {
       if (ok && r.kind === 'AMOUNT' && !dbg.amount.sampleAccepted) {
         dbg.amount.sampleAccepted = {
           code: r.code,
-          usageLimit: limit, usedCount: used,
+          usageLimit: limitNum, usedCount: used,
           amount: toNum(r.amount),
           variant: variantOf(r)
         };
@@ -864,9 +868,14 @@ router.get('/gallery', async (_req, res) => {
         sampleScore: -1
       };
 
-      const limit = toNum(r.usageLimit) ?? 1;
-      const used  = toNum(r.usedCount)  ?? 0;
-      cur.remaining += Math.max(0, limit - used);
+      const used  = toNum(r.usedCount) ?? 0;
+      const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
+      if (limitNum == null) {
+        // cualquier cupón ilimitado del grupo => remaining = null
+        cur.remaining = null;
+      } else if (cur.remaining !== null) {
+        cur.remaining += Math.max(0, limitNum - used);
+      }
 
       const sc = scoreSample(r);
       if (sc > cur.sampleScore) { cur.sample = r; cur.sampleScore = sc; }
