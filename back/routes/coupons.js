@@ -903,9 +903,5 @@ router.get('/gallery', async (_req, res) => {
 
 
 
-
-
-
-
   return router;
 };
