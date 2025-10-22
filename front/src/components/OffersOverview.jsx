@@ -35,6 +35,16 @@ const fmtMoney = (n) => `€ ${Number(n || 0).toFixed(2)}`;
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysAgoISO = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
 
+// helpers de presentación para constraints
+const DAY_LABELS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+const mapDays = (arr) => (Array.isArray(arr) && arr.length ? arr.map(n => DAY_LABELS[n] ?? n).join(", ") : "todos");
+const mmToHHMM = (m) => {
+  const mins = Number(m ?? 0);
+  const h = Math.floor(mins / 60);
+  const min = mins % 60;
+  return `${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}`;
+};
+
 export default function OffersOverview({ onNavigate = () => {} }) {
   // filtros (para métricas)
   const [from, setFrom] = useState(daysAgoISO(30));
@@ -187,7 +197,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         </div>
       </section>
 
-      {/* >>> NUEVO: Galería de cupones disponibles */}
+      {/* >>> Galería de cupones disponibles */}
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:8 }}>
           <strong>Galería de cupones (stock disponible)</strong>
@@ -255,7 +265,10 @@ function CardsGrid({ cards }) {
 }
 
 function CouponCard({ c }) {
-  const muted = c.remaining <= 0;
+  const isUnlimited = c.remaining == null;
+  const muted = isUnlimited ? false : c.remaining <= 0;
+  const remainingLabel = isUnlimited ? "∞" : c.remaining;
+
   const badgeBg =
     c.type === "FIXED_AMOUNT" ? "#ffe4ec" :
     c.type === "FIXED_PERCENT" ? "#eaf5ff" :
@@ -265,8 +278,8 @@ function CouponCard({ c }) {
     c.lifetime?.activeFrom || c.lifetime?.expiresAt
       ? (
         <div style={{ fontSize:11, opacity:.7, marginTop:6 }}>
-          {c.lifetime.activeFrom && <>Desde: {new Date(c.lifetime.activeFrom).toLocaleString()}<br/></>}
-          {c.lifetime.expiresAt && <>Hasta: {new Date(c.lifetime.expiresAt).toLocaleString()}</>}
+          {c.lifetime.activeFrom && <>Desde: {new Date(c.lifetime.activeFrom).toLocaleString("es-ES", { timeZone:"Europe/Madrid" })}<br/></>}
+          {c.lifetime.expiresAt && <>Hasta: {new Date(c.lifetime.expiresAt).toLocaleString("es-ES", { timeZone:"Europe/Madrid" })}</>}
         </div>
       ) : null;
 
@@ -274,12 +287,10 @@ function CouponCard({ c }) {
     c.constraints
       ? (
         <div style={{ fontSize:11, opacity:.75, marginTop:6 }}>
-          {Array.isArray(c.constraints.daysActive) && c.constraints.daysActive.length
-            ? <>Días: {c.constraints.daysActive.join(", ")}</>
-            : <>Días: todos</>}
+          Días: {mapDays(c.constraints.daysActive)}
           <br/>
-          {c.constraints.windowStart != null || c.constraints.windowEnd != null
-            ? <>Ventana: {c.constraints.windowStart ?? 0}–{c.constraints.windowEnd ?? 1440} min</>
+          {(c.constraints.windowStart != null || c.constraints.windowEnd != null)
+            ? <>Ventana: {mmToHHMM(c.constraints.windowStart ?? 0)}–{mmToHHMM(c.constraints.windowEnd ?? 1440)}</>
             : <>Ventana: libre</>}
         </div>
       ) : null;
@@ -296,7 +307,9 @@ function CouponCard({ c }) {
         <div style={{ fontSize:12, padding:"2px 8px", background:badgeBg, borderRadius:999 }}>
           {c.type}
         </div>
-        <div style={{ fontSize:12, opacity:.65 }}>quedan <b>{c.remaining}</b></div>
+        <div style={{ fontSize:12, opacity:.65 }}>
+          quedan <b>{remainingLabel}</b>
+        </div>
       </div>
 
       <div style={{ fontSize:24, fontWeight:800, marginTop:6 }}>{c.title}</div>
