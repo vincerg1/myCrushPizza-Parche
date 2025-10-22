@@ -22,15 +22,6 @@ const esDayToNum = (d) => {
   const k = String(d || '').toLowerCase();
   return (k in map) ? map[k] : null;
 };
-const toNum = (v) => {
-  if (v == null) return null;
-  // Prisma.Decimal
-  if (typeof v === 'object' && typeof v.toNumber === 'function') {
-    try { return v.toNumber(); } catch { /* no-op */ }
-  }
-  const n = Number(String(v));
-  return Number.isFinite(n) ? n : null;
-};
 function normalizeDaysActive(v) {
   if (!v) return [];
   let a = v;
@@ -758,42 +749,49 @@ router.get('/gallery', async (_req, res) => {
       const used  = toNum(r.usedCount)  ?? 0;
       return (limit - used) > 0;
     });
-
+      const variantOf = (r) => {
+        if (r.variant) return r.variant;                 // 'FIXED' | 'RANGE'
+        if (r.kind === 'PERCENT' && toNum(r.percentMin) != null && toNum(r.percentMax) != null)
+          return 'RANGE';
+        return 'FIXED';
+      };
     // 3) Helpers de agrupación
-    const keyFor = (r) => {
-      const pct  = toNum(r.percent);
-      const pMin = toNum(r.percentMin);
-      const pMax = toNum(r.percentMax);
-      const amt  = toNum(r.amount);
+const keyFor = (r) => {
+  const v    = variantOf(r);
+  const pct  = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt  = toNum(r.amount);
 
-      if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
-        return `RANDOM_PERCENT:${pMin}-${pMax}`;
-      if (r.kind === 'PERCENT' && r.variant === 'FIXED' && pct != null)
-        return `FIXED_PERCENT:${pct}`;
-      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED' && amt != null)
-        return `FIXED_AMOUNT:${amt.toFixed(2)}`;
-      return null;
-    };
+  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+    return `RANDOM_PERCENT:${pMin}-${pMax}`;
+  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+    return `FIXED_PERCENT:${pct}`;
+  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
+    return `FIXED_AMOUNT:${amt.toFixed(2)}`;
+  return null;
+};
 
-    const titleFor = (r) => {
-      const pct  = toNum(r.percent);
-      const pMin = toNum(r.percentMin);
-      const pMax = toNum(r.percentMax);
-      const amt  = toNum(r.amount);
+const titleFor = (r) => {
+  const v    = variantOf(r);
+  const pct  = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt  = toNum(r.amount);
 
-      if (r.kind === 'PERCENT' && r.variant === 'RANGE' && pMin != null && pMax != null)
-        return `${pMin}–${pMax}%`;
-      if (r.kind === 'PERCENT' && r.variant === 'FIXED' && pct != null)
-        return `${pct}%`;
-      if (r.kind === 'AMOUNT'  && r.variant === 'FIXED' && amt != null)
-        return `${amt.toFixed(2)} €`;
-      return 'Cupón';
-    };
+  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null) return `${pMin}–${pMax}%`;
+  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null) return `${pct}%`;
+  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null) return `${amt.toFixed(2)} €`;
+  return 'Cupón';
+};
 
-    const typeFor = (r) =>
-      (r.kind === 'PERCENT' && r.variant === 'RANGE') ? 'RANDOM_PERCENT' :
-      (r.kind === 'PERCENT' && r.variant === 'FIXED') ? 'FIXED_PERCENT'  :
-      (r.kind === 'AMOUNT'  && r.variant === 'FIXED') ? 'FIXED_AMOUNT'   : 'UNKNOWN';
+  const typeFor = (r) => {
+  const v = variantOf(r);
+  if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
+  if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
+  if (r.kind === 'AMOUNT'  && v === 'FIXED') return 'FIXED_AMOUNT';
+  return 'UNKNOWN';
+};
 
     // 4) Agrupar
     const groups = new Map();
