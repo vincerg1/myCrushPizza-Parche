@@ -57,14 +57,26 @@ enum CouponStatus {
   DISABLED
 }
 enum CouponAcquisition {
-  GRATIS   
-  COMPRA   
-  JUEGO    
+  GAME      // premio de juego
+  CLAIM     // reclamo manual / galería
+  REWARD    // recompensa (p.ej. after-purchase)
+  BULK      // carga masiva u operación
+  DIRECT    // entregado ad-hoc
+  OTHER
 }
 enum CouponLogic {
   RANDOM   
   PERCENT  
   AMOUNT   
+}
+enum CouponChannel {
+  GAME
+  WEB
+  CRM
+  STORE
+  APP
+  SMS
+  EMAIL
 }
 /**
  * ======================= MODELOS =======================
@@ -191,10 +203,9 @@ model AppMeta {
   updatedAt       DateTime @updatedAt
 }
 model Coupon {
-  id   Int    @id @default(autoincrement())
-  code String @unique
+  id    Int    @id @default(autoincrement())
+  code  String @unique
 
-  // Mantiene compatibilidad con tu cálculo actual
   kind    CouponKind    @default(PERCENT)
   variant CouponVariant @default(FIXED)
 
@@ -204,12 +215,12 @@ model Coupon {
   percentMax Int?
   maxAmount  Decimal? @db.Decimal(10, 2)
 
-  // NUEVO: clasificación de negocio (opcionales para no romper datos viejos)
-  acquisition CouponAcquisition?
-  logic       CouponLogic?
-
-  // (opcional útil para snapshot/metadata visual del cupón)
-  meta Json?
+  // Etiquetas de negocio (NUEVO)
+  acquisition CouponAcquisition?   // e.g. GAME/CLAIM/...
+  channel     CouponChannel?       // e.g. GAME/WEB/CRM
+  gameId      Int?                 // juego al que pertenece el pool del premio
+  campaign    String?              // etiqueta libre (A/B test, nombre de campaña)
+  meta        Json?
 
   segments     Json?
   assignedToId Int?
@@ -226,7 +237,7 @@ model Coupon {
   status     CouponStatus @default(ACTIVE)
 
   usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   redemptions CouponRedemption[] @relation("CouponToRedemptions")
 
@@ -234,9 +245,11 @@ model Coupon {
   @@index([assignedToId])
   @@index([expiresAt])
 
-  // NUEVOS índices para filtros en backoffice/portal
+  // Índices útiles para pools y analítica
   @@index([acquisition])
-  @@index([logic])
+  @@index([channel])
+  @@index([gameId])
+  @@index([acquisition, gameId])
 }
 model CouponRedemption {
   id Int @id @default(autoincrement())
@@ -255,11 +268,17 @@ model CouponRedemption {
 
   couponCode String
 
+  // Snapshot de contexto (NUEVO - opcional)
+  acquisition   CouponAcquisition?
+  channel       CouponChannel?
+  gameId        Int?
+  campaign      String?
+
   segmentAtRedeem CustomerSegment?
   kind            CouponKind
   variant         CouponVariant
   percentApplied  Int?
-  amountApplied   Decimal?         @db.Decimal(10, 2)
+  amountApplied   Decimal? @db.Decimal(10, 2)
 
   discountValue Decimal? @db.Decimal(10, 2)
 
@@ -271,4 +290,8 @@ model CouponRedemption {
   @@index([saleId])
   @@index([customerId])
   @@index([storeId])
+  @@index([gameId])
+  @@index([channel])
+  @@index([acquisition])
 }
+

@@ -14,6 +14,7 @@ const PREFIX = {
   FIXED_PERCENT : 'MCP-PF',
   FIXED_AMOUNT  : 'MCP-CD',
 };
+
 const esDayToNum = (d) => {
   const map = {
     domingo:0, lunes:1, martes:2, miercoles:3, miércoles:3,
@@ -95,131 +96,159 @@ function requireApiKey(req, res, next) {
   next();
 }
 
+// conversión robusta a number (Decimal/string/number)
+const toNum = (v) => {
+  if (v == null) return null;
+  if (typeof v === 'object' && typeof v.toNumber === 'function') {
+    try { return v.toNumber(); } catch { /* noop */ }
+  }
+  const n = Number(String(v));
+  return Number.isFinite(n) ? n : null;
+};
+
 module.exports = (prisma) => {
 
+/* ===========================
+ *  BULK GENERATE
+ * =========================== */
 router.post('/bulk-generate', requireApiKey, async (req, res) => {
-    try {
-      const {
-        type,
-        quantity = 1,
-        percent,
-        percentMin,
-        percentMax,
-        amount,
-        maxAmount,
-        usageLimit = 1,
-        assignedToId = null,
-        segments = null,
-        activeFrom = null,
-        expiresAt = null,
-        daysActive = null,
-        windowStart = null,
-        windowEnd = null,
-      } = req.body;
+  try {
+    const {
+      type,
+      quantity = 1,
+      percent,
+      percentMin,
+      percentMax,
+      amount,
+      maxAmount,
+      usageLimit = 1,
+      assignedToId = null,
+      segments = null,
+      activeFrom = null,
+      expiresAt = null,
+      daysActive = null,
+      windowStart = null,
+      windowEnd = null,
 
-      const qty = Math.max(1, Math.min(Number(quantity) || 1, 10000));
+      // NUEVO: etiquetado para juegos / campañas
+      acquisition = null,  // 'GAME' | 'CLAIM' | 'REWARD' | 'BULK' | 'OTHER'
+      channel     = null,  // 'GAME' | 'WEB' | 'CRM' | 'STORE' | 'APP'
+      gameId      = null,  // Number (si es premio de un juego)
+      campaign    = null,
+    } = req.body;
 
-      // Validaciones por tipo
-      let kind, variant;
-      if (type === 'RANDOM_PERCENT') {
-        kind = 'PERCENT'; variant = 'RANGE';
-        const min = Number(percentMin); const max = Number(percentMax);
-        if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < min || max > 90) {
-          return res.status(400).json({ error: 'bad_range' });
-        }
-      } else if (type === 'FIXED_PERCENT') {
-        kind = 'PERCENT'; variant = 'FIXED';
-        const p = Number(percent);
-        if (!Number.isFinite(p) || p < 1 || p > 90) {
-          return res.status(400).json({ error: 'bad_percent' });
-        }
-      } else if (type === 'FIXED_AMOUNT') {
-        kind = 'AMOUNT'; variant = 'FIXED';
-        const a = Number(amount);
-        if (!Number.isFinite(a) || a <= 0) {
-          return res.status(400).json({ error: 'bad_amount' });
-        }
-      } else {
-        return res.status(400).json({ error: 'bad_type' });
+    const qty = Math.max(1, Math.min(Number(quantity) || 1, 10000));
+
+    // Validaciones por tipo
+    let kind, variant;
+    if (type === 'RANDOM_PERCENT') {
+      kind = 'PERCENT'; variant = 'RANGE';
+      const min = Number(percentMin); const max = Number(percentMax);
+      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < min || max > 90) {
+        return res.status(400).json({ error: 'bad_range' });
       }
-
-      // Normalizaciones
-      const segJson = Array.isArray(segments) && segments.length ? segments : null;
-      const daysJson = normalizeDaysActive(daysActive || null);
-      const winStart = (windowStart == null || windowStart === '') ? null : Number(windowStart);
-      const winEnd   = (windowEnd   == null || windowEnd   === '') ? null : Number(windowEnd);
-
-      // Preparar payloads
-      const prefix =
-        type === 'RANDOM_PERCENT' ? PREFIX.RANDOM_PERCENT :
-        type === 'FIXED_PERCENT'  ? PREFIX.FIXED_PERCENT  :
-                                    PREFIX.FIXED_AMOUNT;
-
-      // Generar códigos únicos en memoria
-      const codes = new Set();
-      while (codes.size < qty) codes.add(codePattern(prefix));
-      const codeArr = Array.from(codes);
-
-      // Datos base
-      const base = {
-        kind, variant,
-        percent     : kind === 'PERCENT' && variant === 'FIXED' ? Number(percent) : null,
-        percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? Number(percentMin) : null,
-        percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? Number(percentMax) : null,
-        amount      : kind === 'AMOUNT' ? String(Number(amount)) : null,
-        maxAmount   : (kind === 'PERCENT' && maxAmount != null && maxAmount !== '')
-                       ? String(Number(maxAmount)) : null,
-        assignedToId: assignedToId ? Number(assignedToId) : null,
-        segments    : segJson,
-        activeFrom  : activeFrom ? new Date(activeFrom) : null,
-        expiresAt   : expiresAt  ? new Date(expiresAt)  : null,
-        daysActive  : daysJson.length ? daysJson : null,
-        windowStart : (winStart != null ? winStart : null),
-        windowEnd   : (winEnd   != null ? winEnd   : null),
-        usageLimit  : Math.max(1, Number(usageLimit) || 1),
-        usedCount   : 0,
-        status      : 'ACTIVE',
-      };
-
-      // Para RANDOM: fijar percent en generación (uniforme entero)
-      function rndPercent(min, max) {
-        const lo = Math.ceil(min), hi = Math.floor(max);
-        return Math.floor(Math.random() * (hi - lo + 1)) + lo; // incl ambos
+    } else if (type === 'FIXED_PERCENT') {
+      kind = 'PERCENT'; variant = 'FIXED';
+      const p = Number(percent);
+      if (!Number.isFinite(p) || p < 1 || p > 90) {
+        return res.status(400).json({ error: 'bad_percent' });
       }
-
-      const rows = codeArr.map(code => ({
-        code,
-        ...base,
-        percent : (kind === 'PERCENT' && variant === 'RANGE')
-                    ? rndPercent(base.percentMin, base.percentMax)
-                    : base.percent
-      }));
-
-      // Inserción
-      await prisma.coupon.createMany({ data: rows, skipDuplicates: true });
-
-      return res.json({
-        ok: true,
-        created: rows.length,
-        sample: rows.slice(0, Math.min(10, rows.length)).map(r => r.code),
-        prefix,
-        type,
-        constraints: {
-          activeFrom: base.activeFrom,
-          expiresAt : base.expiresAt,
-          daysActive: base.daysActive,
-          windowStart: base.windowStart,
-          windowEnd  : base.windowEnd,
-          usageLimit: base.usageLimit,
-          segments: segJson,
-          assignedToId: base.assignedToId
-        }
-      });
-    } catch (e) {
-      console.error('[coupons.bulk-generate] error', e);
-      return res.status(500).json({ error: 'server' });
+    } else if (type === 'FIXED_AMOUNT') {
+      kind = 'AMOUNT'; variant = 'FIXED';
+      const a = Number(amount);
+      if (!Number.isFinite(a) || a <= 0) {
+        return res.status(400).json({ error: 'bad_amount' });
+      }
+    } else {
+      return res.status(400).json({ error: 'bad_type' });
     }
+
+    // Normalizaciones
+    const segJson = Array.isArray(segments) && segments.length ? segments : null;
+    const daysJson = normalizeDaysActive(daysActive || null);
+    const winStart = (windowStart == null || windowStart === '') ? null : Number(windowStart);
+    const winEnd   = (windowEnd   == null || windowEnd   === '') ? null : Number(windowEnd);
+
+    // Prefijo
+    const prefix =
+      type === 'RANDOM_PERCENT' ? PREFIX.RANDOM_PERCENT :
+      type === 'FIXED_PERCENT'  ? PREFIX.FIXED_PERCENT  :
+                                  PREFIX.FIXED_AMOUNT;
+
+    // Códigos únicos
+    const codes = new Set();
+    while (codes.size < qty) codes.add(codePattern(prefix));
+    const codeArr = Array.from(codes);
+
+    // Datos base
+    const base = {
+      kind, variant,
+      percent     : kind === 'PERCENT' && variant === 'FIXED' ? Number(percent) : null,
+      percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? Number(percentMin) : null,
+      percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? Number(percentMax) : null,
+      amount      : kind === 'AMOUNT' ? String(Number(amount)) : null,
+      maxAmount   : (kind === 'PERCENT' && maxAmount != null && maxAmount !== '')
+                     ? String(Number(maxAmount)) : null,
+      assignedToId: assignedToId ? Number(assignedToId) : null,
+      segments    : segJson,
+      activeFrom  : activeFrom ? new Date(activeFrom) : null,
+      expiresAt   : expiresAt  ? new Date(expiresAt)  : null,
+      daysActive  : daysJson.length ? daysJson : null,
+      windowStart : (winStart != null ? winStart : null),
+      windowEnd   : (winEnd   != null ? winEnd   : null),
+      usageLimit  : Math.max(1, Number(usageLimit) || 1),
+      usedCount   : 0,
+      status      : 'ACTIVE',
+
+      // NUEVO: etiquetas
+      acquisition : acquisition ? String(acquisition).toUpperCase() : null,
+      channel     : channel     ? String(channel).toUpperCase()     : null,
+      gameId      : gameId != null ? Number(gameId) : null,
+      campaign    : campaign ?? null
+    };
+
+    // RANDOM: fijar percent en generación (uniforme entero)
+    function rndPercent(min, max) {
+      const lo = Math.ceil(min), hi = Math.floor(max);
+      return Math.floor(Math.random() * (hi - lo + 1)) + lo; // incl ambos
+    }
+
+    const rows = codeArr.map(code => ({
+      code,
+      ...base,
+      percent : (kind === 'PERCENT' && variant === 'RANGE')
+                  ? rndPercent(base.percentMin, base.percentMax)
+                  : base.percent
+    }));
+
+    await prisma.coupon.createMany({ data: rows, skipDuplicates: true });
+
+    return res.json({
+      ok: true,
+      created: rows.length,
+      sample: rows.slice(0, Math.min(10, rows.length)).map(r => r.code),
+      prefix,
+      type,
+      constraints: {
+        activeFrom: base.activeFrom,
+        expiresAt : base.expiresAt,
+        daysActive: base.daysActive,
+        windowStart: base.windowStart,
+        windowEnd  : base.windowEnd,
+        usageLimit: base.usageLimit,
+        segments: segJson,
+        assignedToId: base.assignedToId
+      }
+    });
+  } catch (e) {
+    console.error('[coupons.bulk-generate] error', e);
+    return res.status(500).json({ error: 'server' });
+  }
 });
+
+/* ===========================
+ *  ISSUE (AMOUNT por prefijo)
+ * =========================== */
 router.post('/issue', requireApiKey, async (req, res) => {
   try {
     // Por compat seguimos aceptando "prefix", pero forzamos AMOUNT/FIXED
@@ -232,13 +261,7 @@ router.post('/issue', requireApiKey, async (req, res) => {
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
-    // Buscar cupón disponible:
-    //  - mismo prefijo
-    //  - ACTIVO
-    //  - kind = AMOUNT
-    //  - variant = FIXED
-    //  - con usos disponibles (usageLimit null => ilimitado) o limitados con stock
-    //  - sin expirar (expiresAt null o futura)
+    // cupón disponible: ACTIVO, AMOUNT/FIXED, stock (ilimitado o con saldo), sin expirar
     const row = await prisma.coupon.findFirst({
       where: {
         code:    { startsWith: prefix },
@@ -255,7 +278,6 @@ router.post('/issue', requireApiKey, async (req, res) => {
 
     if (!row) return res.status(409).json({ error: 'out_of_stock' });
 
-    // Marcar la fecha de expiración “dinámica” para este cupón emitido
     await prisma.coupon.update({
       where: { code: row.code },
       data : { expiresAt }
@@ -303,19 +325,16 @@ router.post('/issue', requireApiKey, async (req, res) => {
       }
     }
 
-    // Compat legado: si es AMOUNT devolvemos 'FP' (front viejo)
     const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
 
     return res.json({
       ok: true,
       code,
-      // v2 canónico
-      kindV2: row.kind,                 // 'AMOUNT'
+      kindV2: row.kind,
       amount: row.amount ? Number(row.amount) : null,
       percent: null,
       expiresAt,
-      // compat v1 (front actual)
-      kind: legacyKind,                 // 'FP'
+      kind: legacyKind,
       value: row.amount ? Number(row.amount) : 0,
       notify
     });
@@ -324,35 +343,43 @@ router.post('/issue', requireApiKey, async (req, res) => {
     return res.status(500).json({ error: 'server' });
   }
 });
+
+/* ===========================
+ *  ASSIGN (forzar expiración)
+ * =========================== */
 router.post('/assign', requireApiKey, async (req, res) => {
-    try {
-      const code  = String(req.body.code || '').trim().toUpperCase();
-      const hours = Number(req.body.hours || 24);
-      if (!code || !Number.isFinite(hours) || hours <= 0) {
-        return res.status(400).json({ error: 'bad_request' });
-      }
-
-      const now = nowInTZ();
-      const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
-
-      const updated = await prisma.coupon.updateMany({
-        where: { code, status: 'ACTIVE' },
-        data : { expiresAt }
-      });
-
-      if (updated.count === 0) {
-        const row = await prisma.coupon.findUnique({ where: { code } });
-        if (!row) return res.status(404).json({ error: 'not_found' });
-        if (row.status === 'USED') return res.status(409).json({ error: 'already_used' });
-        return res.status(409).json({ error: 'invalid_state' });
-      }
-
-      return res.json({ ok: true, code, expiresAt });
-    } catch (e) {
-      console.error('[coupons.assign] error', e);
-      return res.status(500).json({ error: 'server' });
+  try {
+    const code  = String(req.body.code || '').trim().toUpperCase();
+    const hours = Number(req.body.hours || 24);
+    if (!code || !Number.isFinite(hours) || hours <= 0) {
+      return res.status(400).json({ error: 'bad_request' });
     }
+
+    const now = nowInTZ();
+    const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
+
+    const updated = await prisma.coupon.updateMany({
+      where: { code, status: 'ACTIVE' },
+      data : { expiresAt }
+    });
+
+    if (updated.count === 0) {
+      const row = await prisma.coupon.findUnique({ where: { code } });
+      if (!row) return res.status(404).json({ error: 'not_found' });
+      if (row.status === 'USED') return res.status(409).json({ error: 'already_used' });
+      return res.status(409).json({ error: 'invalid_state' });
+    }
+
+    return res.json({ ok: true, code, expiresAt });
+  } catch (e) {
+    console.error('[coupons.assign] error', e);
+    return res.status(500).json({ error: 'server' });
+  }
 });
+
+/* ===========================
+ *  VALIDATE
+ * =========================== */
 router.get('/validate', async (req, res) => {
   const code = String(req.query.code || '').trim().toUpperCase();
   if (!code) return res.status(400).json({ error: 'bad_request' });
@@ -368,7 +395,6 @@ router.get('/validate', async (req, res) => {
     if (row.status === 'DISABLED')
       return res.json({ valid:false, reason:'disabled' });
 
-    // Mantener compat: si se marcó USED, lo devolvemos como usado
     if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0) && row.status === 'USED')
       return res.json({ valid:false, reason:'used', expiresAt: row.expiresAt || null });
 
@@ -389,7 +415,6 @@ router.get('/validate', async (req, res) => {
     if (Array.isArray(row.segments) && row.segments.length && segment && !row.segments.includes(segment))
       return res.json({ valid:false, reason:'segment_mismatch' });
 
-    // Derivar "type" para el front
     const type =
       row.kind === 'PERCENT' && row.variant === 'RANGE' ? 'RANDOM_PERCENT' :
       row.kind === 'PERCENT' && row.variant === 'FIXED' ? 'FIXED_PERCENT'  :
@@ -398,10 +423,9 @@ router.get('/validate', async (req, res) => {
 
     return res.json({
       valid: true,
-      // modelo canónico
-      kind     : row.kind,        // 'PERCENT' | 'AMOUNT'
-      variant  : row.variant,     // 'FIXED' | 'RANGE'
-      type,                       // 'RANDOM_PERCENT' | 'FIXED_PERCENT' | 'FIXED_AMOUNT'
+      kind     : row.kind,
+      variant  : row.variant,
+      type,
       percent  : row.kind === 'PERCENT' ? Number(row.percent || 0) : undefined,
       amount   : row.kind === 'AMOUNT'  ? Number(row.amount  || 0) : undefined,
       maxAmount: row.maxAmount != null ? Number(row.maxAmount)      : undefined,
@@ -412,6 +436,10 @@ router.get('/validate', async (req, res) => {
     return res.status(500).json({ error: 'server' });
   }
 });
+
+/* ===========================
+ *  REDEEM
+ * =========================== */
 router.post('/redeem', async (req, res) => {
   const code = String(req.body.code || '').trim().toUpperCase();
   if (!code) return res.status(400).json({ error: 'bad_request' });
@@ -425,7 +453,6 @@ router.post('/redeem', async (req, res) => {
   const nowRef = nowInTZ();
 
   try {
-    // 0) Cargar cupón para validar reglas contextuales
     const row = await prisma.coupon.findUnique({ where: { code } });
     if (!row) return res.status(404).json({ error: 'not_found' });
 
@@ -433,7 +460,6 @@ router.post('/redeem', async (req, res) => {
     if (!isActiveByDate(row, nowRef)) return res.status(409).json({ error: 'expired_or_not_yet' });
     if (!isWithinWindow(row, nowRef)) return res.status(409).json({ error: 'outside_time_window' });
 
-    // Stock disponible: ilimitado si usageLimit null
     if (row.usageLimit != null && (row.usageLimit <= (row.usedCount ?? 0))) {
       return res.status(409).json({ error: 'already_used' });
     }
@@ -445,7 +471,6 @@ router.post('/redeem', async (req, res) => {
       return res.status(409).json({ error: 'segment_mismatch' });
     }
 
-    // 1) Incremento atómico: si ilimitado, no ponemos cláusula usedCount; si limitado, sí
     const whereUpdate = {
       code,
       status: 'ACTIVE',
@@ -462,7 +487,6 @@ router.post('/redeem', async (req, res) => {
     });
 
     if (inc.count === 0) {
-      // Revalidar estado para razón exacta
       const cur = await prisma.coupon.findUnique({ where: { code } });
       if (!cur) return res.status(404).json({ error: 'not_found' });
       if (cur.usageLimit != null && (cur.usageLimit <= (cur.usedCount ?? 0))) return res.status(409).json({ error: 'already_used' });
@@ -471,16 +495,13 @@ router.post('/redeem', async (req, res) => {
       return res.status(409).json({ error: 'invalid_state' });
     }
 
-    // 2) Si llegó al límite, marcar USED (solo si NO es ilimitado)
     const after = await prisma.coupon.findUnique({ where: { code } });
     if (after.usageLimit != null && (after.usedCount ?? 0) >= after.usageLimit && after.status !== 'USED') {
       await prisma.coupon.update({ where: { code }, data: { status: 'USED' } });
     }
 
-    // 3) Registrar el canje (best effort)
     (async () => {
       try {
-        // Determinar segmento snapshot
         let segmentAtRedeem = segmentFromBody || null;
         if (!segmentAtRedeem && customerId) {
           const c = await prisma.customer.findUnique({
@@ -490,20 +511,17 @@ router.post('/redeem', async (req, res) => {
           if (c?.segment) segmentAtRedeem = c.segment; // S1..S4
         }
 
-        // Definir snapshot de valores aplicados
-        const kind    = after.kind;      // 'PERCENT' | 'AMOUNT'
-        const variant = after.variant;   // 'FIXED' | 'RANGE'
+        const kind    = after.kind;
+        const variant = after.variant;
         let percentApplied = null;
         let amountApplied  = null;
 
         if (kind === 'PERCENT') {
-          // En tu `bulk-generate` fijamos percent al crear; lo registramos tal cual
           percentApplied = Number(after.percent ?? 0) || null;
         } else if (kind === 'AMOUNT') {
           amountApplied = after.amount ? Number(after.amount) : null;
         }
 
-        // Nota: discountValue (en €) es el descuento final aplicado (si ya lo sabes aquí)
         const discountValue = (discountValueIn != null && !Number.isNaN(discountValueIn))
           ? discountValueIn
           : null;
@@ -523,13 +541,12 @@ router.post('/redeem', async (req, res) => {
             percentApplied,
             amountApplied,
 
-            discountValue: discountValue != null ? discountValue : null, // € opcional
+            discountValue: discountValue != null ? discountValue : null,
             redeemedAt: nowRef,
             createdAt: nowRef
           }
         });
       } catch (logErr) {
-        // no rompemos el canje si falla el log
         console.error('[coupons.redeem] log redemption error', logErr);
       }
     })();
@@ -540,6 +557,10 @@ router.post('/redeem', async (req, res) => {
     return res.status(500).json({ error: 'server' });
   }
 });
+
+/* ===========================
+ *  METRICS (con KPIs nuevos)
+ * =========================== */
 router.get('/metrics', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
@@ -555,7 +576,7 @@ router.get('/metrics', async (req, res) => {
       if (typeof v === 'string') {
         try { return JSON.parse(v); } catch { return null; }
       }
-      return v; // podría venir ya como objeto
+      return v;
     };
     const isCouponLine = (line) => {
       const code = String(line?.code || '').toUpperCase();
@@ -578,7 +599,7 @@ router.get('/metrics', async (req, res) => {
       return 'AMOUNT';
     };
 
-    // ---- 1) Ventas del rango (impacto real) ----
+    // ---- 1) Ventas del rango ----
     const whereSales = {
       date: { gte: from, lte: to },
       status: 'PAID',
@@ -591,7 +612,7 @@ router.get('/metrics', async (req, res) => {
       select: {
         id: true, date: true, total: true, totalProducts: true, discounts: true,
         extras: true, channel: true, storeId: true,
-        customer: { select: { segment: true } }  // ← para proporcionalidad por segmento
+        customer: { select: { segment: true } }
       },
       orderBy: { date: 'asc' }
     });
@@ -599,21 +620,21 @@ router.get('/metrics', async (req, res) => {
     // ---- 2) Agregación en memoria ----
     let ordersTotal = 0;
     let ordersWithCoupon = 0;
-    let gross = 0;               // totalProducts (pre-descuentos, si lo usas)
-    let net = 0;                 // total (post-descuento)
-    let couponDiscountSum = 0;   // sum(abs(amount)) de líneas de cupón
+    let gross = 0;
+    let net = 0;
+    let couponDiscountSum = 0;
 
     // Para AOV
     let sumTotalWithCoupon = 0;
     let sumTotalWithoutCoupon = 0;
 
-    // Por segmento (proporcional)
-    const segMap = new Map(); // seg -> { orders, withCoupon }
+    // Por segmento proporcional
+    const segMap = new Map();
     const segKey = (s) => (s == null || s === '') ? 'UNSPEC' : String(s);
 
     const byKindCount = { PERCENT: 0, AMOUNT: 0 };
-    const topCodeMap = new Map();         // code -> {count}
-    const byDayCount = new Map();         // yyyy-mm-dd -> count (ventas con cupón)
+    const topCodeMap = new Map();
+    const byDayCount = new Map();
 
     for (const s of sales) {
       ordersTotal += 1;
@@ -650,7 +671,6 @@ router.get('/metrics', async (req, res) => {
           topCodeMap.set(code, c);
         }
 
-        // serie diaria
         const dayKey = isoDay(s.date);
         byDayCount.set(dayKey, (byDayCount.get(dayKey) || 0) + 1);
       } else {
@@ -660,27 +680,25 @@ router.get('/metrics', async (req, res) => {
 
     const ordersWithoutCoupon = Math.max(0, ordersTotal - ordersWithCoupon);
 
-    // Serie continua en el rango (para sparkline)
+    // Serie continua
     const days = [];
     for (let t = new Date(from); t <= to; t = new Date(t.getTime() + 864e5)) {
       const key = t.toISOString().slice(0,10);
       days.push({ day: key, value: byDayCount.get(key) || 0 });
     }
 
-    // Top 5 códigos
     const byCodeTop = Array
       .from(topCodeMap.entries())
       .map(([code, v]) => ({ code, count: v.count }))
       .sort((a,b) => b.count - a.count)
       .slice(0,5);
 
-    // By kind
     const byKind = [
       ...(byKindCount.PERCENT ? [{ kind: 'PERCENT', count: byKindCount.PERCENT }] : []),
       ...(byKindCount.AMOUNT  ? [{ kind: 'AMOUNT',  count: byKindCount.AMOUNT  }] : [])
     ];
 
-    // ---- 3) Periodo previo para comparativas (efectividad/penetración) ----
+    // ---- 3) Periodo previo para comparativas ----
     const periodMs = Math.max(1, to.getTime() - from.getTime());
     const prevFrom = new Date(from.getTime() - periodMs);
     const prevTo   = new Date(from.getTime());
@@ -705,10 +723,10 @@ router.get('/metrics', async (req, res) => {
       if (couponLines.length > 0) prevOrdersWithCoupon += 1;
     }
 
-    // ---- 4) Emitidos (compat) ----
+    // ---- 4) Emitidos ----
     const issued = await prisma.coupon.count({ where: { createdAt: { gte: from, lte: to } } });
 
-    // ---- 5) Construcción de KPIs nuevos ----
+    // ---- 5) KPIs ----
     const aovWith  = ordersWithCoupon    ? (sumTotalWithCoupon    / ordersWithCoupon)    : null;
     const aovWithout = ordersWithoutCoupon ? (sumTotalWithoutCoupon / ordersWithoutCoupon) : null;
     const aovDelta   = (aovWith != null && aovWithout != null) ? (aovWith - aovWithout) : null;
@@ -724,29 +742,24 @@ router.get('/metrics', async (req, res) => {
       ? ((ordersTotal - prevOrdersTotal) / prevOrdersTotal)
       : null;
 
-    // Proporcionalidad por segmento
     const bySegment = Array.from(segMap.values())
       .map(row => ({
-        segment: row.segment,                    // 'S1'...'S4' o 'UNSPEC'
+        segment: row.segment,
         orders: row.orders,
         withCoupon: row.withCoupon,
         penetration: row.orders ? (row.withCoupon / row.orders) : null
       }))
-      // ordenar por penetración desc, luego por órdenes
       .sort((a, b) => (b.penetration || 0) - (a.penetration || 0) || (b.orders - a.orders));
 
-    // ---- 6) Respuesta (compat + extendido) ----
     const kpi = {
-      // COMPAT existentes
       issued,
-      redeemed: ordersWithCoupon,                           // pedidos con cupón
+      redeemed: ordersWithCoupon,
       redemptionRate: issued > 0 ? ordersWithCoupon / issued : null,
       discountTotal: Number(couponDiscountSum || 0),
       byKind,
       byCodeTop,
       dailySpark: days,
 
-      // NUEVOS: totales y AOV
       ordersTotal,
       ordersWithCoupon,
       ordersWithoutCoupon,
@@ -756,8 +769,6 @@ router.get('/metrics', async (req, res) => {
         delta: aovDelta,
         deltaPct: aovDeltaPct
       },
-
-      // NUEVOS: eficacia (proxy) y penetración
       prev: {
         ordersTotal: prevOrdersTotal,
         ordersWithCoupon: prevOrdersWithCoupon
@@ -768,8 +779,6 @@ router.get('/metrics', async (req, res) => {
         delta: penetrationDelta
       },
       ordersGrowthPct,
-
-      // NUEVOS: proporcionalidad por segmento
       bySegment
     };
 
@@ -779,6 +788,10 @@ router.get('/metrics', async (req, res) => {
     return res.status(500).json({ ok: false, error: 'server' });
   }
 });
+
+/* ===========================
+ *  REDEMPTIONS (lista)
+ * =========================== */
 router.get('/redemptions', async (req, res) => {
   try {
     const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 30*864e5);
@@ -815,19 +828,13 @@ router.get('/redemptions', async (req, res) => {
     res.status(500).json({ ok: false, error: 'server' });
   }
 });
+
+/* ===========================
+ *  GALLERY (cards agrupadas)
+ * =========================== */
 router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
-
-    // Conversión robusta a número (Decimal, string, number)
-    const toNum = (v) => {
-      if (v == null) return null;
-      if (typeof v === 'object' && typeof v.toNumber === 'function') {
-        try { return v.toNumber(); } catch { /* noop */ }
-      }
-      const n = Number(String(v));
-      return Number.isFinite(n) ? n : null;
-    };
 
     const variantOf = (r) => {
       if (r.variant) return r.variant; // 'FIXED' | 'RANGE'
@@ -835,7 +842,6 @@ router.get('/gallery', async (_req, res) => {
       return 'FIXED';
     };
 
-    // 1) Traer activos (sin prefiltrar por stock)
     const rows = await prisma.coupon.findMany({
       where: { status: 'ACTIVE' },
       select: {
@@ -849,13 +855,12 @@ router.get('/gallery', async (_req, res) => {
       orderBy: { id: 'asc' }
     });
 
-    // ===== DIAGNÓSTICO =====
     const dbg = {
       total: rows.length,
       byKind: { PERCENT: 0, AMOUNT: 0 },
       amount: {
         total: 0, active: 0,
-        samplesRejected: [], // [{code, reason, usageLimit, usedCount, activeFrom, expiresAt}]
+        samplesRejected: [],
         sampleAccepted: null
       }
     };
@@ -864,7 +869,6 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
     }
 
-    // 2) Vida útil + ventana diaria + stock (ilimitado = true)
     const active = rows.filter(r => {
       const inLife   = isActiveByDate(r, now);
       const inWindow = isWithinWindow(r, now);
@@ -904,7 +908,6 @@ router.get('/gallery', async (_req, res) => {
       return ok;
     });
 
-    // 3) Helpers de agrupación
     const keyFor = (r) => {
       const v    = variantOf(r);
       const pct  = toNum(r.percent);
@@ -942,7 +945,6 @@ router.get('/gallery', async (_req, res) => {
       return 'UNKNOWN';
     };
 
-    // 4) Agrupar
     const groups = new Map();
     const scoreSample = (r) => {
       const hasDays = normalizeDaysActive(r.daysActive).length > 0;
@@ -968,8 +970,7 @@ router.get('/gallery', async (_req, res) => {
       const used  = toNum(r.usedCount) ?? 0;
       const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
       if (limitNum == null) {
-        // cualquier cupón ilimitado del grupo => remaining = null
-        cur.remaining = null;
+        cur.remaining = null; // ilimitado
       } else if (cur.remaining !== null) {
         cur.remaining += Math.max(0, limitNum - used);
       }
@@ -980,7 +981,6 @@ router.get('/gallery', async (_req, res) => {
       groups.set(k, cur);
     }
 
-    // 5) Tarjetas
     const cards = Array.from(groups.values()).map(g => {
       const s = g.sample || {};
       const constraints = {
@@ -1007,7 +1007,162 @@ router.get('/gallery', async (_req, res) => {
   }
 });
 
+/* ===========================
+ *  GAMES: PRIZE PREVIEW
+ * =========================== */
+router.get('/games/:gameId/prize', async (req, res) => {
+  try {
+    const gameId = Number(req.params.gameId);
+    if (!Number.isFinite(gameId)) return res.status(400).json({ ok:false, error:'bad_game' });
 
+    const now = nowInTZ();
 
-  return router;
+    const rows = await prisma.coupon.findMany({
+      where: {
+        status: 'ACTIVE',
+        acquisition: 'GAME',
+        gameId
+      },
+      select: {
+        kind: true, variant: true, percent: true, percentMin: true, percentMax: true,
+        amount: true, maxAmount: true, usageLimit: true, usedCount: true,
+        activeFrom: true, expiresAt: true, daysActive: true, windowStart: true, windowEnd: true
+      },
+      take: 300
+    });
+
+    const valid = rows.filter(r => {
+      const limit = toNum(r.usageLimit) ?? null;
+      const used  = toNum(r.usedCount)  ?? 0;
+      const hasStock = (limit == null) ? true : (limit > used);
+      return isActiveByDate(r, now) && isWithinWindow(r, now) && hasStock;
+    });
+
+    if (!valid.length) return res.json({ ok:true, prize: null });
+
+    const r = valid[0];
+    const isRange = r.kind === 'PERCENT' && (toNum(r.percentMin) != null && toNum(r.percentMax) != null);
+    const title =
+      (r.kind === 'AMOUNT' && r.variant === 'FIXED' && r.amount != null) ? `${Number(r.amount).toFixed(2)} €` :
+      (isRange) ? `${r.percentMin}–${r.percentMax}%` :
+      (r.kind === 'PERCENT' && r.percent != null) ? `${r.percent}%` :
+      'Cupón';
+
+    const remaining = valid.reduce((acc, x) => {
+      const limit = toNum(x.usageLimit) ?? null;
+      const used  = toNum(x.usedCount)  ?? 0;
+      return acc + (limit == null ? 0 : Math.max(0, limit - used)); // si hay ilimitados, reporta solo sum finitos
+    }, 0);
+
+    res.json({
+      ok: true,
+      prize: {
+        gameId,
+        kind: r.kind,
+        variant: r.variant,
+        title,
+        remaining
+      }
+    });
+  } catch (e) {
+    console.error('[games.prize] error', e);
+    res.status(500).json({ ok:false, error:'server' });
+  }
+});
+
+/* ===========================
+ *  GAMES: ISSUE FROM POOL
+ * =========================== */
+router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
+  try {
+    const gameId = Number(req.params.gameId);
+    if (!Number.isFinite(gameId)) return res.status(400).json({ error:'bad_game' });
+
+    const hours = Number(req.body.hours || 24);
+    if (!Number.isFinite(hours) || hours <= 0) return res.status(400).json({ error:'bad_hours' });
+
+    const now = nowInTZ();
+    const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
+
+    // primer cupón válido del pool del juego (admite AMOUNT o PERCENT según lo que tenga el pool)
+    const row = await prisma.coupon.findFirst({
+      where: {
+        status: 'ACTIVE',
+        acquisition: 'GAME',
+        gameId,
+        AND: [
+          { OR: [{ usageLimit: null }, { usedCount: { lt: prisma.coupon.fields.usageLimit } }] },
+          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        ],
+      },
+      orderBy: { id: 'asc' }
+    });
+    if (!row) return res.status(409).json({ error:'out_of_stock' });
+
+    await prisma.coupon.update({
+      where: { code: row.code },
+      data : {
+        expiresAt,
+        assignedToId: req.body.customerId ? Number(req.body.customerId) : row.assignedToId ?? null,
+        channel: 'GAME',
+        campaign: req.body.campaign ?? row.campaign ?? null
+      }
+    });
+
+    // Notificación opcional al usuario/admin
+    const contact     = String(req.body.contact || '').trim();
+    const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+    const adminPhone  = process.env.ADMIN_PHONE || '';
+    const whenTxt     = fmtExpiry(expiresAt);
+    const code        = row.code;
+    const notify = { user: { tried: false }, admin: { tried: false } };
+
+    if (contact) {
+      notify.user.tried = true;
+      const userMsg =
+        `🎉 ¡Ganaste! Premio del juego: cupón ${code}\n` +
+        `Úsalo en ${siteUrl}\n` +
+        `Vence ${whenTxt}.`;
+      try {
+        const resp = await sendSMS(contact, userMsg);
+        notify.user.ok  = true;
+        notify.user.sid = resp.sid;
+      } catch (err) {
+        notify.user.ok = false;
+        notify.user.error = err.message;
+      }
+    }
+    if (adminPhone) {
+      notify.admin.tried = true;
+      const adminMsg = `ALERTA MCP 🎯 Premio juego #${gameId} emitido: ${code} (vence ${whenTxt})`;
+      try {
+        const resp = await sendSMS(adminPhone, adminMsg);
+        notify.admin.ok  = true;
+        notify.admin.sid = resp.sid;
+      } catch (err) {
+        notify.admin.ok = false;
+        notify.admin.error = err.message;
+      }
+    }
+
+    // respuesta homogénea
+    const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
+    return res.json({
+      ok: true,
+      code,
+      kindV2: row.kind,
+      amount: row.amount ? Number(row.amount) : null,
+      percent: row.kind === 'PERCENT' ? Number(row.percent || 0) : null,
+      expiresAt,
+      kind: legacyKind,
+      value: row.kind === 'AMOUNT' ? Number(row.amount || 0) : Number(row.percent || 0),
+      notify
+    });
+  } catch (e) {
+    console.error('[games.issue] error', e);
+    res.status(500).json({ ok:false, error:'server' });
+  }
+});
+
+return router;
 };
