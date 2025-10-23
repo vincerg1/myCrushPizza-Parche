@@ -570,7 +570,6 @@ router.get('/metrics', async (req, res) => {
     const inferKind = (line, totalProducts) => {
       const lbl = String(line?.label || '');
       if (/%/.test(lbl)) return 'PERCENT';
-      // si no viene en label, inferimos por proporción
       const amt = Math.abs(Number(line?.amount || 0));
       if (totalProducts > 0) {
         const rate = amt / totalProducts;
@@ -584,24 +583,33 @@ router.get('/metrics', async (req, res) => {
       date: { gte: from, lte: to },
       status: 'PAID',
       ...(storeId ? { storeId } : {}),
-      ...(segment ? { customer: { segment } } : {})  // join con Customer para filtrar por segmento
+      ...(segment ? { customer: { segment } } : {})  // filtrar por segmento si se pasa en query
     };
 
     const sales = await prisma.sale.findMany({
       where: whereSales,
       select: {
         id: true, date: true, total: true, totalProducts: true, discounts: true,
-        extras: true, channel: true, storeId: true
+        extras: true, channel: true, storeId: true,
+        customer: { select: { segment: true } }  // ← para proporcionalidad por segmento
       },
       orderBy: { date: 'asc' }
     });
 
-    // ---- 2) Agregación en memoria a partir de extras ----
+    // ---- 2) Agregación en memoria ----
     let ordersTotal = 0;
     let ordersWithCoupon = 0;
-    let gross = 0;               // totalProducts
-    let net = 0;                 // total
-    let couponDiscountSum = 0;   // sum(abs(amount)) solo de líneas de cupón
+    let gross = 0;               // totalProducts (pre-descuentos, si lo usas)
+    let net = 0;                 // total (post-descuento)
+    let couponDiscountSum = 0;   // sum(abs(amount)) de líneas de cupón
+
+    // Para AOV
+    let sumTotalWithCoupon = 0;
+    let sumTotalWithoutCoupon = 0;
+
+    // Por segmento (proporcional)
+    const segMap = new Map(); // seg -> { orders, withCoupon }
+    const segKey = (s) => (s == null || s === '') ? 'UNSPEC' : String(s);
 
     const byKindCount = { PERCENT: 0, AMOUNT: 0 };
     const topCodeMap = new Map();         // code -> {count}
@@ -614,12 +622,20 @@ router.get('/metrics', async (req, res) => {
 
       const extras = safeParse(s.extras) || [];
       const couponLines = extras.filter(isCouponLine);
-      if (couponLines.length > 0) {
+      const hasCoupon = couponLines.length > 0;
+
+      // segmentos
+      const sk = segKey(s.customer?.segment);
+      const cur = segMap.get(sk) || { segment: sk, orders: 0, withCoupon: 0 };
+      cur.orders += 1;
+      if (hasCoupon) cur.withCoupon += 1;
+      segMap.set(sk, cur);
+
+      if (hasCoupon) {
         ordersWithCoupon += 1;
+        sumTotalWithCoupon += Number(s.total || 0);
 
-        // sumar descuento de cupón y clasificar
         const totalProducts = Number(s.totalProducts || 0);
-
         for (const line of couponLines) {
           const amt = Math.abs(Number(line?.amount || 0));
           couponDiscountSum += amt;
@@ -629,18 +645,22 @@ router.get('/metrics', async (req, res) => {
           else byKindCount.AMOUNT += 1;
 
           const code = extractCouponCode(line);
-          const cur = topCodeMap.get(code) || { count: 0 };
-          cur.count += 1;
-          topCodeMap.set(code, cur);
+          const c = topCodeMap.get(code) || { count: 0 };
+          c.count += 1;
+          topCodeMap.set(code, c);
         }
 
         // serie diaria
         const dayKey = isoDay(s.date);
         byDayCount.set(dayKey, (byDayCount.get(dayKey) || 0) + 1);
+      } else {
+        sumTotalWithoutCoupon += Number(s.total || 0);
       }
     }
 
-    // Serie continua en el rango
+    const ordersWithoutCoupon = Math.max(0, ordersTotal - ordersWithCoupon);
+
+    // Serie continua en el rango (para sparkline)
     const days = [];
     for (let t = new Date(from); t <= to; t = new Date(t.getTime() + 864e5)) {
       const key = t.toISOString().slice(0,10);
@@ -660,20 +680,97 @@ router.get('/metrics', async (req, res) => {
       ...(byKindCount.AMOUNT  ? [{ kind: 'AMOUNT',  count: byKindCount.AMOUNT  }] : [])
     ];
 
-    // ---- 3) Emitidos (mantenemos este KPI como antes para compatibilidad) ----
-    const issued = await prisma.coupon.count({
-      where: { createdAt: { gte: from, lte: to } }
+    // ---- 3) Periodo previo para comparativas (efectividad/penetración) ----
+    const periodMs = Math.max(1, to.getTime() - from.getTime());
+    const prevFrom = new Date(from.getTime() - periodMs);
+    const prevTo   = new Date(from.getTime());
+
+    const prevSales = await prisma.sale.findMany({
+      where: {
+        status: 'PAID',
+        date: { gte: prevFrom, lte: prevTo },
+        ...(storeId ? { storeId } : {}),
+        ...(segment ? { customer: { segment } } : {})
+      },
+      select: { id: true, total: true, totalProducts: true, extras: true },
+      orderBy: { date: 'asc' }
     });
 
-    // ---- 4) Construcción de respuesta (MISMAS CLAVES) ----
+    let prevOrdersTotal = 0;
+    let prevOrdersWithCoupon = 0;
+    for (const s of prevSales) {
+      prevOrdersTotal += 1;
+      const extras = safeParse(s.extras) || [];
+      const couponLines = extras.filter(isCouponLine);
+      if (couponLines.length > 0) prevOrdersWithCoupon += 1;
+    }
+
+    // ---- 4) Emitidos (compat) ----
+    const issued = await prisma.coupon.count({ where: { createdAt: { gte: from, lte: to } } });
+
+    // ---- 5) Construcción de KPIs nuevos ----
+    const aovWith  = ordersWithCoupon    ? (sumTotalWithCoupon    / ordersWithCoupon)    : null;
+    const aovWithout = ordersWithoutCoupon ? (sumTotalWithoutCoupon / ordersWithoutCoupon) : null;
+    const aovDelta   = (aovWith != null && aovWithout != null) ? (aovWith - aovWithout) : null;
+    const aovDeltaPct = (aovWith != null && aovWithout) ? (aovWith / aovWithout - 1) : null;
+
+    const penetrationNow  = ordersTotal ? (ordersWithCoupon / ordersTotal) : null;
+    const penetrationPrev = prevOrdersTotal ? (prevOrdersWithCoupon / prevOrdersTotal) : null;
+    const penetrationDelta = (penetrationNow != null && penetrationPrev != null)
+      ? (penetrationNow - penetrationPrev)
+      : null;
+
+    const ordersGrowthPct = (prevOrdersTotal > 0)
+      ? ((ordersTotal - prevOrdersTotal) / prevOrdersTotal)
+      : null;
+
+    // Proporcionalidad por segmento
+    const bySegment = Array.from(segMap.values())
+      .map(row => ({
+        segment: row.segment,                    // 'S1'...'S4' o 'UNSPEC'
+        orders: row.orders,
+        withCoupon: row.withCoupon,
+        penetration: row.orders ? (row.withCoupon / row.orders) : null
+      }))
+      // ordenar por penetración desc, luego por órdenes
+      .sort((a, b) => (b.penetration || 0) - (a.penetration || 0) || (b.orders - a.orders));
+
+    // ---- 6) Respuesta (compat + extendido) ----
     const kpi = {
+      // COMPAT existentes
       issued,
-      redeemed: ordersWithCoupon,                           // ahora = pedidos con cupón
+      redeemed: ordersWithCoupon,                           // pedidos con cupón
       redemptionRate: issued > 0 ? ordersWithCoupon / issued : null,
-      discountTotal: Number(couponDiscountSum || 0),        // € de cupón aplicado
+      discountTotal: Number(couponDiscountSum || 0),
       byKind,
       byCodeTop,
-      dailySpark: days
+      dailySpark: days,
+
+      // NUEVOS: totales y AOV
+      ordersTotal,
+      ordersWithCoupon,
+      ordersWithoutCoupon,
+      aov: {
+        withCoupon: aovWith,
+        withoutCoupon: aovWithout,
+        delta: aovDelta,
+        deltaPct: aovDeltaPct
+      },
+
+      // NUEVOS: eficacia (proxy) y penetración
+      prev: {
+        ordersTotal: prevOrdersTotal,
+        ordersWithCoupon: prevOrdersWithCoupon
+      },
+      penetration: {
+        now: penetrationNow,
+        prev: penetrationPrev,
+        delta: penetrationDelta
+      },
+      ordersGrowthPct,
+
+      // NUEVOS: proporcionalidad por segmento
+      bySegment
     };
 
     return res.json({ ok: true, range: { from, to }, storeId, segment, kpi });
