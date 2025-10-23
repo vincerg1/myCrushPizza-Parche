@@ -29,6 +29,23 @@ async function fetchJson(path) {
     throw new Error(`Respuesta no válida. ${txt.slice(0, 200)}`);
   }
 }
+async function postJson(path, body) {
+  const url = /^https?:\/\//i.test(path) ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const txt = await res.text();
+  try {
+    const data = JSON.parse(txt);
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+    return data;
+  } catch {
+    throw new Error(`Respuesta no válida. ${txt.slice(0, 200)}`);
+  }
+}
 
 /** ===== Utils ===== */
 const fmtMoney = (n) => n == null ? "—" : `€ ${Number(n || 0).toFixed(2)}`;
@@ -77,6 +94,11 @@ export default function OffersOverview({ onNavigate = () => {} }) {
   const [openType, setOpenType] = useState(null); // 'RANDOM_PERCENT' | 'FIXED_PERCENT' | 'FIXED_AMOUNT' | null
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("default"); // default | title | remaining | expires
+
+  // asignación (modal)
+  const [assignTarget, setAssignTarget] = useState(null); // { type, key, title }
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignErr, setAssignErr] = useState("");
 
   const loadMetrics = async () => {
     setLoading(true); setErr("");
@@ -177,6 +199,33 @@ export default function OffersOverview({ onNavigate = () => {} }) {
 
   const closeModal = () => { setOpenType(null); setSearch(""); setSortBy("default"); };
 
+  // submit asignación
+  const submitAssign = async (form) => {
+    if (!assignTarget) return;
+    setAssignBusy(true); setAssignErr("");
+    try {
+      const payload = {
+        filter: { type: assignTarget.type, key: assignTarget.key, status: "ACTIVE" },
+        set: {
+          acquisition: form.acquisition || null,
+          channel: form.channel || null,
+          gameId: form.gameId ? Number(form.gameId) : null,
+          campaign: form.campaign || null,
+        }
+      };
+      await postJson("/api/coupons/bulk-tag", payload);
+      // feedback & refresh
+      alert(`Asignado: ${assignTarget.title} → ${form.acquisition}/${form.channel}${form.gameId ? ` (gameId=${form.gameId})` : ""}`);
+      setAssignTarget(null);
+      await loadGallery();
+    } catch (e) {
+      console.error(e);
+      setAssignErr(e.message || "No se pudo asignar.");
+    } finally {
+      setAssignBusy(false);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", display: "grid", gap: 16 }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -230,7 +279,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
           </div>
         </div>
 
-        {/* Indicadores nuevos (sustituye Por tipo / Top códigos) */}
+        {/* Indicadores nuevos */}
         <div style={{ display: "grid", gap: 16 }}>
           <TicketImpactCard kpi={kpi} />
           <EffectivenessCard kpi={kpi} />
@@ -264,7 +313,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         <button className="btn" onClick={() => onNavigate("offers/sms")}>✉️ Enviar SMS</button>
       </section>
 
-      {/* Modal */}
+      {/* Modal de listado por tipo */}
       {openType && (
         <Modal onClose={closeModal} title={`Cupones · ${openType}`}>
           <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
@@ -281,8 +330,22 @@ export default function OffersOverview({ onNavigate = () => {} }) {
               <option value="expires">Caducidad (más próximo)</option>
             </select>
           </div>
-          <CardsGrid cards={modalItems} />
+          <CardsGrid
+            cards={modalItems}
+            onAssign={(c) => setAssignTarget({ type: c.type, key: c.key, title: c.title })}
+          />
         </Modal>
+      )}
+
+      {/* Modal de asignación */}
+      {assignTarget && (
+        <AssignModal
+          target={assignTarget}
+          busy={assignBusy}
+          error={assignErr}
+          onCancel={() => { if (!assignBusy) setAssignTarget(null); }}
+          onSubmit={submitAssign}
+        />
       )}
     </div>
   );
@@ -471,7 +534,7 @@ function FolderCard({ group, onOpen }) {
 }
 
 /** ====== Grid de tarjetas ====== */
-function CardsGrid({ cards }) {
+function CardsGrid({ cards, onAssign }) {
   if (!cards?.length) return <div style={{opacity:.6}}>No hay cupones para mostrar.</div>;
   return (
     <div style={{
@@ -479,12 +542,18 @@ function CardsGrid({ cards }) {
       gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))",
       gap:12
     }}>
-      {cards.map((c,i) => <CouponCard key={`${c.type}-${c.key}-${i}`} c={c} />)}
+      {cards.map((c,i) => (
+        <CouponCard
+          key={`${c.type}-${c.key}-${i}`}
+          c={c}
+          onAssign={onAssign}
+        />
+      ))}
     </div>
   );
 }
 
-function CouponCard({ c }) {
+function CouponCard({ c, onAssign }) {
   const isUnlimited = c.remaining == null;
   const muted = isUnlimited ? false : c.remaining <= 0;
   const remainingLabel = isUnlimited ? "∞" : c.remaining;
@@ -521,7 +590,9 @@ function CouponCard({ c }) {
       borderRadius:12,
       padding:12,
       background:"#fff",
-      opacity: muted ? .5 : 1
+      opacity: muted ? .5 : 1,
+      display:"grid",
+      gap:8
     }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
         <div style={{ fontSize:12, padding:"2px 8px", background:badgeBg, borderRadius:999 }}>
@@ -535,9 +606,20 @@ function CouponCard({ c }) {
       <div style={{ fontSize:24, fontWeight:800, marginTop:6 }}>{c.title}</div>
       <div style={{ fontSize:14, opacity:.8 }}>{c.subtitle}</div>
 
-      <button className="btn" style={{ marginTop:10, width:"100%" }} disabled={muted}>
-        {c.cta}
-      </button>
+      <div style={{ display:"flex", gap:8, marginTop:6 }}>
+        <button className="btn" style={{ flex:1 }} disabled={muted}>
+          {c.cta}
+        </button>
+        {onAssign && (
+          <button
+            className="btn"
+            style={{ flex:1, background:"#111827", color:"#fff", borderColor:"#111827" }}
+            onClick={() => onAssign(c)}
+          >
+            Asignar
+          </button>
+        )}
+      </div>
 
       {constraints}
       {lifetime}
@@ -577,5 +659,86 @@ function Modal({ title, children, onClose }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/** ====== Modal de asignación ====== */
+function AssignModal({ target, busy, error, onCancel, onSubmit }) {
+  const [acquisition, setAcquisition] = useState("GAME");
+  const [channel, setChannel] = useState("GAME");
+  const [gameId, setGameId] = useState("1");
+  const [campaign, setCampaign] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    onSubmit({ acquisition, channel, gameId, campaign });
+  };
+
+  return (
+    <Modal onClose={onCancel} title={`Asignar pool · ${target.title}`}>
+      <form onSubmit={submit} style={{ display:"grid", gap:12 }}>
+        <div style={{ fontSize:12, opacity:.7 }}>
+          Grupo: <b>{target.type}</b> · Clave: <b>{target.key}</b>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <label style={{ display:"grid", gap:6 }}>
+            <span style={{ fontSize:12, opacity:.7 }}>Uso (acquisition)</span>
+            <select value={acquisition} onChange={e=>setAcquisition(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}>
+              <option value="GAME">GAME</option>
+              <option value="CLAIM">CLAIM</option>
+              <option value="REWARD">REWARD</option>
+              <option value="BULK">BULK</option>
+              <option value="DIRECT">DIRECT</option>
+              <option value="OTHER">OTHER</option>
+            </select>
+          </label>
+
+          <label style={{ display:"grid", gap:6 }}>
+            <span style={{ fontSize:12, opacity:.7 }}>Canal</span>
+            <select value={channel} onChange={e=>setChannel(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}>
+              <option value="GAME">GAME</option>
+              <option value="WEB">WEB</option>
+              <option value="CRM">CRM</option>
+              <option value="STORE">STORE</option>
+              <option value="APP">APP</option>
+              <option value="SMS">SMS</option>
+              <option value="EMAIL">EMAIL</option>
+            </select>
+          </label>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+          <label style={{ display:"grid", gap:6 }}>
+            <span style={{ fontSize:12, opacity:.7 }}>gameId (opcional salvo canal GAME)</span>
+            <input
+              value={gameId}
+              onChange={e=>setGameId(e.target.value.replace(/[^\d]/g,""))}
+              placeholder="1"
+              style={{ padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}
+            />
+          </label>
+
+          <label style={{ display:"grid", gap:6 }}>
+            <span style={{ fontSize:12, opacity:.7 }}>Campaign (opcional)</span>
+            <input
+              value={campaign}
+              onChange={e=>setCampaign(e.target.value)}
+              placeholder="Halloween-2025"
+              style={{ padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}
+            />
+          </label>
+        </div>
+
+        {error && <div style={{ color:"crimson" }}>{error}</div>}
+
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancelar</button>
+          <button type="submit" className="btn" disabled={busy} style={{ background:"#111827", color:"#fff", borderColor:"#111827" }}>
+            {busy ? "Asignando…" : "Asignar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
