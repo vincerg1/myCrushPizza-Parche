@@ -31,7 +31,8 @@ async function fetchJson(path) {
 }
 
 /** ===== Utils ===== */
-const fmtMoney = (n) => `€ ${Number(n || 0).toFixed(2)}`;
+const fmtMoney = (n) => n == null ? "—" : `€ ${Number(n || 0).toFixed(2)}`;
+const fmtPct = (x, digits = 1) => (x == null ? "—" : `${(x * 100).toFixed(digits)}%`);
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysAgoISO = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
 
@@ -46,8 +47,7 @@ const mmToHHMM = (m) => {
 };
 const sumRemaining = (list) => {
   if (!Array.isArray(list) || !list.length) return 0;
-  // si cualquiera es ilimitado => null
-  if (list.some(c => c.remaining == null)) return null;
+  if (list.some(c => c.remaining == null)) return null; // ilimitado
   return list.reduce((acc, c) => acc + Math.max(0, Number(c.remaining || 0)), 0);
 };
 const ORDER_TYPES = ["RANDOM_PERCENT","FIXED_PERCENT","FIXED_AMOUNT"];
@@ -130,7 +130,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
     return { W, H, P, pts, max, last: values.at(-1) || 0, total: values.reduce((a,b)=>a+b,0) };
   }, [kpi.dailySpark]);
 
-  // agrupación por tipo
+  // agrupación por tipo (para carpetas)
   const groups = useMemo(() => {
     const byType = new Map();
     for (const t of ORDER_TYPES) byType.set(t, []); // precrear 3 carpetas
@@ -138,18 +138,11 @@ export default function OffersOverview({ onNavigate = () => {} }) {
       if (!byType.has(c.type)) byType.set(c.type, []);
       byType.get(c.type).push(c);
     }
-    // crear modelo de carpeta
     const folders = [];
     for (const t of ORDER_TYPES) {
       const list = byType.get(t) || [];
       if (!list.length) {
-        folders.push({
-          type: t,
-          count: 0,
-          remaining: 0,
-          examples: [],
-          items: []
-        });
+        folders.push({ type: t, count: 0, remaining: 0, examples: [], items: [] });
         continue;
       }
       const remaining = sumRemaining(list);
@@ -163,8 +156,6 @@ export default function OffersOverview({ onNavigate = () => {} }) {
   const modalItems = useMemo(() => {
     if (!openType) return [];
     let list = (groups.find(g => g.type === openType)?.items || []).slice();
-
-    // filtro por búsqueda (en title, key)
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(c =>
@@ -172,8 +163,6 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         String(c.key || "").toLowerCase().includes(q)
       );
     }
-
-    // orden
     if (sortBy === "title") {
       list.sort((a,b) => String(a.title).localeCompare(String(b.title), "es"));
     } else if (sortBy === "remaining") {
@@ -181,13 +170,11 @@ export default function OffersOverview({ onNavigate = () => {} }) {
       list.sort((a,b) => v(b) - v(a));
     } else if (sortBy === "expires") {
       const v = (c) => c?.lifetime?.expiresAt ? new Date(c.lifetime.expiresAt).getTime() : Number.POSITIVE_INFINITY;
-      list.sort((a,b) => v(a) - v(b)); // primero los que caducan antes
+      list.sort((a,b) => v(a) - v(b));
     }
-    // default: como viene del backend (ya ordenado por título), no tocamos
     return list;
   }, [openType, groups, search, sortBy]);
 
-  // cerrar modal => reset UI modal
   const closeModal = () => { setOpenType(null); setSearch(""); setSortBy("default"); };
 
   return (
@@ -216,7 +203,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
 
       {err && <div style={{ color: "crimson" }}>{err}</div>}
 
-      {/* KPIs */}
+      {/* KPIs cabecera */}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12 }}>
         <KpiCard title="Cupones emitidos" value={kpi.issued ?? 0} />
         <KpiCard title="Redenciones" value={kpi.redeemed ?? 0} />
@@ -225,8 +212,9 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         <KpiCard title="Descuento total" value={fmtMoney(kpi.discountTotal)} />
       </section>
 
-      {/* Actividad + breakdown */}
+      {/* Actividad + Indicadores accionables */}
       <section style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, alignItems: "stretch" }}>
+        {/* Actividad */}
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
             <strong>Actividad (redenciones por día)</strong>
@@ -242,31 +230,11 @@ export default function OffersOverview({ onNavigate = () => {} }) {
           </div>
         </div>
 
+        {/* Indicadores nuevos (sustituye Por tipo / Top códigos) */}
         <div style={{ display: "grid", gap: 16 }}>
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-            <strong>Por tipo</strong>
-            <div style={{ marginTop: 8, display:"grid", gap:6 }}>
-              {(kpi.byKind || []).map(k => (
-                <div key={k.kind} style={{ display:"flex", justifyContent:"space-between" }}>
-                  <span>{k.kind === "PERCENT" ? "Porcentaje" : "Monto fijo"}</span>
-                  <strong>{k.count}</strong>
-                </div>
-              ))}
-              {(!kpi.byKind || !kpi.byKind.length) && <div style={{opacity:.6}}>—</div>}
-            </div>
-          </div>
-          <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
-            <strong>Top códigos</strong>
-            <div style={{ marginTop: 8, display:"grid", gap:6 }}>
-              {(kpi.byCodeTop || []).map(x => (
-                <div key={x.code} style={{ display:"flex", justifyContent:"space-between", fontVariantNumeric:"tabular-nums" }}>
-                  <span style={{ opacity:.8 }}>{x.code}</span>
-                  <strong>{x.count}</strong>
-                </div>
-              ))}
-              {(!kpi.byCodeTop || !kpi.byCodeTop.length) && <div style={{opacity:.6}}>—</div>}
-            </div>
-          </div>
+          <TicketImpactCard kpi={kpi} />
+          <EffectivenessCard kpi={kpi} />
+          <SegmentPenetrationCard kpi={kpi} />
         </div>
       </section>
 
@@ -320,12 +288,119 @@ export default function OffersOverview({ onNavigate = () => {} }) {
   );
 }
 
-/** KPI simple */
+/** ========= Componentes auxiliares ========= */
 function KpiCard({ title, value }) {
   return (
     <div style={{ border:"1px solid #e5e7eb", borderRadius:12, padding:14, background:"#fff" }}>
       <div style={{ fontSize:12, opacity:.7 }}>{title}</div>
       <div style={{ fontSize:24, fontWeight:700, marginTop:6, fontVariantNumeric:"tabular-nums" }}>{value}</div>
+    </div>
+  );
+}
+
+function DeltaBadge({ value, isPct=false }) {
+  if (value == null || Number.isNaN(value)) return <span style={{ opacity:.6 }}>—</span>;
+  const positive = value > 0;
+  const txt = isPct ? `${(value*100).toFixed(1)}%` : (value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2));
+  return (
+    <span style={{
+      padding:"2px 8px",
+      borderRadius:999,
+      background: positive ? "#ecfdf5" : "#fef2f2",
+      color: positive ? "#065f46" : "#991b1b",
+      fontSize:12,
+      fontWeight:600
+    }}>
+      {positive ? "↑" : "↓"} {txt}
+    </span>
+  );
+}
+
+/** 🎟️ Ticket medio con/sin cupón */
+function TicketImpactCard({ kpi }) {
+  const withC = kpi?.aov?.withCoupon ?? null;
+  const withoutC = kpi?.aov?.withoutCoupon ?? null;
+  const delta = kpi?.aov?.delta ?? null;
+  const deltaPct = kpi?.aov?.deltaPct ?? null;
+  return (
+    <div style={{ border:"1px solid #e5e7eb", borderRadius:12, padding:14 }}>
+      <strong>Ticket medio (impacto)</strong>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:8, alignItems:"end" }}>
+        <div>
+          <div style={{ fontSize:12, opacity:.7 }}>Con cupón</div>
+          <div style={{ fontSize:20, fontWeight:700 }}>{fmtMoney(withC)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:12, opacity:.7 }}>Sin cupón</div>
+          <div style={{ fontSize:20, fontWeight:700 }}>{fmtMoney(withoutC)}</div>
+        </div>
+      </div>
+      <div style={{ marginTop:8, display:"flex", gap:8, alignItems:"center" }}>
+        <span style={{ opacity:.7, fontSize:12 }}>Efecto</span>
+        <DeltaBadge value={delta} />
+        <DeltaBadge value={deltaPct} isPct />
+      </div>
+    </div>
+  );
+}
+
+/** 🚀 Efectividad (crecimiento y penetración) */
+function EffectivenessCard({ kpi }) {
+  const growth = kpi?.ordersGrowthPct ?? null;
+  const penNow = kpi?.penetration?.now ?? null;
+  const penPrev = kpi?.penetration?.prev ?? null;
+  const penDelta = kpi?.penetration?.delta ?? null;
+  return (
+    <div style={{ border:"1px solid #e5e7eb", borderRadius:12, padding:14 }}>
+      <strong>Efectividad del cupón</strong>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginTop:8 }}>
+        <div>
+          <div style={{ fontSize:12, opacity:.7 }}>Crecimiento de pedidos</div>
+          <div style={{ fontSize:18, fontWeight:700 }}>{fmtPct(growth)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize:12, opacity:.7 }}>Penetración de cupones</div>
+          <div style={{ fontSize:18, fontWeight:700 }}>
+            {fmtPct(penNow)} <span style={{ marginLeft:6 }}><DeltaBadge value={penDelta} isPct /></span>
+          </div>
+          <div style={{ fontSize:11, opacity:.6 }}>Previo: {fmtPct(penPrev)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 👥 Penetración por segmento (proporcional) */
+function SegmentPenetrationCard({ kpi }) {
+  const rows = Array.isArray(kpi?.bySegment) ? kpi.bySegment : [];
+  if (!rows.length) {
+    return (
+      <div style={{ border:"1px solid #e5e7eb", borderRadius:12, padding:14 }}>
+        <strong>Uso por segmento</strong>
+        <div style={{ marginTop:6, opacity:.6 }}>—</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ border:"1px solid #e5e7eb", borderRadius:12, padding:14 }}>
+      <strong>Uso por segmento (penetración)</strong>
+      <div style={{ marginTop:8, display:"grid", gap:6 }}>
+        {rows.map(r => {
+          const pct = r.penetration ?? 0;
+          return (
+            <div key={r.segment} style={{ display:"grid", gridTemplateColumns:"60px 1fr 48px", gap:8, alignItems:"center" }}>
+              <div style={{ fontSize:12, opacity:.75 }}>{r.segment}</div>
+              <div style={{ height:8, background:"#f3f4f6", borderRadius:999 }}>
+                <div style={{
+                  width: `${Math.max(0, Math.min(100, pct*100)).toFixed(1)}%`,
+                  height:"100%", borderRadius:999, background:"#c7d2fe"
+                }} />
+              </div>
+              <div style={{ fontSize:12, textAlign:"right", fontVariantNumeric:"tabular-nums" }}>{fmtPct(pct, 0)}</div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -388,12 +463,7 @@ function FolderCard({ group, onOpen }) {
       <div style={{ fontSize:14, opacity:.8 }}>
         {group.examples?.length ? `Ejemplos: ${group.examples.join(" · ")}` : "Sin cupones activos"}
       </div>
-      <button
-        className="btn"
-        onClick={onOpen}
-        disabled={disabled}
-        style={{ width:"100%", marginTop:4 }}
-      >
+      <button className="btn" onClick={onOpen} disabled={disabled} style={{ width:"100%", marginTop:4 }}>
         Ver cupones
       </button>
     </div>
@@ -482,7 +552,6 @@ function Modal({ title, children, onClose }) {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     const prev = document.activeElement;
-    // focus trap básico
     setTimeout(() => { ref.current?.focus(); }, 0);
     return () => {
       window.removeEventListener("keydown", onKey);
