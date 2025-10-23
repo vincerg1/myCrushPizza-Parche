@@ -1,5 +1,5 @@
 // src/components/OffersOverview.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 
 /** ===== Config base de API ===== */
 const guessDevBase = () => {
@@ -44,7 +44,15 @@ const mmToHHMM = (m) => {
   const min = mins % 60;
   return `${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}`;
 };
+const sumRemaining = (list) => {
+  if (!Array.isArray(list) || !list.length) return 0;
+  // si cualquiera es ilimitado => null
+  if (list.some(c => c.remaining == null)) return null;
+  return list.reduce((acc, c) => acc + Math.max(0, Number(c.remaining || 0)), 0);
+};
+const ORDER_TYPES = ["RANDOM_PERCENT","FIXED_PERCENT","FIXED_AMOUNT"];
 
+/** ===== Componente ===== */
 export default function OffersOverview({ onNavigate = () => {} }) {
   // filtros (para métricas)
   const [from, setFrom] = useState(daysAgoISO(30));
@@ -60,10 +68,15 @@ export default function OffersOverview({ onNavigate = () => {} }) {
     byKind: [], byCodeTop: [], dailySpark: []
   });
 
-  // >>> NUEVO: galería de cupones
+  // galería de cupones
   const [galleryLoading, setGalleryLoading] = useState(true);
   const [galleryErr, setGalleryErr] = useState("");
   const [cards, setCards] = useState([]); // [{type,key,title,subtitle,cta,remaining,constraints?,lifetime?}]
+
+  // estado del modal por tipo
+  const [openType, setOpenType] = useState(null); // 'RANDOM_PERCENT' | 'FIXED_PERCENT' | 'FIXED_AMOUNT' | null
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("default"); // default | title | remaining | expires
 
   const loadMetrics = async () => {
     setLoading(true); setErr("");
@@ -116,6 +129,66 @@ export default function OffersOverview({ onNavigate = () => {} }) {
     }).join(" ");
     return { W, H, P, pts, max, last: values.at(-1) || 0, total: values.reduce((a,b)=>a+b,0) };
   }, [kpi.dailySpark]);
+
+  // agrupación por tipo
+  const groups = useMemo(() => {
+    const byType = new Map();
+    for (const t of ORDER_TYPES) byType.set(t, []); // precrear 3 carpetas
+    for (const c of cards) {
+      if (!byType.has(c.type)) byType.set(c.type, []);
+      byType.get(c.type).push(c);
+    }
+    // crear modelo de carpeta
+    const folders = [];
+    for (const t of ORDER_TYPES) {
+      const list = byType.get(t) || [];
+      if (!list.length) {
+        folders.push({
+          type: t,
+          count: 0,
+          remaining: 0,
+          examples: [],
+          items: []
+        });
+        continue;
+      }
+      const remaining = sumRemaining(list);
+      const examples = list.slice(0, 3).map(x => x.title);
+      folders.push({ type: t, count: list.length, remaining, examples, items: list });
+    }
+    return folders;
+  }, [cards]);
+
+  // items filtrados/ordenados del modal abierto
+  const modalItems = useMemo(() => {
+    if (!openType) return [];
+    let list = (groups.find(g => g.type === openType)?.items || []).slice();
+
+    // filtro por búsqueda (en title, key)
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(c =>
+        String(c.title || "").toLowerCase().includes(q) ||
+        String(c.key || "").toLowerCase().includes(q)
+      );
+    }
+
+    // orden
+    if (sortBy === "title") {
+      list.sort((a,b) => String(a.title).localeCompare(String(b.title), "es"));
+    } else if (sortBy === "remaining") {
+      const v = (c) => (c.remaining == null ? Number.POSITIVE_INFINITY : Number(c.remaining || 0));
+      list.sort((a,b) => v(b) - v(a));
+    } else if (sortBy === "expires") {
+      const v = (c) => c?.lifetime?.expiresAt ? new Date(c.lifetime.expiresAt).getTime() : Number.POSITIVE_INFINITY;
+      list.sort((a,b) => v(a) - v(b)); // primero los que caducan antes
+    }
+    // default: como viene del backend (ya ordenado por título), no tocamos
+    return list;
+  }, [openType, groups, search, sortBy]);
+
+  // cerrar modal => reset UI modal
+  const closeModal = () => { setOpenType(null); setSearch(""); setSortBy("default"); };
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", display: "grid", gap: 16 }}>
@@ -197,10 +270,10 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         </div>
       </section>
 
-      {/* >>> Galería de cupones disponibles */}
+      {/* ===== Carpetas por tipo + modal ===== */}
       <section style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 14 }}>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, marginBottom:8 }}>
-          <strong>Galería de cupones (stock disponible)</strong>
+          <strong>Galería de cupones (por tipo)</strong>
           <span style={{ fontSize:12, opacity:.65 }}>
             Fuente: <code>/api/coupons/gallery</code>
           </span>
@@ -211,9 +284,9 @@ export default function OffersOverview({ onNavigate = () => {} }) {
 
         {galleryErr && <div style={{ color:"crimson" }}>{galleryErr}</div>}
         {galleryLoading ? (
-          <div style={{ opacity:.7 }}>Cargando tarjetas…</div>
+          <div style={{ opacity:.7 }}>Cargando datos…</div>
         ) : (
-          <CardsGrid cards={cards} />
+          <FoldersGrid groups={groups} onOpen={setOpenType} />
         )}
       </section>
 
@@ -222,6 +295,27 @@ export default function OffersOverview({ onNavigate = () => {} }) {
         <button className="btn" onClick={() => onNavigate("offers/create")}>➕ Crear oferta</button>
         <button className="btn" onClick={() => onNavigate("offers/sms")}>✉️ Enviar SMS</button>
       </section>
+
+      {/* Modal */}
+      {openType && (
+        <Modal onClose={closeModal} title={`Cupones · ${openType}`}>
+          <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+            <input
+              placeholder="Buscar por título o clave…"
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              style={{ flex:"1 1 220px", padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}
+            />
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ padding:"8px 10px", border:"1px solid #e5e7eb", borderRadius:8 }}>
+              <option value="default">Orden por defecto</option>
+              <option value="title">Título (A→Z)</option>
+              <option value="remaining">Stock (mayor primero)</option>
+              <option value="expires">Caducidad (más próximo)</option>
+            </select>
+          </div>
+          <CardsGrid cards={modalItems} />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -250,9 +344,65 @@ function Legend() {
   );
 }
 
-/** Grid de tarjetas */
+/** ====== Carpetas (agrupadores) ====== */
+function FoldersGrid({ groups, onOpen }) {
+  return (
+    <div style={{
+      display:"grid",
+      gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))",
+      gap:12
+    }}>
+      {groups.map(g => (
+        <FolderCard key={g.type} group={g} onOpen={() => g.count > 0 && onOpen(g.type)} />
+      ))}
+    </div>
+  );
+}
+
+function FolderCard({ group, onOpen }) {
+  const disabled = group.count === 0;
+  const badgeBg =
+    group.type === "FIXED_AMOUNT" ? "#ffe4ec" :
+    group.type === "FIXED_PERCENT" ? "#eaf5ff" :
+    "#eef9f0";
+  const remainingLabel = group.remaining == null ? "∞" : group.remaining;
+
+  return (
+    <div style={{
+      border:"1px solid #e5e7eb",
+      borderRadius:12,
+      padding:14,
+      background:"#fff",
+      opacity: disabled ? .5 : 1,
+      display:"grid",
+      gap:8
+    }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline" }}>
+        <div style={{ fontSize:12, padding:"2px 10px", background:badgeBg, borderRadius:999 }}>
+          {group.type}
+        </div>
+        <div style={{ fontSize:12, opacity:.65 }}>
+          {group.count} ítems · stock <b>{remainingLabel}</b>
+        </div>
+      </div>
+      <div style={{ fontSize:14, opacity:.8 }}>
+        {group.examples?.length ? `Ejemplos: ${group.examples.join(" · ")}` : "Sin cupones activos"}
+      </div>
+      <button
+        className="btn"
+        onClick={onOpen}
+        disabled={disabled}
+        style={{ width:"100%", marginTop:4 }}
+      >
+        Ver cupones
+      </button>
+    </div>
+  );
+}
+
+/** ====== Grid de tarjetas ====== */
 function CardsGrid({ cards }) {
-  if (!cards?.length) return <div style={{opacity:.6}}>No hay cupones activos con stock.</div>;
+  if (!cards?.length) return <div style={{opacity:.6}}>No hay cupones para mostrar.</div>;
   return (
     <div style={{
       display:"grid",
@@ -321,6 +471,42 @@ function CouponCard({ c }) {
 
       {constraints}
       {lifetime}
+    </div>
+  );
+}
+
+/** ====== Modal accesible sencillo ====== */
+function Modal({ title, children, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.activeElement;
+    // focus trap básico
+    setTimeout(() => { ref.current?.focus(); }, 0);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      prev?.focus?.();
+    };
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,.25)",
+      display:"grid", placeItems:"center", padding:16, zIndex:50
+    }} onClick={onClose}>
+      <div
+        ref={ref}
+        tabIndex={-1}
+        onClick={(e)=>e.stopPropagation()}
+        style={{ background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", width:"min(980px, 96vw)", maxHeight:"90vh", overflow:"auto", padding:16, boxShadow:"0 10px 30px rgba(0,0,0,.15)" }}
+      >
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+          <strong style={{ fontSize:16 }}>{title}</strong>
+          <button className="btn" onClick={onClose} style={{ marginLeft:"auto" }}>Cerrar</button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }
