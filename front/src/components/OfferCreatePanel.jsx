@@ -11,7 +11,7 @@ const TYPE_LABELS = {
   FIXED_AMOUNT  : "€ fijo",
 };
 
-const USAGE_LIMIT = 1; // cupón de un solo uso
+const USAGE_LIMIT = 1;
 
 export default function OfferCreatePanel() {
   const [form, setForm] = useState({
@@ -29,13 +29,13 @@ export default function OfferCreatePanel() {
     windowStart: "",
     windowEnd: "",
     activeFrom: "",
-    expiresAt: "",                  
+    expiresAt: "",
     notes: "",
-    useInGame: false,     
-    gameId: "",          
-    campaign: "",         
-    channel: "GAME",     
-    acquisition: "GAME",  
+    useInGame: false,
+    gameId: "",
+    campaign: "",
+    channel: "GAME",
+    acquisition: "GAME",
   });
 
   const [saving, setSaving] = useState(false);
@@ -54,7 +54,6 @@ export default function OfferCreatePanel() {
     return (Number.isFinite(h) && Number.isFinite(m)) ? h * 60 + m : null;
   };
 
-  // ── Segmentos
   const allSegmentsSelected = useMemo(
     () => form.segments.length === SEGMENTS.length,
     [form.segments]
@@ -74,7 +73,6 @@ export default function OfferCreatePanel() {
     });
   };
 
-  // ── Buscador de clientes (SOLO DÍGITOS → tel o customer.id)
   const [custQuery, setCustQuery] = useState("");
   const [custOpts, setCustOpts]   = useState([]);
   const [showDrop, setShowDrop]   = useState(false);
@@ -85,7 +83,7 @@ export default function OfferCreatePanel() {
   useEffect(() => {
     const q = custQuery.trim();
     const digits = onlyDigits(q);
-    if (!digits || digits.length < 2) { setCustOpts([]); setShowDrop(false); return; } // evita 500
+    if (!digits || digits.length < 2) { setCustOpts([]); setShowDrop(false); return; }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
@@ -124,7 +122,6 @@ export default function OfferCreatePanel() {
     setShowDrop(false);
   };
 
-  // ── Validación
   const validate = () => {
     if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 1)
       return "Cantidad de cupones inválida.";
@@ -161,18 +158,19 @@ export default function OfferCreatePanel() {
       const cid = Number(form.assignedToId);
       if (!Number.isFinite(cid) || cid <= 0) return "ID de cliente inválido.";
     }
+
+    if (form.useInGame) {
+      const gid = Number(form.gameId);
+      if (!Number.isFinite(gid) || gid <= 0) return "Debes indicar un Game ID válido.";
+    }
+
     return null;
   };
 
-  // ── Submit
   const submit = async (e) => {
     e.preventDefault();
     setMsg(""); setSample([]);
     const err = validate();
-    if (form.useInGame) {
-  const gid = Number(form.gameId);
-  if (!Number.isFinite(gid) || gid <= 0) return "Debes indicar un Game ID válido.";
-}
     if (err) { setMsg(err); return; }
 
     setSaving(true);
@@ -180,7 +178,7 @@ export default function OfferCreatePanel() {
       const payload = {
         type: form.type,
         quantity: Number(form.quantity),
-        usageLimit: USAGE_LIMIT, // 1 uso fijo
+        usageLimit: USAGE_LIMIT,
         ...(isRandom       ? { percentMin: Number(form.percentMin), percentMax: Number(form.percentMax) } : {}),
         ...(isFixedPercent ? { percent: Number(form.percent) } : {}),
         ...(isFixedAmount  ? { amount : Number(form.amount) } : {}),
@@ -194,13 +192,12 @@ export default function OfferCreatePanel() {
           windowStart: timeToMinutes(form.windowStart),
           windowEnd  : timeToMinutes(form.windowEnd),
         } : {}),
-         ...(form.useInGame ? {
+        ...(form.useInGame ? {
           acquisition: form.acquisition || "GAME",
           channel: form.channel || "GAME",
           gameId: Number(form.gameId),
           ...(form.campaign ? { campaign: form.campaign } : {}),
-        } : {})
-      };
+        } : {}),
       };
 
       const { data } = await api.post(
@@ -214,9 +211,14 @@ export default function OfferCreatePanel() {
       }`);
       setSample(Array.isArray(data?.sample) ? data.sample : []);
 
-      setForm((f) => ({
-        ...f,
+      setForm({
+        type: "RANDOM_PERCENT",
         quantity: 10,
+        percentMin: 5,
+        percentMax: 15,
+        percent: 10,
+        amount: 9.99,
+        maxAmount: "",
         segments: [],
         assignedToId: "",
         isTemporal: false,
@@ -225,9 +227,13 @@ export default function OfferCreatePanel() {
         windowEnd: "",
         activeFrom: "",
         expiresAt: "",
-        maxAmount: "",
         notes: "",
-      }));
+        useInGame: false,
+        gameId: "",
+        campaign: "",
+        channel: "GAME",
+        acquisition: "GAME",
+      });
       clearCustomer();
     } catch (err) {
       setMsg(err?.response?.data?.error || "No se pudo generar cupones");
@@ -236,14 +242,11 @@ export default function OfferCreatePanel() {
     }
   };
 
-  // ── UI
   return (
     <div className="panel-inner">
       <h2>Crear ofertas · Generar cupones</h2>
 
-      {/* scroll interno para que no crezca la página */}
       <form onSubmit={submit} className="card offer-scroll" style={{ maxWidth: 860 }}>
-        {/* Tipo */}
         <div className="row">
           <label>Tipo de cupón</label>
           <select className="input" value={form.type} onChange={(e) => onChange("type", e.target.value)}>
@@ -253,7 +256,6 @@ export default function OfferCreatePanel() {
           </select>
         </div>
 
-        {/* Valores por tipo */}
         {isRandom && (
           <div className="row">
             <label>% Descuento (mín–máx)</label>
@@ -288,7 +290,6 @@ export default function OfferCreatePanel() {
           </div>
         )}
 
-        {/* Cantidad */}
         <div className="row">
           <label>Cupones a generar</label>
           <input className="input" type="number" min="1"
@@ -296,7 +297,6 @@ export default function OfferCreatePanel() {
           <p className="note">Cada cupón es de 1 solo uso.</p>
         </div>
 
-        {/* Segmentos */}
         <div className="row">
           <label>Segmentos aplicables</label>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -311,7 +311,6 @@ export default function OfferCreatePanel() {
           </div>
         </div>
 
-        {/* Asignación a cliente */}
         <div className="row">
           <label>Asignar a cliente (opcional)</label>
           <div ref={boxRef} style={{ position: "relative" }}>
@@ -342,7 +341,6 @@ export default function OfferCreatePanel() {
           <p className="note">Si lo completas, el cupón solo será válido para ese cliente.</p>
         </div>
 
-        {/* Fechas absolutas */}
         <div className="row" style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <label>Activo desde (opcional)</label>
@@ -356,7 +354,6 @@ export default function OfferCreatePanel() {
           </div>
         </div>
 
-        {/* Temporal */}
         <div className="row">
           <label className="small">
             <input type="checkbox" checked={form.isTemporal} onChange={(e) => onChange("isTemporal", e.target.checked)} /> Limitar por días/horas (temporal)
@@ -385,95 +382,91 @@ export default function OfferCreatePanel() {
           )}
         </div>
 
-        {/* Notas */}
         <div className="row">
           <label>Notas / descripción (interno)</label>
           <textarea className="input" rows={3} value={form.notes}
             onChange={(e) => onChange("notes", e.target.value)}
             placeholder="Opcional — no se envía al endpoint por ahora." />
         </div>
-        {/* Etiquetas (Juego / Campaña) */}
-<div className="row">
-  <label className="small">
-    <input
-      type="checkbox"
-      checked={form.useInGame}
-      onChange={(e) => onChange("useInGame", e.target.checked)}
-    /> Usar este lote en un juego
-  </label>
 
-  {form.useInGame && (
-    <>
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label>Game ID</label>
-          <input
-            className="input"
-            type="number"
-            min="1"
-            value={form.gameId}
-            onChange={(e) => onChange("gameId", e.target.value.replace(/[^\d]/g, ""))}
-            placeholder="Ej. 1"
-          />
-        </div>
-        <div style={{ flex: 1 }}>
-          <label>Campaña (opcional)</label>
-          <input
-            className="input"
-            type="text"
-            value={form.campaign}
-            onChange={(e) => onChange("campaign", e.target.value)}
-            placeholder="Ej. HALLOWEEN"
-          />
-        </div>
-      </div>
+        <div className="row">
+          <label className="small">
+            <input
+              type="checkbox"
+              checked={form.useInGame}
+              onChange={(e) => onChange("useInGame", e.target.checked)}
+            /> Usar este lote en un juego
+          </label>
 
-      {/* Si quieres que el usuario lo pueda cambiar, muestra estos selects;
-          si no, déjalos ocultos/forzados a GAME */}
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label>Canal</label>
-          <select
-            className="input"
-            value={form.channel}
-            onChange={(e) => onChange("channel", e.target.value)}
-          >
-            <option value="GAME">GAME</option>
-            <option value="WEB">WEB</option>
-            <option value="CRM">CRM</option>
-            <option value="STORE">STORE</option>
-            <option value="APP">APP</option>
-            <option value="SMS">SMS</option>
-            <option value="EMAIL">EMAIL</option>
-          </select>
-        </div>
-        <div style={{ flex: 1 }}>
-          <label>Origen (acquisition)</label>
-          <select
-            className="input"
-            value={form.acquisition}
-            onChange={(e) => onChange("acquisition", e.target.value)}
-          >
-            <option value="GAME">GAME</option>
-            <option value="CLAIM">CLAIM</option>
-            <option value="REWARD">REWARD</option>
-            <option value="BULK">BULK</option>
-            <option value="DIRECT">DIRECT</option>
-            <option value="OTHER">OTHER</option>
-          </select>
-        </div>
-      </div>
-    </>
-  )}
-</div>
+          {form.useInGame && (
+            <>
+              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Game ID</label>
+                  <input
+                    className="input"
+                    type="number"
+                    min="1"
+                    value={form.gameId}
+                    onChange={(e) => onChange("gameId", e.target.value.replace(/[^\d]/g, ""))}
+                    placeholder="Ej. 1"
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Campaña (opcional)</label>
+                  <input
+                    className="input"
+                    type="text"
+                    value={form.campaign}
+                    onChange={(e) => onChange("campaign", e.target.value)}
+                    placeholder="Ej. HALLOWEEN"
+                  />
+                </div>
+              </div>
 
+              <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label>Canal</label>
+                  <select
+                    className="input"
+                    value={form.channel}
+                    onChange={(e) => onChange("channel", e.target.value)}
+                  >
+                    <option value="GAME">GAME</option>
+                    <option value="WEB">WEB</option>
+                    <option value="CRM">CRM</option>
+                    <option value="STORE">STORE</option>
+                    <option value="APP">APP</option>
+                    <option value="SMS">SMS</option>
+                    <option value="EMAIL">EMAIL</option>
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Origen (acquisition)</label>
+                  <select
+                    className="input"
+                    value={form.acquisition}
+                    onChange={(e) => onChange("acquisition", e.target.value)}
+                  >
+                    <option value="GAME">GAME</option>
+                    <option value="CLAIM">CLAIM</option>
+                    <option value="REWARD">REWARD</option>
+                    <option value="BULK">BULK</option>
+                    <option value="DIRECT">DIRECT</option>
+                    <option value="OTHER">OTHER</option>
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
-        {/* Acciones */}
         <div className="actions">
           <button className="btn" type="button" onClick={() => setForm({
             type:"RANDOM_PERCENT", quantity:10, percentMin:5, percentMax:15, percent:10, amount:9.99,
             maxAmount:"", segments:[], assignedToId:"", isTemporal:false, daysActive:[],
-            windowStart:"", windowEnd:"", activeFrom:"", expiresAt:"", notes:""
+            windowStart:"", windowEnd:"", activeFrom:"", expiresAt:"", notes:"",
+            useInGame:false, gameId:"", campaign:"", channel:"GAME", acquisition:"GAME"
           })}>Limpiar</button>
           <button className="btn primary" disabled={saving}>
             {saving ? "Generando…" : "Generar cupones"}
@@ -488,14 +481,13 @@ export default function OfferCreatePanel() {
         )}
       </form>
 
-      {/* estilos del card + dropdown + scroll */}
       <style>{`
         .card{
           background:#fff; border:1px solid #e9eaee; border-radius:16px;
           padding:18px 18px 16px; box-shadow:0 12px 28px rgba(16,24,40,.06);
         }
         .offer-scroll{
-          max-height: calc(100vh - 200px);   /* evita crecer más que la pantalla */
+          max-height: calc(100vh - 200px);
           overflow-y: auto;
         }
         .row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
