@@ -29,8 +29,13 @@ export default function OfferCreatePanel() {
     windowStart: "",
     windowEnd: "",
     activeFrom: "",
-    expiresAt: "",                  // obligatorio
+    expiresAt: "",                  
     notes: "",
+    useInGame: false,     
+    gameId: "",          
+    campaign: "",         
+    channel: "GAME",     
+    acquisition: "GAME",  
   });
 
   const [saving, setSaving] = useState(false);
@@ -164,6 +169,10 @@ export default function OfferCreatePanel() {
     e.preventDefault();
     setMsg(""); setSample([]);
     const err = validate();
+    if (form.useInGame) {
+  const gid = Number(form.gameId);
+  if (!Number.isFinite(gid) || gid <= 0) return "Debes indicar un Game ID válido.";
+}
     if (err) { setMsg(err); return; }
 
     setSaving(true);
@@ -185,6 +194,13 @@ export default function OfferCreatePanel() {
           windowStart: timeToMinutes(form.windowStart),
           windowEnd  : timeToMinutes(form.windowEnd),
         } : {}),
+         ...(form.useInGame ? {
+          acquisition: form.acquisition || "GAME",
+          channel: form.channel || "GAME",
+          gameId: Number(form.gameId),
+          ...(form.campaign ? { campaign: form.campaign } : {}),
+        } : {})
+      };
       };
 
       const { data } = await api.post(
@@ -376,6 +392,81 @@ export default function OfferCreatePanel() {
             onChange={(e) => onChange("notes", e.target.value)}
             placeholder="Opcional — no se envía al endpoint por ahora." />
         </div>
+        {/* Etiquetas (Juego / Campaña) */}
+<div className="row">
+  <label className="small">
+    <input
+      type="checkbox"
+      checked={form.useInGame}
+      onChange={(e) => onChange("useInGame", e.target.checked)}
+    /> Usar este lote en un juego
+  </label>
+
+  {form.useInGame && (
+    <>
+      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        <div style={{ flex: 1 }}>
+          <label>Game ID</label>
+          <input
+            className="input"
+            type="number"
+            min="1"
+            value={form.gameId}
+            onChange={(e) => onChange("gameId", e.target.value.replace(/[^\d]/g, ""))}
+            placeholder="Ej. 1"
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label>Campaña (opcional)</label>
+          <input
+            className="input"
+            type="text"
+            value={form.campaign}
+            onChange={(e) => onChange("campaign", e.target.value)}
+            placeholder="Ej. HALLOWEEN"
+          />
+        </div>
+      </div>
+
+      {/* Si quieres que el usuario lo pueda cambiar, muestra estos selects;
+          si no, déjalos ocultos/forzados a GAME */}
+      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+        <div style={{ flex: 1 }}>
+          <label>Canal</label>
+          <select
+            className="input"
+            value={form.channel}
+            onChange={(e) => onChange("channel", e.target.value)}
+          >
+            <option value="GAME">GAME</option>
+            <option value="WEB">WEB</option>
+            <option value="CRM">CRM</option>
+            <option value="STORE">STORE</option>
+            <option value="APP">APP</option>
+            <option value="SMS">SMS</option>
+            <option value="EMAIL">EMAIL</option>
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label>Origen (acquisition)</label>
+          <select
+            className="input"
+            value={form.acquisition}
+            onChange={(e) => onChange("acquisition", e.target.value)}
+          >
+            <option value="GAME">GAME</option>
+            <option value="CLAIM">CLAIM</option>
+            <option value="REWARD">REWARD</option>
+            <option value="BULK">BULK</option>
+            <option value="DIRECT">DIRECT</option>
+            <option value="OTHER">OTHER</option>
+          </select>
+        </div>
+      </div>
+    </>
+  )}
+</div>
+
 
         {/* Acciones */}
         <div className="actions">
