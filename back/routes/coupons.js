@@ -1164,5 +1164,36 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
   }
 });
 
+router.post('/bulk-tag', requireApiKey, async (req, res) => {
+  try {
+    const {
+      filter = {}, // { type, amount, percent, codeStartsWith }
+      set = {}     // { acquisition, channel, gameId, campaign }
+    } = req.body;
+
+    // construir where desde filtros simples del backoffice
+    const where = { };
+    if (filter.type === 'FIXED_AMOUNT' && filter.amount != null)
+      where.AND = [{ kind: 'AMOUNT' }, { variant: 'FIXED' }, { amount: String(Number(filter.amount)) }];
+    if (filter.type === 'FIXED_PERCENT' && filter.percent != null)
+      where.AND = [{ kind: 'PERCENT' }, { variant: 'FIXED' }, { percent: Number(filter.percent) }];
+    if (filter.codeStartsWith)
+      where.code = { startsWith: String(filter.codeStartsWith).toUpperCase() };
+
+    const data = {};
+    if (set.acquisition) data.acquisition = String(set.acquisition).toUpperCase();
+    if (set.channel)     data.channel     = String(set.channel).toUpperCase();
+    if (set.gameId != null) data.gameId   = Number(set.gameId);
+    if (set.campaign != null) data.campaign = String(set.campaign);
+
+    const r = await prisma.coupon.updateMany({ where, data });
+    return res.json({ ok: true, updated: r.count });
+  } catch (e) {
+    console.error('[coupons.bulk-tag] error', e);
+    res.status(500).json({ ok:false, error:'server' });
+  }
+});
+
+
 return router;
 };

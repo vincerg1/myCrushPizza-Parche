@@ -161,6 +161,7 @@ model Customer {
   assignedCoupons Coupon[]           @relation("CustomerAssignedCoupons")
   sales           Sale[]             @relation("CustomerSales")
   redemptions     CouponRedemption[] @relation("CustomerToRedemptions")
+  plays           GamePlay[]     
 }
 model Sale {
   id                      Int            @id @default(autoincrement())
@@ -205,40 +206,32 @@ model AppMeta {
 model Coupon {
   id    Int    @id @default(autoincrement())
   code  String @unique
-
   kind    CouponKind    @default(PERCENT)
   variant CouponVariant @default(FIXED)
-
   percent    Int?
   amount     Decimal? @db.Decimal(10, 2)
   percentMin Int?
   percentMax Int?
   maxAmount  Decimal? @db.Decimal(10, 2)
-
-  // Etiquetas de negocio (NUEVO)
-  acquisition CouponAcquisition?   // e.g. GAME/CLAIM/...
-  channel     CouponChannel?       // e.g. GAME/WEB/CRM
-  gameId      Int?                 // juego al que pertenece el pool del premio
-  campaign    String?              // etiqueta libre (A/B test, nombre de campaña)
+  acquisition CouponAcquisition?   
+  channel     CouponChannel?       
+  gameId      Int?                
+  campaign    String?           
   meta        Json?
-
   segments     Json?
   assignedToId Int?
   assignedTo   Customer? @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
-
   activeFrom  DateTime?
   expiresAt   DateTime?
   daysActive  Json?
   windowStart Int?
   windowEnd   Int?
-
   usageLimit Int          @default(1)
   usedCount  Int          @default(0)
   status     CouponStatus @default(ACTIVE)
-
   usedAt    DateTime?
   createdAt DateTime @default(now())
-
+  game      Game? @relation("GameCoupons", fields: [gameId], references: [id], onDelete: SetNull)
   redemptions CouponRedemption[] @relation("CouponToRedemptions")
 
   @@index([status])
@@ -293,5 +286,31 @@ model CouponRedemption {
   @@index([gameId])
   @@index([channel])
   @@index([acquisition])
+}
+model Game {
+  id          Int       @id @default(autoincrement())
+  name        String
+  slug        String    @unique
+  description String?
+  image       String?
+  active      Boolean   @default(true)
+  storeId     Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  coupons     Coupon[]  @relation("GameCoupons")
+  plays       GamePlay[]
+}
+model GamePlay {
+  id         Int       @id @default(autoincrement())
+  gameId     Int
+  playerId   Int?
+  ip         String?
+  result     Json?
+  won        Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  game       Game      @relation(fields: [gameId], references: [id])
+  customer   Customer? @relation(fields: [playerId], references: [id])
 }
 

@@ -10,7 +10,11 @@
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate deploy",
     "seed:coupons": "node scripts/seed-coupons.js",
-    "seed:coupons:n": "node scripts/seed-coupons.js"
+    "seed:coupons:n": "node scripts/seed-coupons.js",
+    "seed:game-pool": "node scripts/seed-game-pool.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "keywords": [],
   "author": "",
