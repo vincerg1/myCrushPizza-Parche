@@ -17,6 +17,7 @@ const API_BASE = (
   ""
 ).replace(/\/$/, "");
 const API_KEY = process.env.REACT_APP_SALES_API_KEY;
+console.log("API_BASE", API_BASE, "API_KEY", API_KEY);
 async function fetchJson(path) {
   const url = /^https?:\/\//i.test(path) ? path : `${API_BASE}${path}`;
   const res = await fetch(url, { credentials: "include" });
