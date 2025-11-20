@@ -203,24 +203,66 @@ export default function OffersOverview({ onNavigate = () => {} }) {
   }, [openType, groups, search, sortBy]);
 
   const closeModal = () => { setOpenType(null); setSearch(""); setSortBy("default"); };
-
-  // submit asignación
   const submitAssign = async (form) => {
     if (!assignTarget) return;
-    setAssignBusy(true); setAssignErr("");
+
+    // Estado actual del pool (lo que viene de la galería)
+    const currentAcq = assignTarget.acquisition || null;
+    const currentChannel = assignTarget.channel || null;
+    const currentGameId = assignTarget.gameId ?? null;
+
+    // Estado que quiere aplicar el usuario desde el modal
+    const nextAcq = form.acquisition || null;
+    const nextChannel = form.channel || null;
+    const nextGameId = form.gameId ? Number(form.gameId) : null;
+
+    // 🔒 Regla 1: si el pool ya está asignado a otro contexto distinto, no dejamos re-etiquetar aquí
+    if (
+      (currentAcq || currentChannel || currentGameId != null) && // ya tenía algo
+      (
+        currentAcq !== nextAcq ||
+        currentChannel !== nextChannel ||
+        (currentGameId ?? null) !== (nextGameId ?? null)
+      )
+    ) {
+      setAssignErr(
+        "Este pool ya está asignado a otro uso/juego. Edítalo desde ese contexto o libera primero la asignación."
+      );
+      return;
+    }
+
+    // 🔒 Regla 2: si usamos GAME como uso o canal, gameId es obligatorio
+    if ((nextAcq === "GAME" || nextChannel === "GAME") && !nextGameId) {
+      setAssignErr("Para uso GAME el gameId es obligatorio.");
+      return;
+    }
+
+    setAssignBusy(true);
+    setAssignErr("");
+
     try {
       const payload = {
-        filter: { type: assignTarget.type, key: assignTarget.key, status: "ACTIVE" },
+        filter: {
+          type: assignTarget.type,
+          key: assignTarget.key,
+          status: "ACTIVE",
+        },
         set: {
-          acquisition: form.acquisition || null,
-          channel: form.channel || null,
-          gameId: form.gameId ? Number(form.gameId) : null,
+          acquisition: nextAcq,
+          channel: nextChannel,
+          gameId: nextGameId,
           campaign: form.campaign || null,
-        }
+        },
       };
+
       await postJson("/api/coupons/bulk-tag", payload);
+
       // feedback & refresh
-      alert(`Asignado: ${assignTarget.title} → ${form.acquisition}/${form.channel}${form.gameId ? ` (gameId=${form.gameId})` : ""}`);
+      alert(
+        `Asignado: ${assignTarget.title} → ${nextAcq || "—"}/${nextChannel || "—"}${
+          nextGameId ? ` (gameId=${nextGameId})` : ""
+        }`
+      );
       setAssignTarget(null);
       await loadGallery();
     } catch (e) {
@@ -230,6 +272,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
       setAssignBusy(false);
     }
   };
+
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", display: "grid", gap: 16 }}>
@@ -335,10 +378,19 @@ export default function OffersOverview({ onNavigate = () => {} }) {
               <option value="expires">Caducidad (más próximo)</option>
             </select>
           </div>
-          <CardsGrid
-            cards={modalItems}
-            onAssign={(c) => setAssignTarget({ type: c.type, key: c.key, title: c.title })}
-          />
+        <CardsGrid
+          cards={modalItems}
+          onAssign={(c) =>
+            setAssignTarget({
+              type: c.type,
+              key: c.key,
+              title: c.title,
+              acquisition: c.acquisition ?? null,
+              channel: c.channel ?? null,
+              gameId: c.gameId ?? null,
+            })
+          }
+        />
         </Modal>
       )}
 
