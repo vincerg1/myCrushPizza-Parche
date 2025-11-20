@@ -407,7 +407,6 @@ export default function OffersOverview({ onNavigate = () => {} }) {
     </div>
   );
 }
-
 /** ========= Componentes auxiliares ========= */
 function KpiCard({ title, value }) {
   return (
@@ -417,7 +416,6 @@ function KpiCard({ title, value }) {
     </div>
   );
 }
-
 function DeltaBadge({ value, isPct=false }) {
   if (value == null || Number.isNaN(value)) return <span style={{ opacity:.6 }}>—</span>;
   const positive = value > 0;
@@ -435,7 +433,6 @@ function DeltaBadge({ value, isPct=false }) {
     </span>
   );
 }
-
 /** 🎟️ Ticket medio con/sin cupón */
 function TicketImpactCard({ kpi }) {
   const withC = kpi?.aov?.withCoupon ?? null;
@@ -463,7 +460,6 @@ function TicketImpactCard({ kpi }) {
     </div>
   );
 }
-
 /** 🚀 Efectividad (crecimiento y penetración) */
 function EffectivenessCard({ kpi }) {
   const growth = kpi?.ordersGrowthPct ?? null;
@@ -489,7 +485,6 @@ function EffectivenessCard({ kpi }) {
     </div>
   );
 }
-
 /** 👥 Penetración por segmento (proporcional) */
 function SegmentPenetrationCard({ kpi }) {
   const rows = Array.isArray(kpi?.bySegment) ? kpi.bySegment : [];
@@ -524,7 +519,6 @@ function SegmentPenetrationCard({ kpi }) {
     </div>
   );
 }
-
 /** Leyenda breve para tipos */
 function Legend() {
   const tag = (txt) => (
@@ -538,7 +532,6 @@ function Legend() {
     </span>
   );
 }
-
 /** ====== Carpetas (agrupadores) ====== */
 function FoldersGrid({ groups, onOpen }) {
   return (
@@ -553,7 +546,6 @@ function FoldersGrid({ groups, onOpen }) {
     </div>
   );
 }
-
 function FolderCard({ group, onOpen }) {
   const disabled = group.count === 0;
   const badgeBg =
@@ -589,7 +581,6 @@ function FolderCard({ group, onOpen }) {
     </div>
   );
 }
-
 /** ====== Grid de tarjetas ====== */
 function CardsGrid({ cards, onAssign }) {
   if (!cards?.length) return <div style={{opacity:.6}}>No hay cupones para mostrar.</div>;
@@ -609,7 +600,6 @@ function CardsGrid({ cards, onAssign }) {
     </div>
   );
 }
-
 function CouponCard({ c, onAssign }) {
   const isUnlimited = c.remaining == null;
   const muted = isUnlimited ? false : c.remaining <= 0;
@@ -683,7 +673,6 @@ function CouponCard({ c, onAssign }) {
     </div>
   );
 }
-
 /** ====== Modal accesible sencillo ====== */
 function Modal({ title, children, onClose }) {
   const ref = useRef(null);
@@ -718,7 +707,6 @@ function Modal({ title, children, onClose }) {
     </div>
   );
 }
-
 /** ====== Modal de asignación ====== */
 function AssignModal({ target, busy, error, onCancel, onSubmit }) {
   const [acquisition, setAcquisition] = useState("GAME");
