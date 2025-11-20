@@ -29,12 +29,16 @@ async function fetchJson(path) {
     throw new Error(`Respuesta no válida. ${txt.slice(0, 200)}`);
   }
 }
-async function postJson(path, body) {
+async function postJson(path, body, extraHeaders = {}) {
   const url = /^https?:\/\//i.test(path) ? path : `${API_BASE}${path}`;
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(API_KEY ? { "x-api-key": API_KEY } : {}),
+      ...extraHeaders,
+    },
     body: JSON.stringify(body),
   });
   const txt = await res.text();
