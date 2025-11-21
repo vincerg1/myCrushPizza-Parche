@@ -952,24 +952,6 @@ router.post('/direct-claim', async (req, res) => {
       });
     }
 
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: {
-          code: `C${Date.now()}`, // identificador sencillo; ya tienes unique en código
-          name: name ? String(name).trim() : null,
-          phone: phoneRaw,
-          address_1: '-',           // requerido en schema
-          origin: 'QR'              // o 'WEB', como prefieras
-        }
-      });
-    } else if (name && !customer.name) {
-      // Si tenemos nombre nuevo y el customer no tenía, lo rellenamos
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: { name: String(name).trim() }
-      });
-    }
-
     // 2) Comprobar si ya tiene un cupón activo asignado
     const activeCoupon = await prisma.coupon.findFirst({
       where: {
