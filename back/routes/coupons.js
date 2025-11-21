@@ -14,6 +14,71 @@ const PREFIX = {
   FIXED_PERCENT : 'MCP-PF',
   FIXED_AMOUNT  : 'MCP-CD',
 };
+// Construye filtro de Prisma a partir de type + key (igual que la galería)
+function buildWhereForTypeKey(type, key) {
+  const t = String(type || '').toUpperCase();
+  const k = String(key || '').trim();
+
+  if (!t || !k) return null;
+
+  if (t === 'FIXED_PERCENT') {
+    const p = Number(k.replace('%', '').trim());
+    if (!Number.isFinite(p)) return null;
+    return {
+      kind: 'PERCENT',
+      variant: 'FIXED',
+      percent: p
+    };
+  }
+
+  if (t === 'RANDOM_PERCENT') {
+    // soporta "5-10" y "5–10"
+    const m = k.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+    if (!m) return null;
+    const pMin = Number(m[1]);
+    const pMax = Number(m[2]);
+    if (!Number.isFinite(pMin) || !Number.isFinite(pMax) || pMin >= pMax) return null;
+    return {
+      kind: 'PERCENT',
+      variant: 'RANGE',
+      percentMin: pMin,
+      percentMax: pMax
+    };
+  }
+
+  if (t === 'FIXED_AMOUNT') {
+    const a = Number(k.replace('€', '').trim().replace(',', '.'));
+    if (!Number.isFinite(a) || a <= 0) return null;
+    return {
+      kind: 'AMOUNT',
+      variant: 'FIXED',
+      amount: String(a) // en schema amount es Decimal almacenado como string
+    };
+  }
+
+  return null;
+}
+
+// Título legible para el cupón (similar a titleFor de /gallery)
+function titleForCouponRow(r) {
+  const kind = r.kind;
+  const variant = r.variant || 'FIXED';
+  const pct = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt = toNum(r.amount);
+
+  if (kind === 'PERCENT' && variant === 'RANGE' && pMin != null && pMax != null) {
+    return `${pMin}–${pMax}%`;
+  }
+  if (kind === 'PERCENT' && variant === 'FIXED' && pct != null) {
+    return `${pct}%`;
+  }
+  if (kind === 'AMOUNT' && variant === 'FIXED' && amt != null) {
+    return `${amt.toFixed(2)} €`;
+  }
+  return 'Cupón';
+}
 
 const esDayToNum = (d) => {
   const map = {
@@ -832,6 +897,198 @@ router.get('/redemptions', async (req, res) => {
 /* ===========================
  *  GALLERY (cards agrupadas)
  * =========================== */
+
+router.post('/direct-claim', async (req, res) => {
+  try {
+    const {
+      phone,
+      name,
+      type,
+      key,
+      hours = 24,
+      campaign = null
+    } = req.body || {};
+
+    const phoneRaw = String(phone || '').trim();
+    if (!phoneRaw) {
+      return res.status(400).json({ ok: false, error: 'missing_phone' });
+    }
+    if (!type || !key) {
+      return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
+    }
+    const H = Number(hours);
+    if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
+      return res.status(400).json({ ok: false, error: 'bad_hours' });
+    }
+
+    const whereTypeKey = buildWhereForTypeKey(type, key);
+    if (!whereTypeKey) {
+      return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
+    }
+
+    const now = nowInTZ();
+    const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
+
+    // 1) Buscar o crear cliente por teléfono
+    let customer = await prisma.customer.findUnique({
+      where: { phone: phoneRaw }
+    });
+
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          code: `C${Date.now()}`, // identificador sencillo; ya tienes unique en código
+          name: name ? String(name).trim() : null,
+          phone: phoneRaw,
+          address_1: '-',           // requerido en schema
+          origin: 'QR'              // o 'WEB', como prefieras
+        }
+      });
+    } else if (name && !customer.name) {
+      // Si tenemos nombre nuevo y el customer no tenía, lo rellenamos
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data: { name: String(name).trim() }
+      });
+    }
+
+    // 2) Comprobar si ya tiene un cupón activo asignado
+    const activeCoupon = await prisma.coupon.findFirst({
+      where: {
+        assignedToId: customer.id,
+        status: 'ACTIVE',
+        AND: [
+          {
+            OR: [
+              { usageLimit: null },
+              { usedCount: { lt: prisma.coupon.fields.usageLimit } }
+            ]
+          },
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } }
+            ]
+          }
+        ]
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    if (activeCoupon) {
+      return res.status(409).json({
+        ok: false,
+        error: 'already_has_active',
+        code: activeCoupon.code,
+        expiresAt: activeCoupon.expiresAt
+      });
+    }
+
+    // 3) Buscar un cupón disponible en el pool (según type+key)
+    const poolCoupon = await prisma.coupon.findFirst({
+      where: {
+        status: 'ACTIVE',
+        ...whereTypeKey,
+        AND: [
+          {
+            OR: [
+              { usageLimit: null },
+              { usedCount: { lt: prisma.coupon.fields.usageLimit } }
+            ]
+          },
+          {
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } }
+            ]
+          }
+        ]
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    if (!poolCoupon) {
+      return res.status(409).json({ ok: false, error: 'out_of_stock' });
+    }
+
+    // 4) Asignar cupón al cliente, marcar expiración y etiquetar como CLAIM/WEB
+    await prisma.coupon.update({
+      where: { id: poolCoupon.id },
+      data: {
+        expiresAt,
+        assignedToId: customer.id,
+        acquisition: 'CLAIM',
+        channel: 'WEB',
+        campaign: campaign ?? poolCoupon.campaign ?? null
+      }
+    });
+
+    const finalCoupon = await prisma.coupon.findUnique({
+      where: { id: poolCoupon.id }
+    });
+
+    const code = finalCoupon.code;
+    const title = titleForCouponRow(finalCoupon);
+    const whenTxt = fmtExpiry(expiresAt);
+    const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+    const adminPhone = process.env.ADMIN_PHONE || '';
+
+    // 5) Enviar SMS al cliente (y opcional al admin), igual que en /issue
+    const notify = { user: { tried: false }, admin: { tried: false } };
+
+    // SMS al cliente
+    if (phoneRaw) {
+      notify.user.tried = true;
+      const userMsg =
+        `🎁 Tu cupón para MyCrushPizza: ${code}\n` +
+        `Valor: ${title}\n` +
+        `Canjéalo en ${siteUrl} (cupón válido hasta ${whenTxt}).`;
+      try {
+        const resp = await sendSMS(phoneRaw, userMsg);
+        notify.user.ok = true;
+        notify.user.sid = resp.sid;
+      } catch (err) {
+        console.error('[coupons.direct-claim] user SMS error:', err);
+        notify.user.ok = false;
+        notify.user.error = err.message;
+      }
+    }
+
+    // SMS al admin (opcional)
+    if (adminPhone) {
+      notify.admin.tried = true;
+      const adminMsg =
+        `ALERTA MCP 🎯 Cupón directo emitido\n` +
+        `Code: ${code} (${title})\n` +
+        `Tel cliente: ${phoneRaw}\n` +
+        `Vence: ${whenTxt}.`;
+      try {
+        const resp = await sendSMS(adminPhone, adminMsg);
+        notify.admin.ok = true;
+        notify.admin.sid = resp.sid;
+      } catch (err) {
+        console.error('[coupons.direct-claim] admin SMS error:', err);
+        notify.admin.ok = false;
+        notify.admin.error = err.message;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      code,
+      type: type,
+      key,
+      title,
+      expiresAt,
+      customerId: customer.id,
+      notify
+    });
+  } catch (e) {
+    console.error('[coupons.direct-claim] error', e);
+    return res.status(500).json({ ok: false, error: 'server' });
+  }
+});
+
 router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
