@@ -900,6 +900,8 @@ router.get('/redemptions', async (req, res) => {
 
 router.post('/direct-claim', async (req, res) => {
   try {
+    console.log('[VENTAS] /api/coupons/direct-claim HIT', req.body);
+
     const {
       phone,
       name,
@@ -1076,7 +1078,7 @@ router.post('/direct-claim', async (req, res) => {
     return res.json({
       ok: true,
       code,
-      type: type,
+      type,
       key,
       title,
       expiresAt,
@@ -1088,6 +1090,7 @@ router.post('/direct-claim', async (req, res) => {
     return res.status(500).json({ ok: false, error: 'server' });
   }
 });
+
 
 router.get('/gallery', async (_req, res) => {
   try {
