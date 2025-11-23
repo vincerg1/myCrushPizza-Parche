@@ -1026,7 +1026,8 @@ router.post('/direct-claim', async (req, res) => {
         maxAmount: true,
         usageLimit: true,
         usedCount: true,
-        expiresAt: true
+        expiresAt: true,
+        assignedToId: true,
       },
       take: 5
     });
