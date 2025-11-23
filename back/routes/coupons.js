@@ -1196,7 +1196,10 @@ router.get('/gallery', async (_req, res) => {
     };
 
     const rows = await prisma.coupon.findMany({
-      where: { status: 'ACTIVE' },
+      where: {
+        status: 'ACTIVE',
+        assignedToId: null,      // 🔹 SOLO cupones aún sin dueño (pool libre)
+      },
       select: {
         code: true, kind: true, variant: true,
         percent: true, percentMin: true, percentMax: true,
@@ -1359,6 +1362,7 @@ router.get('/gallery', async (_req, res) => {
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 
 /* ===========================
  *  GAMES: PRIZE PREVIEW
