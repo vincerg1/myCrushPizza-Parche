@@ -899,9 +899,9 @@ router.get('/redemptions', async (req, res) => {
  * =========================== */
 
 router.post('/direct-claim', async (req, res) => {
-  try {
-    console.log('[VENTAS] /api/coupons/direct-claim HIT', req.body);
+  console.log('[VENTAS] /api/coupons/direct-claim HIT body:', req.body);
 
+  try {
     const {
       phone,
       name,
@@ -913,18 +913,25 @@ router.post('/direct-claim', async (req, res) => {
 
     const phoneRaw = String(phone || '').trim();
     if (!phoneRaw) {
+      console.warn('[VENTAS] direct-claim: missing_phone');
       return res.status(400).json({ ok: false, error: 'missing_phone' });
     }
     if (!type || !key) {
+      console.warn('[VENTAS] direct-claim: missing_type_or_key', { type, key });
       return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
     }
+
     const H = Number(hours);
     if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
+      console.warn('[VENTAS] direct-claim: bad_hours', { hours });
       return res.status(400).json({ ok: false, error: 'bad_hours' });
     }
 
     const whereTypeKey = buildWhereForTypeKey(type, key);
+    console.log('[VENTAS] direct-claim whereTypeKey:', { type, key, whereTypeKey });
+
     if (!whereTypeKey) {
+      console.warn('[VENTAS] direct-claim: bad_type_or_key (whereTypeKey null)', { type, key });
       return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
     }
 
@@ -932,52 +939,87 @@ router.post('/direct-claim', async (req, res) => {
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
 
     // 1) Buscar o crear cliente por teléfono
-    let customer = await prisma.customer.findFirst({
-      where: { phone: phoneRaw }
-    });
-
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: {
-          code: `C${Date.now()}`, // identificador sencillo; ya tienes unique en código
-          name: name ? String(name).trim() : null,
-          phone: phoneRaw,
-          address_1: '-',           // requerido en schema
-          origin: 'QR'              // o 'WEB', como prefieras
-        }
+    let customer;
+    try {
+      customer = await prisma.customer.findFirst({
+        where: { phone: phoneRaw }
       });
-    } else if (name && !customer.name) {
-      // Si tenemos nombre nuevo y el customer no tenía, lo rellenamos
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: { name: String(name).trim() }
+
+      if (!customer) {
+        console.log('[VENTAS] direct-claim: creating customer for phone', phoneRaw);
+        customer = await prisma.customer.create({
+          data: {
+            code: `C${Date.now()}`,
+            name: name ? String(name).trim() : null,
+            phone: phoneRaw,
+            address_1: '-',  // requerido en schema
+            // ⚠️ origin: usa un valor que exista en tu enum. WEB es seguro.
+            origin: 'WEB'
+          }
+        });
+      } else if (name && !customer.name) {
+        console.log('[VENTAS] direct-claim: updating empty name for customer', customer.id);
+        customer = await prisma.customer.update({
+          where: { id: customer.id },
+          data: { name: String(name).trim() }
+        });
+      }
+    } catch (e) {
+      console.error('[VENTAS] direct-claim: ERROR creating/updating customer:', e);
+      return res.status(500).json({
+        ok: false,
+        error: 'server',
+        stage: 'customer',
+        code: e.code || null,
+        meta: e.meta || null
       });
     }
 
-    // 2) Comprobar si ya tiene un cupón activo asignado
-    const activeCoupon = await prisma.coupon.findFirst({
-      where: {
-        assignedToId: customer.id,
-        status: 'ACTIVE',
-        AND: [
-          {
-            OR: [
-              { usageLimit: null },
-              { usedCount: { lt: prisma.coupon.fields.usageLimit } }
-            ]
-          },
-          {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: now } }
-            ]
-          }
-        ]
-      },
-      orderBy: { id: 'asc' }
+    console.log('[VENTAS] direct-claim: customer resolved:', {
+      id: customer.id,
+      phone: customer.phone
     });
 
+    // 2) Comprobar si ya tiene un cupón activo asignado
+    let activeCoupon;
+    try {
+      activeCoupon = await prisma.coupon.findFirst({
+        where: {
+          assignedToId: customer.id,
+          status: 'ACTIVE',
+          AND: [
+            {
+              OR: [
+                { usageLimit: null },
+                { usedCount: { lt: prisma.coupon.fields.usageLimit } }
+              ]
+            },
+            {
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: now } }
+              ]
+            }
+          ]
+        },
+        orderBy: { id: 'asc' }
+      });
+    } catch (e) {
+      console.error('[VENTAS] direct-claim: ERROR checking activeCoupon:', e);
+      return res.status(500).json({
+        ok: false,
+        error: 'server',
+        stage: 'check_active_coupon',
+        code: e.code || null,
+        meta: e.meta || null
+      });
+    }
+
     if (activeCoupon) {
+      console.log('[VENTAS] direct-claim: already_has_active', {
+        code: activeCoupon.code,
+        expiresAt: activeCoupon.expiresAt
+      });
       return res.status(409).json({
         ok: false,
         error: 'already_has_active',
@@ -987,43 +1029,75 @@ router.post('/direct-claim', async (req, res) => {
     }
 
     // 3) Buscar un cupón disponible en el pool (según type+key)
-    const poolCoupon = await prisma.coupon.findFirst({
-      where: {
-        status: 'ACTIVE',
-        ...whereTypeKey,
-        AND: [
-          {
-            OR: [
-              { usageLimit: null },
-              { usedCount: { lt: prisma.coupon.fields.usageLimit } }
-            ]
-          },
-          {
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: now } }
-            ]
-          }
-        ]
-      },
-      orderBy: { id: 'asc' }
-    });
+    let poolCoupon;
+    try {
+      poolCoupon = await prisma.coupon.findFirst({
+        where: {
+          status: 'ACTIVE',
+          ...whereTypeKey,
+          AND: [
+            {
+              OR: [
+                { usageLimit: null },
+                { usedCount: { lt: prisma.coupon.fields.usageLimit } }
+              ]
+            },
+            {
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: now } }
+              ]
+            }
+          ]
+        },
+        orderBy: { id: 'asc' }
+      });
+    } catch (e) {
+      console.error('[VENTAS] direct-claim: ERROR fetching poolCoupon:', e);
+      return res.status(500).json({
+        ok: false,
+        error: 'server',
+        stage: 'fetch_pool_coupon',
+        code: e.code || null,
+        meta: e.meta || null
+      });
+    }
 
     if (!poolCoupon) {
+      console.warn('[VENTAS] direct-claim: out_of_stock for', { type, key });
       return res.status(409).json({ ok: false, error: 'out_of_stock' });
     }
 
-    // 4) Asignar cupón al cliente, marcar expiración y etiquetar como CLAIM/WEB
-    await prisma.coupon.update({
-      where: { id: poolCoupon.id },
-      data: {
-        expiresAt,
-        assignedToId: customer.id,
-        acquisition: 'CLAIM',
-        channel: 'WEB',
-        campaign: campaign ?? poolCoupon.campaign ?? null
-      }
+    console.log('[VENTAS] direct-claim: poolCoupon selected:', {
+      id: poolCoupon.id,
+      code: poolCoupon.code,
+      kind: poolCoupon.kind,
+      percent: poolCoupon.percent,
+      amount: poolCoupon.amount
     });
+
+    // 4) Asignar cupón al cliente, marcar expiración y etiquetar
+    try {
+      await prisma.coupon.update({
+        where: { id: poolCoupon.id },
+        data: {
+          expiresAt,
+          assignedToId: customer.id,
+          acquisition: 'CLAIM',
+          channel: 'WEB',
+          campaign: campaign ?? poolCoupon.campaign ?? null
+        }
+      });
+    } catch (e) {
+      console.error('[VENTAS] direct-claim: ERROR updating coupon to assign:', e);
+      return res.status(500).json({
+        ok: false,
+        error: 'server',
+        stage: 'assign_coupon',
+        code: e.code || null,
+        meta: e.meta || null
+      });
+    }
 
     const finalCoupon = await prisma.coupon.findUnique({
       where: { id: poolCoupon.id }
@@ -1035,10 +1109,9 @@ router.post('/direct-claim', async (req, res) => {
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
 
-    // 5) Enviar SMS al cliente (y opcional al admin), igual que en /issue
+    // 5) Enviar SMS al cliente (y opcional al admin)
     const notify = { user: { tried: false }, admin: { tried: false } };
 
-    // SMS al cliente
     if (phoneRaw) {
       notify.user.tried = true;
       const userMsg =
@@ -1050,13 +1123,12 @@ router.post('/direct-claim', async (req, res) => {
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
-        console.error('[coupons.direct-claim] user SMS error:', err);
+        console.error('[VENTAS] direct-claim user SMS error:', err);
         notify.user.ok = false;
         notify.user.error = err.message;
       }
     }
 
-    // SMS al admin (opcional)
     if (adminPhone) {
       notify.admin.tried = true;
       const adminMsg =
@@ -1069,11 +1141,18 @@ router.post('/direct-claim', async (req, res) => {
         notify.admin.ok = true;
         notify.admin.sid = resp.sid;
       } catch (err) {
-        console.error('[coupons.direct-claim] admin SMS error:', err);
+        console.error('[VENTAS] direct-claim admin SMS error:', err);
         notify.admin.ok = false;
         notify.admin.error = err.message;
       }
     }
+
+    console.log('[VENTAS] direct-claim SUCCESS:', {
+      code,
+      type,
+      key,
+      customerId: customer.id
+    });
 
     return res.json({
       ok: true,
@@ -1086,10 +1165,17 @@ router.post('/direct-claim', async (req, res) => {
       notify
     });
   } catch (e) {
-    console.error('[coupons.direct-claim] error', e);
-    return res.status(500).json({ ok: false, error: 'server' });
+    console.error('[VENTAS] direct-claim CATCH error:', e);
+    return res.status(500).json({
+      ok: false,
+      error: 'server',
+      stage: 'catch_all',
+      code: e.code || null,
+      meta: e.meta || null
+    });
   }
 });
+
 
 
 router.get('/gallery', async (_req, res) => {
