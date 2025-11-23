@@ -1426,47 +1426,118 @@ router.get('/games/:gameId/prize', async (req, res) => {
  *  GAMES: ISSUE FROM POOL
  * =========================== */
 router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
+  let stage = 'init';
+
   try {
     const gameId = Number(req.params.gameId);
-    if (!Number.isFinite(gameId)) return res.status(400).json({ error:'bad_game' });
+    if (!Number.isFinite(gameId)) {
+      return res.status(400).json({ ok: false, error: 'bad_game' });
+    }
 
     const hours = Number(req.body.hours || 24);
-    if (!Number.isFinite(hours) || hours <= 0) return res.status(400).json({ error:'bad_hours' });
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return res.status(400).json({ ok: false, error: 'bad_hours' });
+    }
 
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
-    // primer cupón válido del pool del juego (admite AMOUNT o PERCENT según lo que tenga el pool)
+    console.log('[games.issue] HIT', {
+      gameId,
+      hours,
+      contact: req.body.contact || null,
+      customerId: req.body.customerId || null,
+      campaign: req.body.campaign || null
+    });
+
+    // ---------- 1) Buscar cupón válido del pool del juego ----------
+    stage = 'find_pool_coupon';
+
     const row = await prisma.coupon.findFirst({
       where: {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
-        AND: [
-          { OR: [{ usageLimit: null }, { usedCount: { lt: prisma.coupon.fields.usageLimit } }] },
-          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-        ],
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } }
+        ]
+        // ⚠️ SIN prisma.coupon.fields.usageLimit
       },
       orderBy: { id: 'asc' }
     });
-    if (!row) return res.status(409).json({ error:'out_of_stock' });
+
+    console.log('[games.issue] poolCoupon elegido:', row && {
+      id: row.id,
+      code: row.code,
+      kind: row.kind,
+      variant: row.variant,
+      percent: row.percent,
+      amount: row.amount,
+      usageLimit: row.usageLimit,
+      usedCount: row.usedCount,
+      expiresAt: row.expiresAt
+    });
+
+    if (!row) {
+      return res.status(409).json({ ok: false, error: 'out_of_stock' });
+    }
+
+    // ---------- 2) Actualizar cupón (expiración + asignación + channel) ----------
+    stage = 'update_coupon';
 
     await prisma.coupon.update({
-      where: { code: row.code },
-      data : {
+      where: { id: row.id },
+      data: {
         expiresAt,
-        assignedToId: req.body.customerId ? Number(req.body.customerId) : row.assignedToId ?? null,
+        assignedToId: req.body.customerId
+          ? Number(req.body.customerId)
+          : row.assignedToId ?? null,
         channel: 'GAME',
+        // mantenemos acquisition = 'GAME'
         campaign: req.body.campaign ?? row.campaign ?? null
       }
     });
 
-    // Notificación opcional al usuario/admin
-    const contact     = String(req.body.contact || '').trim();
-    const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
-    const adminPhone  = process.env.ADMIN_PHONE || '';
-    const whenTxt     = fmtExpiry(expiresAt);
-    const code        = row.code;
+    // Leemos la fila final para usar exactamente lo que queda en BD
+    stage = 'reload_coupon';
+    const finalCoupon = await prisma.coupon.findUnique({
+      where: { id: row.id }
+    });
+
+    if (!finalCoupon) {
+      console.warn('[games.issue] finalCoupon not found after update', {
+        id: row.id
+      });
+      return res.status(500).json({
+        ok: false,
+        error: 'server',
+        stage: 'finalCoupon_not_found'
+      });
+    }
+
+    console.log('[games.issue] finalCoupon:', {
+      id: finalCoupon.id,
+      code: finalCoupon.code,
+      kind: finalCoupon.kind,
+      variant: finalCoupon.variant,
+      percent: finalCoupon.percent,
+      amount: finalCoupon.amount,
+      maxAmount: finalCoupon.maxAmount,
+      expiresAt: finalCoupon.expiresAt,
+      assignedToId: finalCoupon.assignedToId
+    });
+
+    const code = finalCoupon.code;
+    const effectiveExpiresAt = finalCoupon.expiresAt || expiresAt;
+
+    // ---------- 3) Notificación opcional al usuario/admin ----------
+    stage = 'send_sms';
+
+    const contact = String(req.body.contact || '').trim();
+    const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+    const adminPhone = process.env.ADMIN_PHONE || '';
+    const whenTxt = fmtExpiry(effectiveExpiresAt);
     const notify = { user: { tried: false }, admin: { tried: false } };
 
     if (contact) {
@@ -1477,42 +1548,67 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
         `Vence ${whenTxt}.`;
       try {
         const resp = await sendSMS(contact, userMsg);
-        notify.user.ok  = true;
+        notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
+        console.error('[games.issue] user SMS error:', err);
         notify.user.ok = false;
         notify.user.error = err.message;
       }
     }
+
     if (adminPhone) {
       notify.admin.tried = true;
-      const adminMsg = `ALERTA MCP 🎯 Premio juego #${gameId} emitido: ${code} (vence ${whenTxt})`;
+      const adminMsg =
+        `ALERTA MCP 🎯 Premio juego #${gameId} emitido: ${code} (vence ${whenTxt})`;
       try {
         const resp = await sendSMS(adminPhone, adminMsg);
-        notify.admin.ok  = true;
+        notify.admin.ok = true;
         notify.admin.sid = resp.sid;
       } catch (err) {
+        console.error('[games.issue] admin SMS error:', err);
         notify.admin.ok = false;
         notify.admin.error = err.message;
       }
     }
 
-    // respuesta homogénea
-    const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
+    // ---------- 4) Respuesta homogénea, usando valores REALES del cupón ----------
+    const legacyKind =
+      finalCoupon.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
+
+    const amountNum =
+      finalCoupon.amount != null ? Number(finalCoupon.amount) : null;
+    const percentNum =
+      finalCoupon.kind === 'PERCENT'
+        ? Number(finalCoupon.percent || 0)
+        : null;
+    const maxAmountNum =
+      finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
+
     return res.json({
       ok: true,
       code,
-      kindV2: row.kind,
-      amount: row.amount ? Number(row.amount) : null,
-      percent: row.kind === 'PERCENT' ? Number(row.percent || 0) : null,
-      expiresAt,
+      kindV2: finalCoupon.kind,
+      variant: finalCoupon.variant,
+      amount: amountNum,
+      percent: percentNum,
+      maxAmount: maxAmountNum,
+      expiresAt: effectiveExpiresAt, // ← la expiración real en BD
       kind: legacyKind,
-      value: row.kind === 'AMOUNT' ? Number(row.amount || 0) : Number(row.percent || 0),
+      value:
+        finalCoupon.kind === 'AMOUNT'
+          ? amountNum || 0
+          : percentNum || 0,
       notify
     });
   } catch (e) {
-    console.error('[games.issue] error', e);
-    res.status(500).json({ ok:false, error:'server' });
+    console.error('[games.issue] FATAL error at stage', stage, e);
+    res.status(500).json({
+      ok: false,
+      error: 'server',
+      stage,
+      meta: { message: e.message }
+    });
   }
 });
 
