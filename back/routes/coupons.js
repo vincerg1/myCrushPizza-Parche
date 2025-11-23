@@ -985,18 +985,19 @@ router.post('/direct-claim', async (req, res) => {
           { expiresAt: null },
           { expiresAt: { gt: now } }
         ]
-        // IMPORTANTE: SIN prisma.coupon.fields.usageLimit
       },
       orderBy: { id: 'asc' }
     });
 
-    console.log('[VENTAS][direct-claim] activeCoupon result:', activeCoupon && {
-      id: activeCoupon.id,
-      code: activeCoupon.code,
-      expiresAt: activeCoupon.expiresAt,
-      usageLimit: activeCoupon.usageLimit,
-      usedCount: activeCoupon.usedCount
-    });
+    console.log('[VENTAS][direct-claim] activeCoupon result:',
+      activeCoupon && {
+        id: activeCoupon.id,
+        code: activeCoupon.code,
+        expiresAt: activeCoupon.expiresAt,
+        usageLimit: activeCoupon.usageLimit,
+        usedCount: activeCoupon.usedCount
+      }
+    );
 
     if (activeCoupon) {
       return res.status(409).json({
@@ -1010,7 +1011,6 @@ router.post('/direct-claim', async (req, res) => {
     // ---------- 3) Buscar cupón disponible en el pool ----------
     stage = 'find_pool_coupon';
 
-    // Log de muestra de pool para ver que realmente hay stock
     const samplePool = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
@@ -1019,8 +1019,11 @@ router.post('/direct-claim', async (req, res) => {
       select: {
         id: true,
         code: true,
+        kind: true,
+        variant: true,
         percent: true,
         amount: true,
+        maxAmount: true,
         usageLimit: true,
         usedCount: true,
         expiresAt: true
@@ -1037,20 +1040,24 @@ router.post('/direct-claim', async (req, res) => {
           { expiresAt: null },
           { expiresAt: { gt: now } }
         ]
-        // de nuevo, SIN fieldRef usageLimit vs usedCount
       },
       orderBy: { id: 'asc' }
     });
 
-    console.log('[VENTAS][direct-claim] poolCoupon elegido:', poolCoupon && {
-      id: poolCoupon.id,
-      code: poolCoupon.code,
-      percent: poolCoupon.percent,
-      amount: poolCoupon.amount,
-      usageLimit: poolCoupon.usageLimit,
-      usedCount: poolCoupon.usedCount,
-      expiresAt: poolCoupon.expiresAt
-    });
+    console.log('[VENTAS][direct-claim] poolCoupon elegido:',
+      poolCoupon && {
+        id: poolCoupon.id,
+        code: poolCoupon.code,
+        kind: poolCoupon.kind,
+        variant: poolCoupon.variant,
+        percent: poolCoupon.percent,
+        amount: poolCoupon.amount,
+        maxAmount: poolCoupon.maxAmount,
+        usageLimit: poolCoupon.usageLimit,
+        usedCount: poolCoupon.usedCount,
+        expiresAt: poolCoupon.expiresAt
+      }
+    );
 
     if (!poolCoupon) {
       return res.status(409).json({
@@ -1077,16 +1084,37 @@ router.post('/direct-claim', async (req, res) => {
       where: { id: poolCoupon.id }
     });
 
+    // Datos “reales” del cupón que usará el front
+    const kind      = finalCoupon.kind;
+    const variant   = finalCoupon.variant;
+    const percent   =
+      kind === 'PERCENT' && finalCoupon.percent != null
+        ? Number(finalCoupon.percent)
+        : null;
+    const amount    =
+      kind === 'AMOUNT' && finalCoupon.amount != null
+        ? Number(finalCoupon.amount)
+        : null;
+    const maxAmount =
+      finalCoupon.maxAmount != null
+        ? Number(finalCoupon.maxAmount)
+        : null;
+
     console.log('[VENTAS][direct-claim] finalCoupon after update:', {
       id: finalCoupon.id,
       code: finalCoupon.code,
       assignedToId: finalCoupon.assignedToId,
-      expiresAt: finalCoupon.expiresAt
+      expiresAt: finalCoupon.expiresAt,
+      kind,
+      variant,
+      percent,
+      amount,
+      maxAmount
     });
 
     const code = finalCoupon.code;
     const title = titleForCouponRow(finalCoupon);
-    const whenTxt = fmtExpiry(expiresAt);
+    const whenTxt = fmtExpiry(finalCoupon.expiresAt || expiresAt);
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
 
@@ -1135,8 +1163,13 @@ router.post('/direct-claim', async (req, res) => {
       type,
       key,
       title,
-      expiresAt,
+      expiresAt: finalCoupon.expiresAt || expiresAt,
       customerId: customer.id,
+      kind,
+      variant,
+      percent,
+      amount,
+      maxAmount,
       notify
     });
   } catch (e) {
@@ -1149,6 +1182,7 @@ router.post('/direct-claim', async (req, res) => {
     });
   }
 });
+
 
 router.get('/gallery', async (_req, res) => {
   try {
