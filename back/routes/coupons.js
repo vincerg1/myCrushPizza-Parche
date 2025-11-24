@@ -1168,9 +1168,6 @@ router.post('/direct-claim', async (req, res) => {
   }
 });
 
-
-
-
 router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
@@ -1349,14 +1346,15 @@ router.get('/gallery', async (_req, res) => {
   }
 });
 
-
 /* ===========================
  *  GAMES: PRIZE PREVIEW
  * =========================== */
 router.get('/games/:gameId/prize', async (req, res) => {
   try {
     const gameId = Number(req.params.gameId);
-    if (!Number.isFinite(gameId)) return res.status(400).json({ ok:false, error:'bad_game' });
+    if (!Number.isFinite(gameId)) {
+      return res.status(400).json({ ok:false, error:'bad_game' });
+    }
 
     const now = nowInTZ();
 
@@ -1364,7 +1362,8 @@ router.get('/games/:gameId/prize', async (req, res) => {
       where: {
         status: 'ACTIVE',
         acquisition: 'GAME',
-        gameId
+        gameId,
+        assignedToId: null,   // 🔹 SOLO cupones del pool (sin dueño)
       },
       select: {
         kind: true, variant: true, percent: true, percentMin: true, percentMax: true,
@@ -1381,23 +1380,32 @@ router.get('/games/:gameId/prize', async (req, res) => {
       return isActiveByDate(r, now) && isWithinWindow(r, now) && hasStock;
     });
 
-    if (!valid.length) return res.json({ ok:true, prize: null });
+    if (!valid.length) {
+      return res.json({ ok:true, prize: null });
+    }
 
     const r = valid[0];
-    const isRange = r.kind === 'PERCENT' && (toNum(r.percentMin) != null && toNum(r.percentMax) != null);
-    const title =
-      (r.kind === 'AMOUNT' && r.variant === 'FIXED' && r.amount != null) ? `${Number(r.amount).toFixed(2)} €` :
-      (isRange) ? `${r.percentMin}–${r.percentMax}%` :
-      (r.kind === 'PERCENT' && r.percent != null) ? `${r.percent}%` :
-      'Cupón';
+    const isRange =
+      r.kind === 'PERCENT' &&
+      (toNum(r.percentMin) != null && toNum(r.percentMax) != null);
 
+    const title =
+      (r.kind === 'AMOUNT' && r.variant === 'FIXED' && r.amount != null)
+        ? `${Number(r.amount).toFixed(2)} €`
+        : isRange
+          ? `${r.percentMin}–${r.percentMax}%`
+          : (r.kind === 'PERCENT' && r.percent != null)
+            ? `${r.percent}%`
+            : 'Cupón';
+
+    // 🔹 remaining = stock REAL del pool del juego (solo cupones libres)
     const remaining = valid.reduce((acc, x) => {
       const limit = toNum(x.usageLimit) ?? null;
       const used  = toNum(x.usedCount)  ?? 0;
-      return acc + (limit == null ? 0 : Math.max(0, limit - used)); // si hay ilimitados, reporta solo sum finitos
+      return acc + (limit == null ? 0 : Math.max(0, limit - used));
     }, 0);
 
-    res.json({
+    return res.json({
       ok: true,
       prize: {
         gameId,
