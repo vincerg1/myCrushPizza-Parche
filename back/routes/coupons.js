@@ -939,12 +939,12 @@ router.post('/direct-claim', async (req, res) => {
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
 
     // ---------- 1) Buscar / crear cliente (helper) ----------
-    stage = 'customer_lookup';
-    const customer = await findOrCreateCustomerByPhone({
-      phone: phoneRaw,
-      name: name || null,
-      origin: 'QR'                 // origen para este flujo
-    });
+stage = 'customer_lookup';
+const customer = await findOrCreateCustomerByPhone(prisma, {
+  phone: phoneRaw,
+  name: name || null,
+  origin: 'QR',              // origen para este flujo
+});
 
     // ---------- 2) Comprobar cupón activo del cliente ----------
     stage = 'check_active_coupon';
