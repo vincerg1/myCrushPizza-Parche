@@ -4,8 +4,9 @@
 const express = require('express');
 const router = express.Router();
 const sendSMS = require('../utils/sendSMS'); // usa Messaging Service SID
-
+const { findOrCreateCustomerByPhone } = require('../lib/customers');
 // ====== Helpers ======
+
 const TZ = process.env.TIMEZONE || 'Europe/Madrid';
 const LEGACY_FP_LABEL = 'FP';
 const LEGACY_PERCENT_LABEL = 'PERCENT';
@@ -937,43 +938,13 @@ router.post('/direct-claim', async (req, res) => {
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
 
-    // ---------- 1) Buscar / crear cliente ----------
+    // ---------- 1) Buscar / crear cliente (helper) ----------
     stage = 'customer_lookup';
-    let customer = await prisma.customer.findFirst({
-      where: { phone: phoneRaw }
+    const customer = await findOrCreateCustomerByPhone({
+      phone: phoneRaw,
+      name: name || null,
+      origin: 'QR'                 // origen para este flujo
     });
-
-    if (!customer) {
-      customer = await prisma.customer.create({
-        data: {
-          code: `C${Date.now()}`,
-          name: name ? String(name).trim() : null,
-          phone: phoneRaw,
-          address_1: '-',
-          origin: 'QR'
-        }
-      });
-      console.log('[VENTAS][direct-claim] customer CREATED', {
-        id: customer.id,
-        phone: customer.phone
-      });
-    } else if (name && !customer.name) {
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: { name: String(name).trim() }
-      });
-      console.log('[VENTAS][direct-claim] customer UPDATED name', {
-        id: customer.id,
-        phone: customer.phone,
-        name: customer.name
-      });
-    } else {
-      console.log('[VENTAS][direct-claim] customer FOUND', {
-        id: customer.id,
-        phone: customer.phone,
-        name: customer.name
-      });
-    }
 
     // ---------- 2) Comprobar cupón activo del cliente ----------
     stage = 'check_active_coupon';
@@ -1085,7 +1056,6 @@ router.post('/direct-claim', async (req, res) => {
       where: { id: poolCoupon.id }
     });
 
-    // Datos “reales” del cupón que usará el front
     const kind      = finalCoupon.kind;
     const variant   = finalCoupon.variant;
     const percent   =
@@ -1183,6 +1153,7 @@ router.post('/direct-claim', async (req, res) => {
     });
   }
 });
+
 
 
 router.get('/gallery', async (_req, res) => {
