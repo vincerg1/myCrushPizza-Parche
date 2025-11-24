@@ -1,78 +1,80 @@
-// src/lib/customers.js
-import { prisma } from '../prisma'; // ajusta la ruta si tu prisma está en otro sitio
+// backend VENTAS: src/lib/customers.js
+'use strict';
 
-// Pequeño generador de código de cliente tipo CUS-XXXXXX
-function generateCustomerCode() {
-  const base = Math.floor(Date.now() / 1000).toString(36).toUpperCase();
-  return `CUS-${base}`;
-}
+// Soportamos ambos estilos de export de prisma:
+//   module.exports = prisma
+//   module.exports = { prisma }
+const prismaModule = require('../prisma');
+const prisma = prismaModule.prisma || prismaModule;
 
 /**
- * Busca o crea un cliente por teléfono.
- *
- * @param {Object} params
- * @param {string|number} params.phone  Teléfono del cliente
- * @param {string|null} [params.name]   Nombre opcional
- * @param {string|null} [params.origin] Origen opcional: 'QR', 'WEB', 'PHONE', etc.
- *
- * @returns {Promise<import('@prisma/client').Customer>}
+ * Crea o encuentra un cliente por teléfono, normalizando:
+ * - Siempre busca por phone (string trim)
+ * - Si no existe, crea con un code tipo "CUS-xxxxx"
+ * - Si existe y no tiene name/origin, los completa
  */
-export async function findOrCreateCustomerByPhone({ phone, name = null, origin = null }) {
+async function findOrCreateCustomerByPhone({ phone, name = null, origin = null }) {
   const phoneRaw = String(phone || '').trim();
   if (!phoneRaw) {
     throw new Error('missing_phone');
   }
 
-  const nameRaw = name ? String(name).trim() : null;
-  const originRaw = origin ? String(origin).trim() : null;
+  const nameTrim = name ? String(name).trim() : null;
+  const originTrim = origin ? String(origin).trim().toUpperCase() : null;
 
   // 1) Buscar por teléfono
   let customer = await prisma.customer.findFirst({
     where: { phone: phoneRaw },
   });
 
+  // 2) Crear si no existe
   if (!customer) {
-    // 2) Crear si no existe
+    // código tipo "CUS-12345" (unificamos patrón humano)
+    const suffix = String(Date.now()).slice(-5); // últimos 5 dígitos del timestamp
+    const code = `CUS-${suffix}`;
+
     customer = await prisma.customer.create({
       data: {
-        code: generateCustomerCode(),
-        name: nameRaw,
+        code,
+        name: nameTrim,
         phone: phoneRaw,
-        address_1: '-',         // igual que usabas en direct-claim
-        origin: originRaw || 'QR',
+        address_1: '-',
+        origin: originTrim || 'QR',
       },
     });
 
-    console.log('[customers] customer CREATED', {
+    console.log('[customers] CREATED', {
       id: customer.id,
+      code: customer.code,
       phone: customer.phone,
       origin: customer.origin,
     });
+
     return customer;
   }
 
-  // 3) Actualizar nombre/origin si vienen y están vacíos en el cliente
-  const updateData = {};
-  if (nameRaw && !customer.name) {
-    updateData.name = nameRaw;
+  // 3) Si existe: completar name / origin si vienen vacíos
+  const patch = {};
+  if (nameTrim && !customer.name) {
+    patch.name = nameTrim;
   }
-  if (originRaw && !customer.origin) {
-    updateData.origin = originRaw;
+  if (originTrim && !customer.origin) {
+    patch.origin = originTrim;
   }
 
-  if (Object.keys(updateData).length > 0) {
+  if (Object.keys(patch).length > 0) {
     customer = await prisma.customer.update({
       where: { id: customer.id },
-      data: updateData,
+      data: patch,
     });
-    console.log('[customers] customer UPDATED', {
+    console.log('[customers] UPDATED', {
       id: customer.id,
       phone: customer.phone,
       name: customer.name,
       origin: customer.origin,
     });
   } else {
-    console.log('[customers] customer FOUND', {
+    console.log('[customers] FOUND', {
       id: customer.id,
       phone: customer.phone,
       name: customer.name,
@@ -82,3 +84,7 @@ export async function findOrCreateCustomerByPhone({ phone, name = null, origin =
 
   return customer;
 }
+
+module.exports = {
+  findOrCreateCustomerByPhone,
+};
