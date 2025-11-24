@@ -921,6 +921,7 @@ router.post('/direct-claim', async (req, res) => {
     if (!type || !key) {
       return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
     }
+
     const H = Number(hours);
     if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
       return res.status(400).json({ ok: false, error: 'bad_hours' });
@@ -939,12 +940,12 @@ router.post('/direct-claim', async (req, res) => {
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
 
     // ---------- 1) Buscar / crear cliente (helper) ----------
-stage = 'customer_lookup';
-const customer = await findOrCreateCustomerByPhone(prisma, {
-  phone: phoneRaw,
-  name: name || null,
-  origin: 'QR',              // origen para este flujo
-});
+    stage = 'customer_lookup';
+    const customer = await findOrCreateCustomerByPhone(prisma, {
+      phone: phoneRaw,
+      name: name || null,
+      origin: 'QR', // origen para este flujo
+    });
 
     // ---------- 2) Comprobar cupón activo del cliente ----------
     stage = 'check_active_coupon';
@@ -960,7 +961,8 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
       orderBy: { id: 'asc' }
     });
 
-    console.log('[VENTAS][direct-claim] activeCoupon result:',
+    console.log(
+      '[VENTAS][direct-claim] activeCoupon result:',
       activeCoupon && {
         id: activeCoupon.id,
         code: activeCoupon.code,
@@ -982,11 +984,29 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
     // ---------- 3) Buscar cupón disponible en el pool ----------
     stage = 'find_pool_coupon';
 
+    // Para debug: muestra primeros 5 que cumplirían la condición
+    const poolWhere = {
+      status: 'ACTIVE',
+      ...whereTypeKey,
+      OR: [
+        // Cupón libre (sin dueño) y no expirado
+        {
+          assignedToId: null,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } }
+          ]
+        },
+        // Cupón que tuvo dueño pero YA expiró -> se puede reciclar
+        {
+          assignedToId: { not: null },
+          expiresAt: { lte: now }
+        }
+      ]
+    };
+
     const samplePool = await prisma.coupon.findMany({
-      where: {
-        status: 'ACTIVE',
-        ...whereTypeKey
-      },
+      where: poolWhere,
       select: {
         id: true,
         code: true,
@@ -998,25 +1018,19 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
         usageLimit: true,
         usedCount: true,
         expiresAt: true,
-        assignedToId: true,
+        assignedToId: true
       },
       take: 5
     });
     console.log('[VENTAS][direct-claim] samplePool (primeros 5):', samplePool);
 
     const poolCoupon = await prisma.coupon.findFirst({
-      where: {
-        status: 'ACTIVE',
-        ...whereTypeKey,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } }
-        ]
-      },
+      where: poolWhere,
       orderBy: { id: 'asc' }
     });
 
-    console.log('[VENTAS][direct-claim] poolCoupon elegido:',
+    console.log(
+      '[VENTAS][direct-claim] poolCoupon elegido:',
       poolCoupon && {
         id: poolCoupon.id,
         code: poolCoupon.code,
@@ -1027,7 +1041,8 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
         maxAmount: poolCoupon.maxAmount,
         usageLimit: poolCoupon.usageLimit,
         usedCount: poolCoupon.usedCount,
-        expiresAt: poolCoupon.expiresAt
+        expiresAt: poolCoupon.expiresAt,
+        assignedToId: poolCoupon.assignedToId
       }
     );
 
@@ -1056,20 +1071,18 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
       where: { id: poolCoupon.id }
     });
 
-    const kind      = finalCoupon.kind;
-    const variant   = finalCoupon.variant;
-    const percent   =
+    const kind = finalCoupon.kind;
+    const variant = finalCoupon.variant;
+    const percent =
       kind === 'PERCENT' && finalCoupon.percent != null
         ? Number(finalCoupon.percent)
         : null;
-    const amount    =
+    const amount =
       kind === 'AMOUNT' && finalCoupon.amount != null
         ? Number(finalCoupon.amount)
         : null;
     const maxAmount =
-      finalCoupon.maxAmount != null
-        ? Number(finalCoupon.maxAmount)
-        : null;
+      finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
 
     console.log('[VENTAS][direct-claim] finalCoupon after update:', {
       id: finalCoupon.id,
@@ -1086,7 +1099,8 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
     const code = finalCoupon.code;
     const title = titleForCouponRow(finalCoupon);
     const whenTxt = fmtExpiry(finalCoupon.expiresAt || expiresAt);
-    const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
+    const siteUrl =
+      process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
 
     // ---------- 5) Enviar SMS ----------
@@ -1153,6 +1167,7 @@ const customer = await findOrCreateCustomerByPhone(prisma, {
     });
   }
 });
+
 
 
 
