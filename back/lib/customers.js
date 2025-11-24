@@ -1,25 +1,19 @@
 // backend VENTAS: src/lib/customers.js
 'use strict';
 
-// Soportamos ambos estilos de export de prisma:
-//   module.exports = prisma
-//   module.exports = { prisma }
-const prismaModule = require('../prisma');
-const prisma = prismaModule.prisma || prismaModule;
-
 /**
- * Crea o encuentra un cliente por teléfono, normalizando:
- * - Siempre busca por phone (string trim)
- * - Si no existe, crea con un code tipo "CUS-xxxxx"
- * - Si existe y no tiene name/origin, los completa
+ * Crea o encuentra un cliente por teléfono.
+ *
+ * @param {import('@prisma/client').PrismaClient} prisma
+ * @param {{ phone: string, name?: string|null, origin?: string|null }} opts
  */
-async function findOrCreateCustomerByPhone({ phone, name = null, origin = null }) {
+async function findOrCreateCustomerByPhone(prisma, { phone, name = null, origin = null }) {
   const phoneRaw = String(phone || '').trim();
   if (!phoneRaw) {
     throw new Error('missing_phone');
   }
 
-  const nameTrim = name ? String(name).trim() : null;
+  const nameTrim   = name   ? String(name).trim()   : null;
   const originTrim = origin ? String(origin).trim().toUpperCase() : null;
 
   // 1) Buscar por teléfono
@@ -29,7 +23,7 @@ async function findOrCreateCustomerByPhone({ phone, name = null, origin = null }
 
   // 2) Crear si no existe
   if (!customer) {
-    // código tipo "CUS-12345" (unificamos patrón humano)
+    // código humano tipo "CUS-12345" (normalizamos patrón)
     const suffix = String(Date.now()).slice(-5); // últimos 5 dígitos del timestamp
     const code = `CUS-${suffix}`;
 
@@ -53,7 +47,7 @@ async function findOrCreateCustomerByPhone({ phone, name = null, origin = null }
     return customer;
   }
 
-  // 3) Si existe: completar name / origin si vienen vacíos
+  // 3) Si ya existe: rellenar name / origin si venían vacíos
   const patch = {};
   if (nameTrim && !customer.name) {
     patch.name = nameTrim;
