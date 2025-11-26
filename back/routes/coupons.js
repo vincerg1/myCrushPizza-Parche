@@ -1190,6 +1190,9 @@ router.get('/gallery', async (_req, res) => {
         daysActive: true, windowStart: true, windowEnd: true,
         activeFrom: true, expiresAt: true,
         usageLimit: true, usedCount: true,
+        acquisition: true,
+        channel: true,
+        gameId: true,
       },
       orderBy: { id: 'asc' }
     });
@@ -1247,21 +1250,31 @@ router.get('/gallery', async (_req, res) => {
       return ok;
     });
 
-    const keyFor = (r) => {
-      const v    = variantOf(r);
-      const pct  = toNum(r.percent);
-      const pMin = toNum(r.percentMin);
-      const pMax = toNum(r.percentMax);
-      const amt  = toNum(r.amount);
+   const keyFor = (r) => {
+  const v    = variantOf(r);
+  const pct  = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt  = toNum(r.amount);
 
-      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
-        return `RANDOM_PERCENT:${pMin}-${pMax}`;
-      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
-        return `FIXED_PERCENT:${pct}`;
-      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
-        return `FIXED_AMOUNT:${amt.toFixed(2)}`;
-      return null;
-    };
+  // 🔥 NUEVO: Tag por juego
+  const gameTag =
+    (r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null)
+      ? `G${r.gameId || 0}`
+      : `G0`;
+
+  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+    return `RANDOM_PERCENT:${pMin}-${pMax}:${gameTag}`;
+
+  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+    return `FIXED_PERCENT:${pct}:${gameTag}`;
+
+  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
+    return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
+
+  return null;
+};
+
 
     const titleFor = (r) => {
       const v    = variantOf(r);
