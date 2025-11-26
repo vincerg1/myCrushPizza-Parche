@@ -1190,6 +1190,7 @@ router.get('/gallery', async (_req, res) => {
         daysActive: true, windowStart: true, windowEnd: true,
         activeFrom: true, expiresAt: true,
         usageLimit: true, usedCount: true,
+        // 👇 importante para separar por juego en el front
         acquisition: true,
         channel: true,
         gameId: true,
@@ -1250,31 +1251,30 @@ router.get('/gallery', async (_req, res) => {
       return ok;
     });
 
-   const keyFor = (r) => {
-  const v    = variantOf(r);
-  const pct  = toNum(r.percent);
-  const pMin = toNum(r.percentMin);
-  const pMax = toNum(r.percentMax);
-  const amt  = toNum(r.amount);
+    const keyFor = (r) => {
+      const v    = variantOf(r);
+      const pct  = toNum(r.percent);
+      const pMin = toNum(r.percentMin);
+      const pMax = toNum(r.percentMax);
+      const amt  = toNum(r.amount);
 
-  // 🔥 NUEVO: Tag por juego
-  const gameTag =
-    (r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null)
-      ? `G${r.gameId || 0}`
-      : `G0`;
+      // 🔥 Tag por juego (G0 = no juego / genérico)
+      const gameTag =
+        (r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null)
+          ? `G${r.gameId || 0}`
+          : `G0`;
 
-  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
-    return `RANDOM_PERCENT:${pMin}-${pMax}:${gameTag}`;
+      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+        return `RANDOM_PERCENT:${pMin}-${pMax}:${gameTag}`;
 
-  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
-    return `FIXED_PERCENT:${pct}:${gameTag}`;
+      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+        return `FIXED_PERCENT:${pct}:${gameTag}`;
 
-  if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
-    return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
+      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
+        return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
 
-  return null;
-};
-
+      return null;
+    };
 
     const titleFor = (r) => {
       const v    = variantOf(r);
@@ -1316,7 +1316,11 @@ router.get('/gallery', async (_req, res) => {
         cta:       (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
         remaining: 0,
         sample: null,
-        sampleScore: -1
+        sampleScore: -1,
+        // 👇 que el front reciba de qué juego / canal viene
+        acquisition: r.acquisition || null,
+        channel: r.channel || null,
+        gameId: r.gameId ?? null,
       };
 
       const used  = toNum(r.usedCount) ?? 0;
@@ -1344,7 +1348,11 @@ router.get('/gallery', async (_req, res) => {
         activeFrom: s.activeFrom || null,
         expiresAt : s.expiresAt  || null
       };
-      return { ...g, constraints, lifetime };
+      return {
+        ...g,
+        constraints,
+        lifetime
+      };
     }).sort((a,b) => a.title.localeCompare(b.title, 'es'));
 
     res.json({
@@ -1358,6 +1366,7 @@ router.get('/gallery', async (_req, res) => {
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 
 /* ===========================
  *  GAMES: PRIZE PREVIEW
