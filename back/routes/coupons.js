@@ -1167,7 +1167,6 @@ router.post('/direct-claim', async (req, res) => {
     });
   }
 });
-
 router.get('/gallery', async (_req, res) => {
   try {
     const now = nowInTZ();
@@ -1366,8 +1365,6 @@ router.get('/gallery', async (_req, res) => {
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
-
-
 /* ===========================
  *  GAMES: PRIZE PREVIEW
  * =========================== */
@@ -1442,7 +1439,6 @@ router.get('/games/:gameId/prize', async (req, res) => {
     res.status(500).json({ ok:false, error:'server' });
   }
 });
-
 /* ===========================
  *  GAMES: ISSUE FROM POOL
  * =========================== */
