@@ -1442,6 +1442,9 @@ router.get('/games/:gameId/prize', async (req, res) => {
 /* ===========================
  *  GAMES: ISSUE FROM POOL
  * =========================== */
+/* ===========================
+ *  GAMES: ISSUE FROM POOL
+ * =========================== */
 router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
   let stage = 'init';
 
@@ -1467,6 +1470,28 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       campaign: req.body.campaign || null
     });
 
+    // ---------- 0) Resolver customerId a partir del teléfono (si hace falta) ----------
+    stage = 'resolve_customer';
+    let effectiveCustomerId = req.body.customerId
+      ? Number(req.body.customerId)
+      : null;
+
+    const contactRaw = String(req.body.contact || '').trim();
+
+    if (!effectiveCustomerId && contactRaw) {
+      try {
+        const customer = await findOrCreateCustomerByPhone(prisma, {
+          phone: contactRaw,
+          name: null,
+          origin: `GAME_${gameId}`,
+        });
+        effectiveCustomerId = customer.id;
+      } catch (err) {
+        console.error('[games.issue] findOrCreateCustomerByPhone error', err);
+        // si falla, seguimos sin customerId, pero NO rompemos la emisión
+      }
+    }
+
     // ---------- 1) Buscar cupón válido del pool del juego ----------
     stage = 'find_pool_coupon';
 
@@ -1475,11 +1500,11 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
+        assignedToId: null,          // 🔹 SOLO cupones del pool (sin dueño)
         OR: [
           { expiresAt: null },
           { expiresAt: { gt: now } }
         ]
-        // ⚠️ SIN prisma.coupon.fields.usageLimit
       },
       orderBy: { id: 'asc' }
     });
@@ -1507,9 +1532,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       where: { id: row.id },
       data: {
         expiresAt,
-        assignedToId: req.body.customerId
-          ? Number(req.body.customerId)
-          : row.assignedToId ?? null,
+        assignedToId: effectiveCustomerId ?? row.assignedToId ?? null,
         channel: 'GAME',
         // mantenemos acquisition = 'GAME'
         campaign: req.body.campaign ?? row.campaign ?? null
@@ -1551,20 +1574,19 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
     // ---------- 3) Notificación opcional al usuario/admin ----------
     stage = 'send_sms';
 
-    const contact = String(req.body.contact || '').trim();
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
     const whenTxt = fmtExpiry(effectiveExpiresAt);
     const notify = { user: { tried: false }, admin: { tried: false } };
 
-    if (contact) {
+    if (contactRaw) {
       notify.user.tried = true;
       const userMsg =
         `🎉 ¡Ganaste! Premio del juego: cupón ${code}\n` +
         `Úsalo en ${siteUrl}\n` +
         `Vence ${whenTxt}.`;
       try {
-        const resp = await sendSMS(contact, userMsg);
+        const resp = await sendSMS(contactRaw, userMsg);
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
@@ -1589,7 +1611,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       }
     }
 
-    // ---------- 4) Respuesta homogénea, usando valores REALES del cupón ----------
+    // ---------- 4) Respuesta homogénea ----------
     const legacyKind =
       finalCoupon.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
 
@@ -1610,7 +1632,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       amount: amountNum,
       percent: percentNum,
       maxAmount: maxAmountNum,
-      expiresAt: effectiveExpiresAt, // ← la expiración real en BD
+      expiresAt: effectiveExpiresAt,
       kind: legacyKind,
       value:
         finalCoupon.kind === 'AMOUNT'
@@ -1628,6 +1650,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
     });
   }
 });
+
 
 router.post('/bulk-tag', requireApiKey, async (req, res) => {
   try {
