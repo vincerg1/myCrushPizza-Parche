@@ -334,6 +334,11 @@ router.post('/issue', requireApiKey, async (req, res) => {
         status:  'ACTIVE',
         kind:    'AMOUNT',
         variant: 'FIXED',
+
+        // 🔒 nunca tocar cupones de juegos
+        gameId: null,
+        NOT: { acquisition: 'GAME' },
+
         AND: [
           { OR: [{ usageLimit: null }, { usedCount: { lt: prisma.coupon.fields.usageLimit } }] },
           { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
