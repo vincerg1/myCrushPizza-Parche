@@ -1178,97 +1178,70 @@ router.get('/gallery', async (_req, res) => {
 
     const variantOf = (r) => {
       if (r.variant) return r.variant; // 'FIXED' | 'RANGE'
-      if (r.kind === 'PERCENT' && toNum(r.percentMin) != null && toNum(r.percentMax) != null) return 'RANGE';
+      if (
+        r.kind === 'PERCENT' &&
+        toNum(r.percentMin) != null &&
+        toNum(r.percentMax) != null
+      )
+        return 'RANGE';
       return 'FIXED';
     };
 
     const rows = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
-        // 👀 ya NO filtramos por assignedToId aquí
+        // 👀 ya no filtramos por assignedToId ni por stock aquí
       },
       select: {
-        code: true, kind: true, variant: true,
-        percent: true, percentMin: true, percentMax: true,
-        amount: true, maxAmount: true,
-        daysActive: true, windowStart: true, windowEnd: true,
-        activeFrom: true, expiresAt: true,
-        usageLimit: true, usedCount: true,
-        assignedToId: true,          // 👈 lo necesitamos para saber si está en el pool
+        code: true,
+        kind: true,
+        variant: true,
+        percent: true,
+        percentMin: true,
+        percentMax: true,
+        amount: true,
+        maxAmount: true,
+        daysActive: true,
+        windowStart: true,
+        windowEnd: true,
+        activeFrom: true,
+        expiresAt: true,
+        usageLimit: true,
+        usedCount: true,
+        assignedToId: true, // necesitamos saber si está en pool o asignado
         // 👇 importante para separar por juego en el front
         acquisition: true,
         channel: true,
         gameId: true,
       },
-      orderBy: { id: 'asc' }
+      orderBy: { id: 'asc' },
     });
 
     const dbg = {
       total: rows.length,
       byKind: { PERCENT: 0, AMOUNT: 0 },
       amount: {
-        total: 0, active: 0,
+        total: 0,
+        active: 0,
         samplesRejected: [],
-        sampleAccepted: null
-      }
+        sampleAccepted: null,
+      },
     };
     for (const r of rows) {
       if (r.kind === 'PERCENT') dbg.byKind.PERCENT++;
-      if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
+      if (r.kind === 'AMOUNT') dbg.byKind.AMOUNT++;
     }
 
-    // 🔍 Activos por fecha / ventana (como antes),
-    // pero ya NO excluimos los que no tienen stock libre: eso se refleja en remaining=0.
-    const active = rows.filter(r => {
-      const inLife   = isActiveByDate(r, now);
-      const inWindow = isWithinWindow(r, now);
-      const used     = toNum(r.usedCount) ?? 0;
-      const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
-      const hasStock =
-        (limitNum == null) ? true : (limitNum > used);
-
-      if (r.kind === 'AMOUNT') {
-        dbg.amount.total++;
-        if (!(inLife && inWindow && hasStock)) {
-          if (dbg.amount.samplesRejected.length < 5) {
-            dbg.amount.samplesRejected.push({
-              code: r.code,
-              reason: !inLife ? 'life' : !inWindow ? 'window' : !hasStock ? 'stock' : 'other',
-              usageLimit: limitNum, usedCount: used,
-              activeFrom: r.activeFrom || null, expiresAt: r.expiresAt || null,
-              daysActive: normalizeDaysActive(r.daysActive || null),
-              windowStart: r.windowStart ?? null, windowEnd: r.windowEnd ?? null,
-              amount: toNum(r.amount)
-            });
-          }
-        }
-      }
-
-      const ok = inLife && inWindow;
-
-      if (ok && r.kind === 'AMOUNT' && !dbg.amount.sampleAccepted) {
-        dbg.amount.sampleAccepted = {
-          code: r.code,
-          usageLimit: limitNum, usedCount: used,
-          amount: toNum(r.amount),
-          variant: variantOf(r)
-        };
-      }
-      if (ok && r.kind === 'AMOUNT') dbg.amount.active++;
-
-      return ok;
-    });
-
     const keyFor = (r) => {
-      const v    = variantOf(r);
-      const pct  = toNum(r.percent);
+      const v = variantOf(r);
+      const pct = toNum(r.percent);
       const pMin = toNum(r.percentMin);
       const pMax = toNum(r.percentMax);
-      const amt  = toNum(r.amount);
+      const amt = toNum(r.amount);
 
       // 🔥 Tag por juego (G0 = no juego / genérico)
       const gameTag =
-        (r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null)
+        r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null
           ? `G${r.gameId || 0}`
           : `G0`;
 
@@ -1278,22 +1251,25 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
         return `FIXED_PERCENT:${pct}:${gameTag}`;
 
-      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null)
+      if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
         return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
 
       return null;
     };
 
     const titleFor = (r) => {
-      const v    = variantOf(r);
-      const pct  = toNum(r.percent);
+      const v = variantOf(r);
+      const pct = toNum(r.percent);
       const pMin = toNum(r.percentMin);
       const pMax = toNum(r.percentMax);
-      const amt  = toNum(r.amount);
+      const amt = toNum(r.amount);
 
-      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null) return `${pMin}–${pMax}%`;
-      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null) return `${pct}%`;
-      if (r.kind === 'AMOUNT'  && v === 'FIXED' && amt != null) return `${amt.toFixed(2)} €`;
+      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+        return `${pMin}–${pMax}%`;
+      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+        return `${pct}%`;
+      if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
+        return `${amt.toFixed(2)} €`;
       return 'Cupón';
     };
 
@@ -1301,88 +1277,142 @@ router.get('/gallery', async (_req, res) => {
       const v = variantOf(r);
       if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
       if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
-      if (r.kind === 'AMOUNT'  && v === 'FIXED') return 'FIXED_AMOUNT';
+      if (r.kind === 'AMOUNT' && v === 'FIXED') return 'FIXED_AMOUNT';
       return 'UNKNOWN';
     };
 
     const groups = new Map();
     const scoreSample = (r) => {
       const hasDays = normalizeDaysActive(r.daysActive).length > 0;
-      const hasWin  = (r.windowStart != null) || (r.windowEnd != null);
+      const hasWin =
+        r.windowStart != null || r.windowEnd != null;
       return (hasDays ? 2 : 0) + (hasWin ? 1 : 0);
     };
 
-    for (const r of active) {
+    for (const r of rows) {
       const k = keyFor(r);
       if (!k) continue;
 
-      const cur = groups.get(k) || {
-        type: typeFor(r),
-        key: k.split(':')[1],
-        title: titleFor(r),
-        subtitle: (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
-        cta:       (r.kind === 'AMOUNT') ? 'Jugar' : 'Gratis',
-        remaining: 0,
-        sample: null,
-        sampleScore: -1,
-        // 👇 que el front reciba de qué juego / canal viene
-        acquisition: r.acquisition || null,
-        channel: r.channel || null,
-        gameId: r.gameId ?? null,
-      };
+      const cur =
+        groups.get(k) || {
+          type: typeFor(r),
+          key: k.split(':')[1],
+          title: titleFor(r),
+          subtitle: r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis',
+          cta: r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis',
+          remaining: 0,
+          sample: null,
+          sampleScore: -1,
+          // 👇 que el front reciba de qué juego / canal viene
+          acquisition: r.acquisition || null,
+          channel: r.channel || null,
+          gameId: r.gameId ?? null,
+        };
 
-      const used  = toNum(r.usedCount) ?? 0;
-      const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
+      const used = toNum(r.usedCount) ?? 0;
+      const limitNum =
+        r.usageLimit == null ? null : toNum(r.usageLimit);
 
-      // 👇 Sólo sumamos stock de cupones LIBRES (sin dueño)
-      const isFree =
+      const inLife = isActiveByDate(r, now);
+      const inWindow = isWithinWindow(r, now);
+
+      // 👉 "Stock real del pool":
+      // solo cuentan cupones SIN dueño, vigentes y con saldo
+      const hasFree =
         r.assignedToId == null &&
-        ((limitNum == null) ? true : (limitNum > used));
+        inLife &&
+        inWindow &&
+        (limitNum == null || limitNum > used);
+
+      if (r.kind === 'AMOUNT') {
+        dbg.amount.total++;
+        if (hasFree) dbg.amount.active++;
+        else if (dbg.amount.samplesRejected.length < 5) {
+          dbg.amount.samplesRejected.push({
+            code: r.code,
+            reason: !inLife
+              ? 'life'
+              : !inWindow
+              ? 'window'
+              : limitNum != null && !(limitNum > used)
+              ? 'stock'
+              : 'other',
+            usageLimit: limitNum,
+            usedCount: used,
+            activeFrom: r.activeFrom || null,
+            expiresAt: r.expiresAt || null,
+            daysActive: normalizeDaysActive(r.daysActive || null),
+            windowStart: r.windowStart ?? null,
+            windowEnd: r.windowEnd ?? null,
+            amount: toNum(r.amount),
+          });
+        }
+      }
 
       if (limitNum == null) {
-        if (isFree) {
+        if (hasFree) {
           // ilimitado mientras haya al menos uno libre
           cur.remaining = null;
         }
       } else if (cur.remaining !== null) {
-        if (isFree) {
+        if (hasFree) {
           cur.remaining += Math.max(0, limitNum - used);
         }
       }
 
       const sc = scoreSample(r);
-      if (sc > cur.sampleScore) { cur.sample = r; cur.sampleScore = sc; }
+      if (sc > cur.sampleScore) {
+        cur.sample = r;
+        cur.sampleScore = sc;
+        // guardamos sampleAccepted para debug de AMOUNT
+        if (
+          r.kind === 'AMOUNT' &&
+          (!dbg.amount.sampleAccepted ||
+            sc > dbg.amount.sampleAccepted.sampleScore)
+        ) {
+          dbg.amount.sampleAccepted = {
+            code: r.code,
+            usageLimit: limitNum,
+            usedCount: used,
+            amount: toNum(r.amount),
+            variant: variantOf(r),
+            sampleScore: sc,
+          };
+        }
+      }
 
       groups.set(k, cur);
     }
 
-    const cards = Array.from(groups.values()).map(g => {
-      const s = g.sample || {};
-      const constraints = {
-        daysActive : normalizeDaysActive(s.daysActive || null),
-        windowStart: s.windowStart ?? null,
-        windowEnd  : s.windowEnd   ?? null
-      };
-      const lifetime = {
-        activeFrom: s.activeFrom || null,
-        expiresAt : s.expiresAt  || null
-      };
-      return {
-        ...g,
-        constraints,
-        lifetime
-      };
-    }).sort((a,b) => a.title.localeCompare(b.title, 'es'));
+    const cards = Array.from(groups.values())
+      .map((g) => {
+        const s = g.sample || {};
+        const constraints = {
+          daysActive: normalizeDaysActive(s.daysActive || null),
+          windowStart: s.windowStart ?? null,
+          windowEnd: s.windowEnd ?? null,
+        };
+        const lifetime = {
+          activeFrom: s.activeFrom || null,
+          expiresAt: s.expiresAt || null,
+        };
+        return {
+          ...g,
+          constraints,
+          lifetime,
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title, 'es'));
 
     res.json({
       ok: true,
       cards,
-      types: Array.from(new Set(cards.map(c => c.type))),
-      debug: dbg   // ← puedes quitarlo cuando quieras
+      types: Array.from(new Set(cards.map((c) => c.type))),
+      debug: dbg, // lo puedes quitar cuando acabemos
     });
   } catch (e) {
     console.error('[coupons.gallery] error', e);
-    res.status(500).json({ ok:false, error: 'server' });
+    res.status(500).json({ ok: false, error: 'server' });
   }
 });
 
