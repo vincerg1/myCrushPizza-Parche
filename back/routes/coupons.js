@@ -1185,7 +1185,7 @@ router.get('/gallery', async (_req, res) => {
     const rows = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
-        assignedToId: null,      // 🔹 SOLO cupones aún sin dueño (pool libre)
+        // 👀 ya NO filtramos por assignedToId aquí
       },
       select: {
         code: true, kind: true, variant: true,
@@ -1194,6 +1194,7 @@ router.get('/gallery', async (_req, res) => {
         daysActive: true, windowStart: true, windowEnd: true,
         activeFrom: true, expiresAt: true,
         usageLimit: true, usedCount: true,
+        assignedToId: true,          // 👈 lo necesitamos para saber si está en el pool
         // 👇 importante para separar por juego en el front
         acquisition: true,
         channel: true,
@@ -1216,12 +1217,15 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
     }
 
+    // 🔍 Activos por fecha / ventana (como antes),
+    // pero ya NO excluimos los que no tienen stock libre: eso se refleja en remaining=0.
     const active = rows.filter(r => {
       const inLife   = isActiveByDate(r, now);
       const inWindow = isWithinWindow(r, now);
       const used     = toNum(r.usedCount) ?? 0;
       const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
-      const hasStock = (limitNum == null) ? true : (limitNum > used);
+      const hasStock =
+        (limitNum == null) ? true : (limitNum > used);
 
       if (r.kind === 'AMOUNT') {
         dbg.amount.total++;
@@ -1240,7 +1244,7 @@ router.get('/gallery', async (_req, res) => {
         }
       }
 
-      const ok = inLife && inWindow && hasStock;
+      const ok = inLife && inWindow;
 
       if (ok && r.kind === 'AMOUNT' && !dbg.amount.sampleAccepted) {
         dbg.amount.sampleAccepted = {
@@ -1329,10 +1333,21 @@ router.get('/gallery', async (_req, res) => {
 
       const used  = toNum(r.usedCount) ?? 0;
       const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
+
+      // 👇 Sólo sumamos stock de cupones LIBRES (sin dueño)
+      const isFree =
+        r.assignedToId == null &&
+        ((limitNum == null) ? true : (limitNum > used));
+
       if (limitNum == null) {
-        cur.remaining = null; // ilimitado
+        if (isFree) {
+          // ilimitado mientras haya al menos uno libre
+          cur.remaining = null;
+        }
       } else if (cur.remaining !== null) {
-        cur.remaining += Math.max(0, limitNum - used);
+        if (isFree) {
+          cur.remaining += Math.max(0, limitNum - used);
+        }
       }
 
       const sc = scoreSample(r);
@@ -1363,13 +1378,14 @@ router.get('/gallery', async (_req, res) => {
       ok: true,
       cards,
       types: Array.from(new Set(cards.map(c => c.type))),
-      debug: dbg   // ← quítalo cuando acabemos de diagnosticar
+      debug: dbg   // ← puedes quitarlo cuando quieras
     });
   } catch (e) {
     console.error('[coupons.gallery] error', e);
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
+
 /* ===========================
  *  GAMES: PRIZE PREVIEW
  * =========================== */
