@@ -1206,8 +1206,7 @@ router.get('/gallery', async (_req, res) => {
       total: rows.length,
       byKind: { PERCENT: 0, AMOUNT: 0 },
       amount: {
-        total: 0,
-        active: 0,           // con stock real (para debug)
+        total: 0, active: 0,
         samplesRejected: [],
         sampleAccepted: null
       }
@@ -1217,7 +1216,6 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'AMOUNT')  dbg.byKind.AMOUNT++;
     }
 
-    // 👇 Ahora "active" = visible por fechas/ventana, independientemente del stock
     const active = rows.filter(r => {
       const inLife   = isActiveByDate(r, now);
       const inWindow = isWithinWindow(r, now);
@@ -1240,22 +1238,20 @@ router.get('/gallery', async (_req, res) => {
             });
           }
         }
-        // solo contamos como "active" de debug si además hay stock
-        if (inLife && inWindow && hasStock) {
-          dbg.amount.active++;
-          if (!dbg.amount.sampleAccepted) {
-            dbg.amount.sampleAccepted = {
-              code: r.code,
-              usageLimit: limitNum, usedCount: used,
-              amount: toNum(r.amount),
-              variant: variantOf(r)
-            };
-          }
-        }
       }
 
-      // 👉 criterio de visibilidad de la card
-      const ok = inLife && inWindow;
+      const ok = inLife && inWindow && hasStock;
+
+      if (ok && r.kind === 'AMOUNT' && !dbg.amount.sampleAccepted) {
+        dbg.amount.sampleAccepted = {
+          code: r.code,
+          usageLimit: limitNum, usedCount: used,
+          amount: toNum(r.amount),
+          variant: variantOf(r)
+        };
+      }
+      if (ok && r.kind === 'AMOUNT') dbg.amount.active++;
+
       return ok;
     });
 
@@ -1333,13 +1329,9 @@ router.get('/gallery', async (_req, res) => {
 
       const used  = toNum(r.usedCount) ?? 0;
       const limitNum = (r.usageLimit == null) ? null : toNum(r.usageLimit);
-
-      // 🔢 stock agregado por grupo:
       if (limitNum == null) {
-        // ilimitado
-        cur.remaining = null;
+        cur.remaining = null; // ilimitado
       } else if (cur.remaining !== null) {
-        // sumamos solo el saldo (puede ser 0 si ya no queda)
         cur.remaining += Math.max(0, limitNum - used);
       }
 
@@ -1371,14 +1363,13 @@ router.get('/gallery', async (_req, res) => {
       ok: true,
       cards,
       types: Array.from(new Set(cards.map(c => c.type))),
-      debug: dbg   // ← puedes quitarlo cuando acabemos de diagnosticar
+      debug: dbg   // ← quítalo cuando acabemos de diagnosticar
     });
   } catch (e) {
     console.error('[coupons.gallery] error', e);
     res.status(500).json({ ok:false, error: 'server' });
   }
 });
-
 /* ===========================
  *  GAMES: PRIZE PREVIEW
  * =========================== */
