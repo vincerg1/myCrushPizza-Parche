@@ -221,18 +221,30 @@ function Dashboard() {
 
             {errorDP && <p style={{ color:"red", marginTop:8 }}>{errorDP}</p>}
 
-            {link && (
-              <>
-                <a className="dp-link" href={link} target="_blank" rel="noreferrer">
-                  {link}
-                </a>
-                <button className="dp-btn success"
-                  onClick={() => navigator.clipboard.writeText(link)}
-                >
-                  Copy link
-                </button>
-              </>
-            )}
+              {link && (
+                <div style={{ marginTop: 12 }}>
+                  <p style={{ marginBottom: 8, fontSize: 14 }}>
+                    Stripe payment link is ready.
+                  </p>
+
+                  <button
+                    className="dp-btn primary"
+                    style={{ width: "100%" }}
+                    onClick={() => window.open(link, "_blank", "noopener,noreferrer")}
+                  >
+                    Open payment page
+                  </button>
+
+                  <button
+                    className="dp-btn success"
+                    style={{ width: "100%" }}
+                    onClick={() => navigator.clipboard.writeText(link)}
+                  >
+                    Copy link
+                  </button>
+                </div>
+              )}
+
 
             {!link && (
               <button className="dp-btn primary" onClick={createDirectPay} disabled={loadingDP}>

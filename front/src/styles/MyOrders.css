@@ -143,7 +143,7 @@
   font-size: 14px;
   color: #2563eb;
   text-decoration: underline;
-  word-break: break-all; /* corta visualmente */
+  word-break: break-all; 
 }
 
 /* Botones */
