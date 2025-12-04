@@ -231,8 +231,84 @@ const assertGameCouponShape = (coup, code) => {
 
 /* ───────────────────────────────────────────────────────────── */
 module.exports = (prisma) => {
+  
+router.post('/direct-pay', async (req, res) => {
+  if (!stripeReady) {
+    logW('direct-pay llamado sin Stripe listo');
+    return res.status(503).json({ success: false, error: 'Stripe not configured' });
+  }
 
+  try {
+    const { amount } = req.body || {};
 
+    // Validar amount
+    const amountNumber = Number(amount);
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid amount' });
+    }
+
+    // Convertir a céntimos
+    const amountCents = Math.round(amountNumber * 100);
+
+    // Opcional: límite de seguridad (por ejemplo, 300 €)
+    if (amountCents > 30000) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount too high for direct pay'
+      });
+    }
+
+    // Métodos de pago (reutilizamos la lógica de checkout-session)
+    const pmTypes = ['card'];
+    if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+    if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+
+    // Moneda (puedes parametrizar si algún día cambias)
+    const currency = 'eur';
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: pmTypes,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency,
+            unit_amount: amountCents,
+            product_data: {
+              // Nombre genérico; el detalle del pedido queda en WhatsApp
+              name: 'Direct payment MyCrushPizza',
+              metadata: { kind: 'DIRECT_PAY' }
+            }
+          }
+        }
+      ],
+      success_url: `${FRONT_BASE_URL}/venta/directpay/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${FRONT_BASE_URL}/venta/directpay/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+      locale: 'es',
+      metadata: {
+        kind: 'DIRECT_PAY'
+      }
+    });
+
+    logI('→ Stripe direct-pay session creada', {
+      id: session.id,
+      amountCents,
+      currency
+    });
+
+    return res.json({
+      success: true,
+      url: session.url
+    });
+  } catch (e) {
+    logE('[POST /api/venta/direct-pay] error', e);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal error creating direct pay link'
+    });
+  }
+});
 router.post('/pedido', async (req, res) => {
   const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
   if (appMeta && appMeta.acceptingOrders === false) {
