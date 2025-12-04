@@ -221,29 +221,45 @@ function Dashboard() {
 
             {errorDP && <p style={{ color:"red", marginTop:8 }}>{errorDP}</p>}
 
-              {link && (
-                <div style={{ marginTop: 12 }}>
-                  <p style={{ marginBottom: 8, fontSize: 14 }}>
-                    Stripe payment link is ready.
-                  </p>
+          {link && (
+            <div style={{ marginTop: 12 }}>
+              <span style={{ display: "block", fontSize: "14px", marginBottom: "6px" }}>
+                Link de pago listo para WhatsApp:
+              </span>
 
-                  <button
-                    className="dp-btn primary"
-                    style={{ width: "100%" }}
-                    onClick={() => window.open(link, "_blank", "noopener,noreferrer")}
-                  >
-                    Open payment page
-                  </button>
+              <div
+                onClick={() => navigator.clipboard.writeText(link)}
+                style={{
+                  background: "#eee",
+                  padding: "10px",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  color: "#0056b3",
+                  textDecoration: "underline",
+                  wordBreak: "break-all",
+                }}
+                title="Haz clic para copiar"
+              >
+                {`https://checkout.stripe.com/...`}
+              </div>
 
-                  <button
-                    className="dp-btn success"
-                    style={{ width: "100%" }}
-                    onClick={() => navigator.clipboard.writeText(link)}
-                  >
-                    Copy link
-                  </button>
-                </div>
-              )}
+              <button
+                style={{
+                  marginTop: "10px",
+                  width: "100%",
+                  background: "#16a34a",
+                  color: "#fff",
+                  padding: "10px 14px",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+                onClick={() => navigator.clipboard.writeText(link)}
+              >
+                Copiar enlace
+              </button>
+            </div>
+          )}
 
 
             {!link && (
