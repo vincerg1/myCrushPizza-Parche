@@ -1,7 +1,6 @@
 // src/components/MyOrders.jsx
-//   • Switch global "App online" (solo Admin) → /api/app/status (GET/PATCH)
-//   • Botón Pending con id="pending-tab"
-//   • Sin logout duplicado ni controles por tienda
+//   • DirectPay incluido (monto → enlace Stripe)
+
 import React, { useEffect, useState } from "react";
 import LocalSaleForm    from "./LocalSaleForm";
 import DeliverySaleForm from "./DeliverySaleForm";
@@ -12,9 +11,9 @@ import "../styles/MyOrders.css";
 
 /* ───────────────── Login ───────────────── */
 function LoginForm() {
-  const { login }       = useAuth();
-  const [user, setU]    = useState("");
-  const [pass, setP]    = useState("");
+  const { login } = useAuth();
+  const [user, setU] = useState("");
+  const [pass, setP] = useState("");
   const [err , setErr ] = useState("");
 
   const onSubmit = async (e) => {
@@ -41,15 +40,20 @@ function LoginForm() {
 
 /* ───────────────── Dash ───────────────── */
 function Dashboard() {
-  const { auth, logout } = useAuth();   // <- añadimos logout
+  const { auth, logout } = useAuth();
   const isAdmin = auth?.role === "admin";
 
-  // vista nivel-1: "pending" | "newsale"
   const [view, setView] = useState("pending");
-  // vista nivel-2 (dentro de newsale)
   const [sub , setSub ] = useState("local");
 
-  // Switch global de la app (solo admin)
+  // DirectPay modal
+  const [showDirectPay, setShowDirectPay] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [link, setLink] = useState("");
+  const [loadingDP, setLoadingDP] = useState(false);
+  const [errorDP, setErrorDP] = useState("");
+
+  // Switch global de la app
   const [appAccepting, setAppAccepting] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -65,7 +69,7 @@ function Dashboard() {
   }, [auth?.role]);
 
   const toggleGlobal = async () => {
-    if (auth?.role !== "admin" || saving) return;  // evita spam de clicks
+    if (auth?.role !== "admin" || saving) return;
     const next = !appAccepting;
     setSaving(true);
     try {
@@ -74,72 +78,90 @@ function Dashboard() {
       setAppAccepting(!!data.accepting);
       setErr("");
     } catch (e) {
-      if (e?.response?.status === 401) setErr("Sesión inválida/expirada. Sal y entra de nuevo como Admin.");
-      else if (e?.response?.status === 403) setErr("Solo un Admin puede usar este interruptor.");
-      else setErr(e?.response?.data?.error || "No se pudo cambiar el estado");
+      if (e?.response?.status === 401) setErr("Sesión inválida, reingresa como Admin.");
+      else if (e?.response?.status === 403) setErr("Solo Admin puede usar esto.");
+      else setErr(e?.response?.data?.error || "Error al cambiar estado");
     } finally {
       setSaving(false);
     }
   };
 
-  // estilos switch inline
-  const swWrap = { marginLeft:"auto", display:"flex", alignItems:"center", gap:10, zIndex:2000 };
-  const swBtn  = {
-    position:"relative",
-    width:54, height:28, borderRadius:999, border:"none", padding:0,
-    cursor:"pointer",
-    background: appAccepting ? "#16a34a" : "#9ca3af",
-    transition:"background .15s ease"
-  };
-  const swKnob = {
-    position:"absolute", top:3, left:3, width:22, height:22, borderRadius:"50%", background:"#fff",
-    transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
-    transition:"transform .2s ease", boxShadow:"0 1px 2px rgba(0,0,0,.25)"
+  /* ───────── Direct Pay Handler ───────── */
+  const createDirectPay = async () => {
+    setErrorDP("");
+    setLink("");
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return setErrorDP("Monto inválido");
+
+    setLoadingDP(true);
+    try {
+      const { data } = await api.post("/api/venta/direct-pay", { amount: amt });
+      if (data?.success && data?.url) {
+        setLink(data.url);
+      } else {
+        setErrorDP("No se pudo crear el enlace");
+      }
+    } catch (e) {
+      setErrorDP(e?.response?.data?.error || "Error creando enlace");
+    } finally {
+      setLoadingDP(false);
+    }
   };
 
-  // estilo del botón logout (compacto para móvil)
+  const closeDirectPay = () => {
+    setShowDirectPay(false);
+    setAmount("");
+    setLink("");
+    setErrorDP("");
+  };
+
+  /* ───────── Modal DirectPay Styles ───────── */
+  const modalWrap = {
+    position: "fixed", top:0, left:0, right:0, bottom:0,
+    background:"rgba(0,0,0,0.45)", display:"flex",
+    justifyContent:"center", alignItems:"center", zIndex:9999
+  };
+  const modalBox = {
+    background:"#fff", padding:20, borderRadius:10,
+    width:"90%", maxWidth:360, textAlign:"center"
+  };
+
   const logoutBtn = {
-    marginLeft: 8,
-    padding: "6px 10px",
-    border: "none",
-    borderRadius: 10,
-    background: "#ff6b6b",
-    color: "#fff",
-    fontWeight: 600,
-    cursor: "pointer",
+    marginLeft: 8, padding: "6px 10px",
+    border: "none", borderRadius: 10,
+    background: "#ff6b6b", color: "#fff",
+    fontWeight: 600, cursor: "pointer",
     boxShadow: "0 2px 6px #0001"
   };
 
   return (
     <div className="orders-dashboard">
-      <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12, position:"relative" }}>
+      <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12 }}>
         <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
 
-        {/* Logout siempre visible (desktop y móvil) */}
-        <button
-          type="button"
-          className="logout-btn"
-          style={logoutBtn}
-          onClick={logout}
-          aria-label="Logout"
-          title="Logout"
-        >
-          Logout
-        </button>
+        <button type="button" style={logoutBtn} onClick={logout}>Logout</button>
 
-        {/* Switch global solo admin (anclado a la derecha) */}
         {isAdmin && (
-          <div style={swWrap}>
-            <span className="pc-note" style={{ fontSize:14 }}>App online</span>
+          <div style={{ marginLeft:"auto" }}>
+            <span style={{ marginRight:6 }}>App online</span>
             <button
               type="button"
-              style={swBtn}
               onClick={toggleGlobal}
               aria-pressed={appAccepting}
-              aria-label={appAccepting ? "App online: ON" : "App online: OFF"}
-              title={appAccepting ? "ON" : "OFF"}
+              style={{
+                background: appAccepting ? "#16a34a" : "#9ca3af",
+                width:54, height:28, borderRadius:999,
+                cursor:"pointer", border:"none"
+              }}
             >
-              <span style={swKnob} />
+              <span
+                style={{
+                  display:"block", width:22, height:22, background:"#fff",
+                  borderRadius:"50%", margin:3,
+                  transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
+                  transition:"transform .2s"
+                }}
+              />
             </button>
           </div>
         )}
@@ -147,36 +169,93 @@ function Dashboard() {
 
       {err && <div className="pc-alert" style={{ margin:"8px 0" }}>{err}</div>}
 
+      {/* NAV Buttons */}
       <div style={{ marginBottom:12 }}>
-        <button id="pending-tab" className="level1-btn" onClick={() => setView("pending")} disabled={view === "pending"}>
+        <button className="level1-btn" disabled={view==="pending"} onClick={()=>setView("pending")}>
           Pending orders
         </button>
-        <button onClick={() => setView("newsale")} disabled={view === "newsale"} className="level1-btn" style={{ marginLeft:8 }}>
+        <button className="level1-btn" style={{ marginLeft:8 }} disabled={view==="newsale"} onClick={()=>setView("newsale")}>
           New sale
+        </button>
+        <button
+          className="level1-btn"
+          style={{ marginLeft:8, background:"#2563eb", color:"#fff" }}
+          onClick={()=>setShowDirectPay(true)}
+        >
+          Direct Pay
         </button>
       </div>
 
+      {/* CONTENT */}
       {view === "pending" && <PendingTable />}
       {view === "newsale" && (
         <>
           {isAdmin && (
             <div style={{ marginBottom:8 }}>
-              <button onClick={() => setSub("local")} disabled={sub === "local"}>Local</button>
-              <button onClick={() => setSub("delivery")} disabled={sub === "delivery"} style={{ marginLeft:8 }}>
+              <button onClick={()=>setSub("local")} disabled={sub==="local"}>Local</button>
+              <button onClick={()=>setSub("delivery")} disabled={sub==="delivery"} style={{ marginLeft:8 }}>
                 Delivery
               </button>
             </div>
           )}
-          {sub === "local"    && <LocalSaleForm    onDone={() => setView("pending")} />}
+          {sub === "local"    && <LocalSaleForm onDone={() => setView("pending")} />}
           {sub === "delivery" && <DeliverySaleForm onDone={() => setView("pending")} />}
         </>
+      )}
+
+      {/* DIRECT PAY MODAL */}
+      {showDirectPay && (
+        <div style={modalWrap}>
+          <div style={modalBox}>
+            <h3>Direct Pay</h3>
+
+            <input
+              type="number"
+              step="0.10"
+              min="0"
+              placeholder="Amount (€)"
+              value={amount}
+              onChange={(e)=>setAmount(e.target.value)}
+              style={{ width:"100%", padding:8, marginTop:10 }}
+            />
+
+            {errorDP && <p style={{ color:"red", marginTop:8 }}>{errorDP}</p>}
+            {link && (
+              <div style={{ marginTop:10 }}>
+                <a href={link} target="_blank" rel="noreferrer">{link}</a>
+                <button
+                  style={{ display:"block", margin:"10px auto", background:"#16a34a", color:"#fff", padding:"6px 10px" }}
+                  onClick={() => navigator.clipboard.writeText(link)}
+                >
+                  Copy link
+                </button>
+              </div>
+            )}
+
+            {!link && (
+              <button
+                style={{ background:"#2563eb", color:"#fff", padding:"8px 12px", marginTop:12 }}
+                onClick={createDirectPay}
+                disabled={loadingDP}
+              >
+                {loadingDP ? "Creating..." : "Create link"}
+              </button>
+            )}
+
+            <button
+              style={{ marginTop:12, background:"#9ca3af", color:"#fff", padding:"6px 12px" }}
+              onClick={closeDirectPay}
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-
-/* ─────────── Gate ─────────── */
+/* ───────── Gate ───────── */
 export default function MyOrdersGate() {
   const { auth } = useAuth();
   return auth ? <Dashboard /> : <LoginForm />;
