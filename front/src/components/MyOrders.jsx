@@ -205,52 +205,48 @@ function Dashboard() {
 
       {/* DIRECT PAY MODAL */}
       {showDirectPay && (
-        <div style={modalWrap}>
-          <div style={modalBox}>
+        <div className="dp-backdrop">
+          <div className="dp-modal">
             <h3>Direct Pay</h3>
 
             <input
+              className="dp-input"
               type="number"
               step="0.10"
               min="0"
               placeholder="Amount (€)"
               value={amount}
               onChange={(e)=>setAmount(e.target.value)}
-              style={{ width:"100%", padding:8, marginTop:10 }}
             />
 
             {errorDP && <p style={{ color:"red", marginTop:8 }}>{errorDP}</p>}
+
             {link && (
-              <div style={{ marginTop:10 }}>
-                <a href={link} target="_blank" rel="noreferrer">{link}</a>
-                <button
-                  style={{ display:"block", margin:"10px auto", background:"#16a34a", color:"#fff", padding:"6px 10px" }}
+              <>
+                <a className="dp-link" href={link} target="_blank" rel="noreferrer">
+                  {link}
+                </a>
+                <button className="dp-btn success"
                   onClick={() => navigator.clipboard.writeText(link)}
                 >
                   Copy link
                 </button>
-              </div>
+              </>
             )}
 
             {!link && (
-              <button
-                style={{ background:"#2563eb", color:"#fff", padding:"8px 12px", marginTop:12 }}
-                onClick={createDirectPay}
-                disabled={loadingDP}
-              >
+              <button className="dp-btn primary" onClick={createDirectPay} disabled={loadingDP}>
                 {loadingDP ? "Creating..." : "Create link"}
               </button>
             )}
 
-            <button
-              style={{ marginTop:12, background:"#9ca3af", color:"#fff", padding:"6px 12px" }}
-              onClick={closeDirectPay}
-            >
+            <button className="dp-btn gray" onClick={closeDirectPay}>
               Close
             </button>
           </div>
         </div>
       )}
+
     </div>
   );
 }

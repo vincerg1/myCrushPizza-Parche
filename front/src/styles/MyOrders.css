@@ -88,6 +88,101 @@
   display: none;
 }
 
+/* === Direct Pay Modal === */
+
+.dp-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.dp-modal {
+  background: #ffffff;
+  padding: 24px;
+  border-radius: 14px;
+  width: 92%;
+  max-width: 420px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+  text-align: center;
+  animation: fadeIn .2s ease;
+  font-family: 'Rubik', sans-serif;
+}
+
+.dp-modal h3 {
+  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #222;
+}
+
+/* Input del monto */
+.dp-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 18px;
+  text-align: center;
+  outline: none;
+  transition: border .2s;
+}
+
+.dp-input:focus {
+  border-color: #2563eb;
+}
+
+/* Enlace generado */
+.dp-link {
+  margin-top: 10px;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 14px;
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all; /* corta visualmente */
+}
+
+/* Botones */
+.dp-btn {
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.dp-btn.primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.dp-btn.success {
+  background: #16a34a;
+  color: #fff;
+}
+
+.dp-btn.gray {
+  background: #9ca3af;
+  color: #fff;
+}
+
+.dp-btn:disabled {
+  background: #a5b4fc !important;
+  cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+  from { opacity:0; transform:translateY(-10px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
+
 /* En móvil: mostrarlo */
 @media (max-width: 768px){
   .dash-head .logout-btn{
@@ -96,4 +191,32 @@
   }
   /* opcional: ahorrar espacio ocultando la etiqueta del switch */
   .dash-head .pc-note{ display: none; }
+
+  .dp-modal {
+    width: 95%;
+    max-width: none;
+    padding: 20px 16px;
+    border-radius: 12px;
+  }
+
+  .dp-input {
+    font-size: 16px;
+    padding: 10px;
+  }
+
+  .dp-link {
+    font-size: 13px;
+    word-break: break-all;
+  }
+
+  .dp-btn {
+    width: 100%;        /* full width in mobile */
+    margin-top: 10px;
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  .dp-btn + .dp-btn {
+    margin-top: 6px;    /* reduce spacing between stacked buttons */
+  }
 }
