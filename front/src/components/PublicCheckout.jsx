@@ -1669,9 +1669,9 @@ if (couponOk && coupon?.code) {
           <div className="pc-closed__emoji" aria-hidden>PEDIDOS AL 694-301-433</div>
           <h1 className="pc-closed__title"></h1>
           <p className="pc-closed__msg">
-            {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
+            {"Estamos trabajando en el sitio ¡Gracias!"}
           </p>
-          <p className="pc-closed__hint">MAS INFO mycrushpizzaspain@gmail.com</p>
+          <p className="pc-closed__hint">Para mayor info escribenos al mycrushpizzaspain@gmail.com</p>
         </div>
 
         <style>{`

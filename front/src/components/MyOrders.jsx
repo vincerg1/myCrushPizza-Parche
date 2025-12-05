@@ -86,23 +86,52 @@ function Dashboard() {
     }
   };
 
-  /* ───────── Direct Pay Handler ───────── */
+  /* ───────── Direct Pay Handler (con shortener) ───────── */
   const createDirectPay = async () => {
     setErrorDP("");
     setLink("");
+
     const amt = Number(amount);
-    if (!amt || amt <= 0) return setErrorDP("Monto inválido");
+    if (!amt || amt <= 0) {
+      setErrorDP("Monto inválido");
+      return;
+    }
 
     setLoadingDP(true);
     try {
+      // 1) pedir enlace largo al backend de ventas
       const { data } = await api.post("/api/venta/direct-pay", { amount: amt });
-      if (data?.success && data?.url) {
-        setLink(data.url);
-      } else {
-        setErrorDP("No se pudo crear el enlace");
+
+      if (!data?.success || !data?.url) {
+        throw new Error(data?.error || "No se pudo crear el enlace");
       }
+
+      const longUrl = data.url;
+      let finalUrl = longUrl;
+
+      // 2) intentar acortar con pay.mycrushpizza.com
+      try {
+        const resp = await fetch("https://pay.mycrushpizza.com/api/shorten", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: longUrl }),
+        });
+
+        if (resp.ok) {
+          const shortData = await resp.json();
+          if (shortData?.shortUrl) {
+            finalUrl = shortData.shortUrl;
+          }
+        }
+      } catch (errShort) {
+        console.warn("Shortener error, usando URL larga:", errShort?.message || errShort);
+        // si falla el shortener seguimos con la URL larga
+      }
+
+      // 3) guardar el link que se mostrará / copiará
+      setLink(finalUrl);
     } catch (e) {
-      setErrorDP(e?.response?.data?.error || "Error creando enlace");
+      setErrorDP(e?.response?.data?.error || e.message || "Error creando enlace");
     } finally {
       setLoadingDP(false);
     }
@@ -221,46 +250,45 @@ function Dashboard() {
 
             {errorDP && <p style={{ color:"red", marginTop:8 }}>{errorDP}</p>}
 
-          {link && (
-            <div style={{ marginTop: 12 }}>
-              <span style={{ display: "block", fontSize: "14px", marginBottom: "6px" }}>
-                Link de pago listo para WhatsApp:
-              </span>
+            {link && (
+              <div style={{ marginTop: 12 }}>
+                <span style={{ display: "block", fontSize: "14px", marginBottom: "6px" }}>
+                  Link de pago listo para WhatsApp:
+                </span>
 
-              <div
-                onClick={() => navigator.clipboard.writeText(link)}
-                style={{
-                  background: "#eee",
-                  padding: "10px",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  color: "#0056b3",
-                  textDecoration: "underline",
-                  wordBreak: "break-all",
-                }}
-                title="Haz clic para copiar"
-              >
-                {`https://checkout.stripe.com/...`}
+                <div
+                  onClick={() => navigator.clipboard.writeText(link)}
+                  style={{
+                    background: "#eee",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    color: "#0056b3",
+                    textDecoration: "underline",
+                    wordBreak: "break-all",
+                  }}
+                  title="Haz clic para copiar"
+                >
+                  {link}
+                </div>
+
+                <button
+                  style={{
+                    marginTop: "10px",
+                    width: "100%",
+                    background: "#16a34a",
+                    color: "#fff",
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => navigator.clipboard.writeText(link)}
+                >
+                  Copiar enlace
+                </button>
               </div>
-
-              <button
-                style={{
-                  marginTop: "10px",
-                  width: "100%",
-                  background: "#16a34a",
-                  color: "#fff",
-                  padding: "10px 14px",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                }}
-                onClick={() => navigator.clipboard.writeText(link)}
-              >
-                Copiar enlace
-              </button>
-            </div>
-          )}
-
+            )}
 
             {!link && (
               <button className="dp-btn primary" onClick={createDirectPay} disabled={loadingDP}>
