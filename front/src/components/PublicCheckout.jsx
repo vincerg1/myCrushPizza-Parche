@@ -1666,12 +1666,12 @@ if (couponOk && coupon?.code) {
     return (
       <div className="pc-page pc-closed">
         <div className="pc-closed__card" role="status" aria-live="polite">
-          <div className="pc-closed__emoji" aria-hidden>🙅‍♀️🙅‍♂️</div>
+          <div className="pc-closed__emoji" aria-hidden>PEDIDOS AL 694-301-433</div>
           <h1 className="pc-closed__title"></h1>
           <p className="pc-closed__msg">
             {appClosedMsg || "Volvemos en breve. ¡Gracias!"}
           </p>
-          <p className="pc-closed__hint">El estado se actualiza automáticamente.</p>
+          <p className="pc-closed__hint">MAS INFO mycrushpizzaspain@gmail.com</p>
         </div>
 
         <style>{`
