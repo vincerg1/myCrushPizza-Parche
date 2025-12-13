@@ -78,6 +78,19 @@ enum CouponChannel {
   SMS
   EMAIL
 }
+enum WhatsAppDirection {
+  IN
+  OUT
+}
+enum WhatsAppMessageStatus {
+  RECEIVED    
+  SENT         
+  DELIVERED    
+  READ         
+  FAILED       
+}
+
+
 /**
  * ======================= MODELOS =======================
  */
@@ -313,5 +326,38 @@ model GamePlay {
   customer   Customer? @relation(fields: [playerId], references: [id])
   @@index([gameId, createdAt])
   @@index([playerId, createdAt])
+}
+model WhatsAppConversation {
+  id               Int      @id @default(autoincrement())
+  phoneE164         String   @unique @db.VarChar(32) 
+  phoneBase9        String?  @db.VarChar(16)
+  username          String?  @db.VarChar(191)
+  addressText       String?  @db.Text
+  addressUpdatedAt  DateTime?
+  lastMessageAt     DateTime?
+  isOpen            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  messages          WhatsAppMessage[]
+
+  @@index([lastMessageAt])
+  @@index([phoneBase9])
+}
+model WhatsAppMessage {
+  id              Int                   @id @default(autoincrement())
+  conversationId  Int
+  waMessageId     String?               @unique @db.VarChar(191)
+  direction       WhatsAppDirection
+  status          WhatsAppMessageStatus @default(RECEIVED)
+  from            String                @db.VarChar(32)
+  to              String?               @db.VarChar(32)
+  type            String?               @db.VarChar(32) 
+  text            String?               @db.Text
+  timestamp       DateTime?
+  createdAt       DateTime              @default(now())
+  conversation    WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([from])
 }
 
