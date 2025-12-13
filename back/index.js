@@ -1,10 +1,10 @@
 // index.js
 require('dotenv').config();
 require('./cron/updateDaysOff');
-require('./cron/couponsTick'); 
+require('./cron/couponsTick');
 
 const express = require('express');
-const cors    = require('cors');
+const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
@@ -35,13 +35,18 @@ app.use(cors({
 }));
 
 /* ========= Body parsing =========
- * ⚠️ MUY IMPORTANTE: NO parsear JSON del webhook de Stripe.
+ * ⚠️ MUY IMPORTANTE: NO parsear JSON de webhooks que requieren RAW body.
  * Este bypass debe ir ANTES de cualquier express.json()
  */
 app.use((req, res, next) => {
-  if (req.originalUrl && req.originalUrl.startsWith('/api/venta/stripe/webhook')) {
-    return next(); // el router de venta usa express.raw() para este endpoint
-  }
+  const url = req.originalUrl || '';
+
+  // Stripe webhook usa express.raw() en su router
+  if (url.startsWith('/api/venta/stripe/webhook')) return next();
+
+  // WhatsApp webhook usa express.raw() en su router
+  if (url.startsWith('/api/whatsapp/webhook')) return next();
+
   return express.json({ limit: '1mb' })(req, res, next);
 });
 
@@ -59,8 +64,9 @@ const publicRoutes          = require('./routes/public')(prisma);
 const ventaRouter           = require('./routes/venta')(prisma);
 const couponsRouter         = require('./routes/coupons')(prisma);
 const notifyRouter          = require('./routes/notify')(prisma);
-const appRouter = require('./routes/app')(prisma);
+const appRouter             = require('./routes/app')(prisma);
 const whatsappWebhookRouter = require('./routes/whatsappWebhook')(prisma);
+
 /* Montaje */
 app.use('/api/pizzas',          pizzasRouter);
 app.use('/api/menu_pizzas',     pizzasRouter);
@@ -77,7 +83,7 @@ app.use('/api/venta',           ventaRouter);
 app.use('/api/coupons',         couponsRouter);
 app.use('/api/notify',          notifyRouter);
 app.use('/api/app',             appRouter);
-app.use('/api/whatsapp', whatsappWebhookRouter);
+app.use('/api/whatsapp',        whatsappWebhookRouter);
 
 /* === Twilio Status Callback (usar la MISMA ruta que en el env) ===
    TWILIO_STATUS_CALLBACK_URL = https://mycrushpizza-parche-production.up.railway.app/twilio/status-callback
