@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.js (o App.jsx)
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Backoffice from "./components/Backoffice";
@@ -8,26 +8,23 @@ import PublicCheckout from "./components/PublicCheckout";
 import { useAuth } from "./components/AuthContext";
 import PaymentResult from "./components/PaymentResult";
 
+// NUEVO: páginas legales SPA
+import PrivacyPage from "./components/PrivacyPage";
+import TermsPage from "./components/TermsPage";
+import DataDeletionPage from "./components/DataDeletionPage";
+
 export default function App() {
   const { auth } = useAuth();
 
-  // ✅ No redirigir estas rutas "legales" (sirven para Meta / compliance)
-  const StaticHtmlRedirect = ({ to }) => {
-    React.useEffect(() => {
-      window.location.href = to;
-    }, [to]);
-    return null;
-  };
-
   return (
     <Routes>
+      {/* Páginas legales (IMPORTANTE: antes del catch-all) */}
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/data-deletion" element={<DataDeletionPage />} />
+
       {/* Home -> portal de ventas */}
       <Route path="/" element={<Navigate to="/venta" replace />} />
-
-      {/* ✅ Rutas legales (si el server devuelve index.html, forzamos el .html real) */}
-      <Route path="/privacy" element={<StaticHtmlRedirect to="/privacy.html" />} />
-      <Route path="/terms" element={<StaticHtmlRedirect to="/terms.html" />} />
-      <Route path="/data-deletion" element={<StaticHtmlRedirect to="/data-deletion.html" />} />
 
       {/* Flujo público de compra */}
       <Route path="/venta" element={<PublicCheckout />} />
