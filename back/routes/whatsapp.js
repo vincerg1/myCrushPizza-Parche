@@ -21,7 +21,7 @@ module.exports = (prisma) => {
       phone: c.phone,
       lastMessage: c.messages[0]?.text || "",
       updatedAt: c.updatedAt,
-      unread: c.unreadCount || 0
+      unread: c.unread || 0
     })));
   });
 
@@ -35,10 +35,10 @@ module.exports = (prisma) => {
     });
 
     // marcar como leídos
-    await prisma.whatsAppConversation.update({
-      where: { id },
-      data: { unreadCount: 0 }
-    });
+await prisma.whatsAppConversation.update({
+  where: { id: 1 },
+  data: { unread: 0 },
+});
 
     res.json(messages);
   });
