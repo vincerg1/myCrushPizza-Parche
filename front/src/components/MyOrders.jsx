@@ -8,6 +8,7 @@ import PendingTable     from "./PendingTable";
 import { useAuth }      from "./AuthContext";
 import api              from "../setupAxios";
 import "../styles/MyOrders.css";
+import WhatsAppPanel from "./WhatsAppPanel";
 
 /* ───────────────── Login ───────────────── */
 function LoginForm() {
@@ -213,9 +214,18 @@ function Dashboard() {
         >
           Direct Pay
         </button>
+        <button
+          className="level1-btn"
+          style={{ marginLeft:8 }}
+          disabled={view==="whatsapp"}
+          onClick={()=>setView("whatsapp")}
+        >
+          WhatsApp
+        </button>
       </div>
 
       {/* CONTENT */}
+      {view === "whatsapp" && <WhatsAppPanel />}
       {view === "pending" && <PendingTable />}
       {view === "newsale" && (
         <>
