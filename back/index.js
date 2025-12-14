@@ -39,14 +39,15 @@ app.use(cors({
  * Este bypass debe ir ANTES de cualquier express.json()
  */
 app.use((req, res, next) => {
-  const url = req.originalUrl || '';
-
-  // Stripe webhook usa express.raw() en su router
-  if (url.startsWith('/api/venta/stripe/webhook')) return next();
-
-  // WhatsApp webhook usa express.raw() en su router
-  if (url.startsWith('/api/whatsapp/webhook')) return next();
-
+  if (
+    req.originalUrl &&
+    (
+      req.originalUrl.startsWith('/api/venta/stripe/webhook') ||
+      req.originalUrl.startsWith('/api/whatsapp/webhook')
+    )
+  ) {
+    return next();
+  }
   return express.json({ limit: '1mb' })(req, res, next);
 });
 
