@@ -67,6 +67,7 @@ const couponsRouter         = require('./routes/coupons')(prisma);
 const notifyRouter          = require('./routes/notify')(prisma);
 const appRouter             = require('./routes/app')(prisma);
 const whatsappWebhookRouter = require('./routes/whatsappWebhook')(prisma);
+const whatsappRouter        = require("./routes/whatsapp")(prisma);
 
 /* Montaje */
 app.use('/api/pizzas',          pizzasRouter);
@@ -85,6 +86,7 @@ app.use('/api/coupons',         couponsRouter);
 app.use('/api/notify',          notifyRouter);
 app.use('/api/app',             appRouter);
 app.use('/api/whatsapp',        whatsappWebhookRouter);
+app.use("/api/whatsapp",        whatsappRouter);
 
 /* === Twilio Status Callback (usar la MISMA ruta que en el env) ===
    TWILIO_STATUS_CALLBACK_URL = https://mycrushpizza-parche-production.up.railway.app/twilio/status-callback
