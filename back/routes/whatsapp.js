@@ -1,143 +1,173 @@
 // back/routes/whatsapp.js
+/* eslint-disable consistent-return */
 const express = require("express");
 const axios = require("axios");
-const { esBase9 } = require("../utils/phone");
+const { esBase9, toE164ES } = require("../utils/phone");
 
 const router = express.Router();
 
 module.exports = (prisma) => {
-  const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID; // ej: 9576497...
-  const TOKEN = process.env.WHATSAPP_TOKEN;
+  // Helpers
+  const normToE164 = (raw = "") => {
+    // intenta normalizar a E164 ES; si no, devuelve dígitos
+    return toE164ES(raw) || raw.replace(/[^\d+]/g, "");
+  };
 
-  const toDigits = (s = "") => String(s).replace(/[^\d]/g, "");
-  const toE164Guess = (digits = "") => (digits.startsWith("34") ? `+${digits}` : `+${digits}`); // simple
+  const countUnread = async (conversationId) => {
+    // “unread” = mensajes entrantes aún en RECEIVED
+    return prisma.whatsAppMessage.count({
+      where: { conversationId, direction: "IN", status: "RECEIVED" },
+    });
+  };
 
   /* ───────── Conversations ───────── */
   router.get("/conversations", async (_req, res) => {
-    const items = await prisma.whatsAppConversation.findMany({
-      orderBy: { updatedAt: "desc" },
-      include: { messages: { orderBy: { timestamp: "desc" }, take: 1 } },
-    });
+    try {
+      const items = await prisma.whatsAppConversation.findMany({
+        orderBy: { updatedAt: "desc" },
+        include: {
+          messages: { orderBy: { timestamp: "desc" }, take: 1 },
+        },
+      });
 
-    res.json(
-      items.map((c) => ({
-        id: c.id,
-        phoneE164: c.phoneE164,
-        username: c.username,
-        lastMessage: c.messages[0]?.text || "",
-        updatedAt: c.updatedAt,
-        unread: c.unread || 0,
-      }))
-    );
+      // calculamos unread por conversación (en paralelo)
+      const unreadArr = await Promise.all(items.map((c) => countUnread(c.id)));
+
+      res.json(
+        items.map((c, idx) => ({
+          id: c.id,
+          phoneE164: c.phoneE164,
+          phoneBase9: c.phoneBase9,
+          username: c.username,
+          lastMessage: c.messages?.[0]?.text || "",
+          lastMessageAt: c.lastMessageAt || null,
+          updatedAt: c.updatedAt,
+          unread: unreadArr[idx] || 0,
+          isOpen: !!c.isOpen,
+        }))
+      );
+    } catch (e) {
+      console.error("[WA /conversations] FAIL:", e?.message || e);
+      res.status(500).json({ error: "internal" });
+    }
   });
 
   /* ───────── Messages ───────── */
   router.get("/messages/:id", async (req, res) => {
     const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: "invalid id" });
+    if (!id) return res.status(400).json({ error: "invalid_id" });
 
-    const messages = await prisma.whatsAppMessage.findMany({
-      where: { conversationId: id },
-      orderBy: { timestamp: "asc" },
-    });
+    try {
+      const messages = await prisma.whatsAppMessage.findMany({
+        where: { conversationId: id },
+        orderBy: { timestamp: "asc" },
+      });
 
-    // marcar como leídos (EL CORRECTO: el id de la conversación)
-    await prisma.whatsAppConversation.update({
-      where: { id },
-      data: { unread: 0 },
-    });
+      // marcar como leídos: IN + RECEIVED -> READ
+      await prisma.whatsAppMessage.updateMany({
+        where: { conversationId: id, direction: "IN", status: "RECEIVED" },
+        data: { status: "READ" },
+      });
 
-    res.json(messages);
+      res.json(messages);
+    } catch (e) {
+      console.error("[WA /messages] FAIL:", e?.message || e);
+      res.status(500).json({ error: "internal" });
+    }
   });
 
   /* ───────── Send message ───────── */
   router.post("/send", async (req, res) => {
     try {
       const toRaw = req.body?.to;
-      const text = req.body?.text;
+      const text = (req.body?.text || "").trim();
 
-      if (!toRaw || !text) return res.status(400).json({ error: "to & text required" });
-      if (!PHONE_NUMBER_ID || !TOKEN) {
-        return res.status(500).json({ error: "Missing WHATSAPP_PHONE_NUMBER_ID or WHATSAPP_TOKEN" });
+      if (!toRaw || !text) {
+        return res.status(400).json({ error: "to & text required" });
       }
 
-      const to = toDigits(toRaw); // Meta espera dígitos (sin +)
-      const phoneE164 = toE164Guess(to);
-      const phoneBase9 = esBase9(phoneE164) || null;
+      const to = normToE164(toRaw); // en tu captura usabas wa_id numérico: también vale
+      const phoneBase9 = esBase9(to) || null;
+
+      const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+      const TOKEN = process.env.WHATSAPP_TOKEN;
+
+      if (!PHONE_NUMBER_ID || !TOKEN) {
+        return res.status(500).json({ error: "missing_whatsapp_env" });
+      }
 
       // 1) upsert conversación por phoneE164
       const conv = await prisma.whatsAppConversation.upsert({
-        where: { phoneE164 },
+        where: { phoneE164: to },
         create: {
-          phoneE164,
+          phoneE164: to,
           phoneBase9,
           username: null,
           addressText: null,
-          unread: 0,
-          lastMessageAt: new Date(),
           isOpen: true,
+          lastMessageAt: new Date(),
         },
         update: {
-          lastMessageAt: new Date(),
           isOpen: true,
+          lastMessageAt: new Date(),
         },
       });
 
       // 2) enviar a Meta
-      const url = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+      const url = `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`;
 
-      const resp = await axios.post(
-        url,
-        {
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: { body: text },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${TOKEN}`,
-            "Content-Type": "application/json",
+      let waMessageId = null;
+
+      try {
+        const resp = await axios.post(
+          url,
+          {
+            messaging_product: "whatsapp",
+            to,
+            type: "text",
+            text: { body: text },
           },
-          timeout: 15000,
-        }
-      );
+          {
+            headers: {
+              Authorization: `Bearer ${TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            timeout: 15000,
+          }
+        );
 
-      const waMessageId = resp?.data?.messages?.[0]?.id || null;
+        waMessageId = resp?.data?.messages?.[0]?.id || null;
+      } catch (err) {
+        const status = err?.response?.status || 500;
+        const meta = err?.response?.data || null;
+        console.error("[WA /send] META FAIL:", status, meta || err?.message);
 
-      // 3) guardar OUT (con conversationId + waMessageId)
+        return res.status(status).json({
+          error: "send_failed",
+          status,
+          meta,
+        });
+      }
+
+      // 3) guardar OUT en BD
       await prisma.whatsAppMessage.create({
         data: {
           conversationId: conv.id,
-          waMessageId: waMessageId || `OUT_${Date.now()}`, // fallback para no romper unique si lo tienes required
+          waMessageId,
           direction: "OUT",
           status: "SENT",
-          from: String(PHONE_NUMBER_ID), // o tu número business si prefieres
-          to: phoneE164,
+          from: "BUSINESS",
+          to,
           type: "text",
           text,
           timestamp: new Date(),
         },
       });
 
-      // 4) refrescar “last message”
-      await prisma.whatsAppConversation.update({
-        where: { id: conv.id },
-        data: { updatedAt: new Date() },
-      });
-
       res.json({ ok: true, waMessageId });
-    } catch (err) {
-      // si es error de Meta (axios), devolvemos su payload
-      const status = err?.response?.status || 500;
-      const payload = err?.response?.data || null;
-
-      console.error("[WA /send] FAIL:", status, payload || err?.message || err);
-      res.status(status).json({
-        error: "send_failed",
-        status,
-        meta: payload,
-      });
+    } catch (e) {
+      console.error("[WA /send] FAIL:", e?.message || e);
+      res.status(500).json({ error: "internal" });
     }
   });
 
