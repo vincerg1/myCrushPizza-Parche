@@ -1,4 +1,4 @@
-// src/App.js (o App.jsx)
+// src/App.js 
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Backoffice from "./components/Backoffice";
