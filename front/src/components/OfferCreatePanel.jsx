@@ -42,6 +42,11 @@ export default function OfferCreatePanel() {
   const [msg, setMsg] = useState("");
   const [sample, setSample] = useState([]);
 
+  // NEW: games dropdown
+  const [games, setGames] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(false);
+  const [gamesError, setGamesError] = useState("");
+
   const isRandom       = form.type === "RANDOM_PERCENT";
   const isFixedPercent = form.type === "FIXED_PERCENT";
   const isFixedAmount  = form.type === "FIXED_AMOUNT";
@@ -122,6 +127,55 @@ export default function OfferCreatePanel() {
     setShowDrop(false);
   };
 
+  // NEW: load games when useInGame is enabled
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadGames = async () => {
+      if (!form.useInGame) return;
+
+      setGamesLoading(true);
+      setGamesError("");
+      try {
+        const { data } = await api.get("/api/games", {
+          params: { active: true },
+          headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY },
+        });
+
+        const items = Array.isArray(data?.items) ? data.items : [];
+        if (cancelled) return;
+
+        setGames(items);
+
+        // auto-select first active game if none selected
+        if (!form.gameId && items.length) {
+          setForm((f) => ({ ...f, gameId: String(items[0].id) }));
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setGames([]);
+        setGamesError("No se pudieron cargar los juegos.");
+      } finally {
+        if (!cancelled) setGamesLoading(false);
+      }
+    };
+
+    loadGames();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.useInGame]);
+
+  // NEW: if user unchecks useInGame, clear game fields
+  useEffect(() => {
+    if (!form.useInGame) {
+      setGames([]);
+      setGamesLoading(false);
+      setGamesError("");
+      setForm((f) => ({ ...f, gameId: "", campaign: "", channel: "GAME", acquisition: "GAME" }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.useInGame]);
+
   const validate = () => {
     if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 1)
       return "Cantidad de cupones inválida.";
@@ -161,7 +215,9 @@ export default function OfferCreatePanel() {
 
     if (form.useInGame) {
       const gid = Number(form.gameId);
-      if (!Number.isFinite(gid) || gid <= 0) return "Debes indicar un Game ID válido.";
+      if (!Number.isFinite(gid) || gid <= 0) return "Debes seleccionar un juego.";
+      // Optional: ensure selected id exists in loaded list (when available)
+      if (games.length && !games.some((g) => Number(g.id) === gid)) return "El juego seleccionado no es válido.";
     }
 
     return null;
@@ -402,16 +458,26 @@ export default function OfferCreatePanel() {
             <>
               <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <label>Game ID</label>
-                  <input
+                  <label>Juego</label>
+                  <select
                     className="input"
-                    type="number"
-                    min="1"
                     value={form.gameId}
-                    onChange={(e) => onChange("gameId", e.target.value.replace(/[^\d]/g, ""))}
-                    placeholder="Ej. 1"
-                  />
+                    onChange={(e) => onChange("gameId", e.target.value)}
+                    disabled={gamesLoading}
+                  >
+                    <option value="">{gamesLoading ? "Cargando juegos..." : "Selecciona un juego…"}</option>
+                    {games.map((g) => (
+                      <option key={g.id} value={String(g.id)}>
+                        {g.id} · {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  {gamesError && <p className="note" style={{ color: "#b00020" }}>{gamesError}</p>}
+                  {!gamesLoading && !gamesError && form.useInGame && games.length === 0 && (
+                    <p className="note">No hay juegos activos.</p>
+                  )}
                 </div>
+
                 <div style={{ flex: 1 }}>
                   <label>Campaña (opcional)</label>
                   <input
