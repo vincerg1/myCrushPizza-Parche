@@ -1596,8 +1596,8 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
         const customer = await findOrCreateCustomerByPhone(prisma, {
           phone: contactRaw,
           name: null,
-          // ✅ IMPORTANTE: origin debe ser un ENUM válido
-          origin: 'QR',
+          origin: 'QR',             
+          portal: `GAME_${gameId}`, 
         });
         effectiveCustomerId = customer.id;
       } catch (err) {

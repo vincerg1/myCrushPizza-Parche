@@ -3,10 +3,12 @@
 
 /**
  * Busca un customer por teléfono. Si no existe, lo crea.
- * Es IDEMPOTENTE y segura ante llamadas simultáneas.
+ * - prisma: instancia de Prisma (inyectada desde fuera)
+ * - params: { phone, name?, origin?, portal? }
  *
- * @param prisma
- * @param params { phone, name?, origin? }
+ * IMPORTANTE:
+ * - origin es enum CustomerOrigin: PHONE|WALKIN|UBER|GLOVO|QR
+ * - portal es string libre para tags tipo "GAME_2"
  */
 async function findOrCreateCustomerByPhone(prisma, params = {}) {
   const phoneRaw = String(params.phone || '').trim();
@@ -14,82 +16,71 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
     throw new Error('missing_phone');
   }
 
-  // 🔒 Normalización mínima (solo dígitos)
-  const phone = phoneRaw.replace(/\D/g, '');
-  if (phone.length < 7) {
-    throw new Error('invalid_phone');
-  }
-
   const name   = params.name != null ? String(params.name).trim() : null;
-  const origin = params.origin || null;
+  const origin = params.origin != null ? String(params.origin).trim() : null;
+  const portal = params.portal != null ? String(params.portal).trim() : null;
 
-  // 1) Intentar encontrar
-  let customer = await prisma.customer.findUnique({
-    where: { phone },
+  // 1) Buscar por teléfono
+  let customer = await prisma.customer.findFirst({
+    where: { phone: phoneRaw },
   });
 
-  if (customer) {
-    // 1.a) Completar nombre si estaba vacío
-    if (name && !customer.name) {
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: { name },
-      });
-
-      console.log('[customers] UPDATED name', {
-        id: customer.id,
-        phone,
-        name,
-      });
-    } else {
-      console.log('[customers] FOUND', {
-        id: customer.id,
-        phone,
-        name: customer.name,
-      });
-    }
-
-    return customer;
-  }
-
-  // 2) No existe → intentamos crear
-  try {
+  if (!customer) {
+    // 2) Crear si no existe
     customer = await prisma.customer.create({
       data: {
-        code: `C${Date.now()}`,   // suficiente como identificador humano
-        phone,
+        code: `C${Date.now()}`,   // patrón único tipo C1763...
         name,
-        address_1: '-',          // requerido por schema
-        origin: origin || undefined, // 👈 solo se fija al crear
+        phone: phoneRaw,
+        address_1: '-',
+        ...(origin ? { origin } : {}), // debe ser un valor válido del enum
+        ...(portal ? { portal } : {}),
       },
     });
 
     console.log('[customers] CREATED', {
       id: customer.id,
-      phone,
-      origin,
+      phone: customer.phone,
+      origin: customer.origin,
+      portal: customer.portal,
     });
+  } else {
+    // 3) Si ya existe, actualizaciones suaves:
+    // - si llega name y no hay name, lo rellenamos
+    // - si llega portal y está vacío o distinto, lo actualizamos (útil para GAME_2, etc.)
+    const data = {};
 
-    return customer;
-  } catch (err) {
-    // 3) Carrera: otro proceso lo creó antes
-    // Prisma lanza error de unique constraint
-    if (err.code === 'P2002') {
-      const existing = await prisma.customer.findUnique({
-        where: { phone },
-      });
+    if (name && !customer.name) data.name = name;
 
-      if (existing) {
-        console.log('[customers] RACE recovered', {
-          id: existing.id,
-          phone,
-        });
-        return existing;
-      }
+    if (portal) {
+      const curPortal = customer.portal ? String(customer.portal).trim() : '';
+      if (!curPortal || curPortal !== portal) data.portal = portal;
     }
 
-    throw err;
+    // NOTA: no tocamos origin de un customer existente (evita cambios involuntarios)
+    if (Object.keys(data).length) {
+      customer = await prisma.customer.update({
+        where: { id: customer.id },
+        data,
+      });
+
+      console.log('[customers] UPDATED', {
+        id: customer.id,
+        phone: customer.phone,
+        name: customer.name,
+        portal: customer.portal,
+      });
+    } else {
+      console.log('[customers] FOUND', {
+        id: customer.id,
+        phone: customer.phone,
+        name: customer.name,
+        portal: customer.portal,
+      });
+    }
   }
+
+  return customer;
 }
 
 module.exports = {
