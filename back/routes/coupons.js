@@ -359,8 +359,8 @@ router.post('/issue', requireApiKey, async (req, res) => {
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
-    // cupón disponible: ACTIVO, AMOUNT/FIXED, stock (ilimitado o con saldo), sin expirar
-    const row = await prisma.coupon.findFirst({
+    // Traemos candidatos y filtramos stock “bien”
+    const candidates = await prisma.coupon.findMany({
       where: {
         code:    { startsWith: prefix },
         status:  'ACTIVE',
@@ -371,13 +371,18 @@ router.post('/issue', requireApiKey, async (req, res) => {
         gameId: null,
         NOT: { acquisition: 'GAME' },
 
-        AND: [
-          { OR: [{ usageLimit: null }, { usedCount: { lt: prisma.coupon.fields.usageLimit } }] },
-          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-        ],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      orderBy: { id: 'asc' }
+      orderBy: { id: 'asc' },
+      take: 200
     });
+
+    const row = candidates.find(r => {
+      const used = toNum(r.usedCount) ?? 0;
+      const limit = r.usageLimit == null ? null : toNum(r.usageLimit);
+      const hasStock = (limit == null) ? true : (used < limit);
+      return hasStock;
+    }) || null;
 
     if (!row) return res.status(409).json({ error: 'out_of_stock' });
 
@@ -387,7 +392,7 @@ router.post('/issue', requireApiKey, async (req, res) => {
     });
 
     // Notificaciones (opcionales)
-    const contact     = String(req.body.contact || '').trim();
+    const contact     = normPhone(req.body.contact || '');
     const gameNumber  = req.body.gameNumber ?? null;
     const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone  = process.env.ADMIN_PHONE || '';
@@ -1065,13 +1070,19 @@ router.post('/direct-claim', async (req, res) => {
     const poolWhere = {
       status: 'ACTIVE',
       ...whereTypeKey,
+
+      // 🔒 Nunca asignar cupones del pool de juegos al claim normal
+      AND: [
+        { OR: [{ acquisition: null }, { acquisition: { not: 'GAME' } }] },
+        { OR: [{ channel: null }, { channel: { not: 'GAME' } }] },
+        { gameId: null }
+      ],
+
       OR: [
-        // Cupón libre (sin dueño) y no expirado
         {
           assignedToId: null,
           OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
         },
-        // Cupón que tuvo dueño pero YA expiró -> se puede reciclar
         {
           assignedToId: { not: null },
           expiresAt: { lte: now }
@@ -1575,18 +1586,18 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
 
     // ---------- 0) Resolver customerId a partir del teléfono (si hace falta) ----------
     stage = 'resolve_customer';
-    let effectiveCustomerId = req.body.customerId
-      ? Number(req.body.customerId)
-      : null;
+    let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
 
-    const contactRaw = String(req.body.contact || '').trim();
+    // ✅ normaliza teléfono a solo dígitos
+    const contactRaw = normPhone(req.body.contact || '');
 
     if (!effectiveCustomerId && contactRaw) {
       try {
         const customer = await findOrCreateCustomerByPhone(prisma, {
           phone: contactRaw,
           name: null,
-          origin: `GAME_${gameId}`,
+          // ✅ IMPORTANTE: origin debe ser un ENUM válido
+          origin: 'QR',
         });
         effectiveCustomerId = customer.id;
       } catch (err) {
@@ -1598,19 +1609,28 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
     // ---------- 1) Buscar cupón válido del pool del juego ----------
     stage = 'find_pool_coupon';
 
-    const row = await prisma.coupon.findFirst({
+    // Traemos un lote y filtramos por reglas (window/days/stock/activeFrom/expiresAt)
+    const candidates = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
-        assignedToId: null,          // 🔹 SOLO cupones del pool (sin dueño)
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } }
-        ]
+        assignedToId: null, // SOLO pool
+        // fecha “rápida” (lo fino se filtra abajo)
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      orderBy: { id: 'asc' }
+      orderBy: { id: 'asc' },
+      take: 200
     });
+
+    const valid = candidates.filter(r => {
+      const limit = toNum(r.usageLimit) ?? null;
+      const used  = toNum(r.usedCount)  ?? 0;
+      const hasStock = (limit == null) ? true : (limit > used);
+      return isActiveByDate(r, now) && isWithinWindow(r, now) && hasStock;
+    });
+
+    const row = valid[0] || null;
 
     console.log('[games.issue] poolCoupon elegido:', row && {
       id: row.id,
@@ -1635,46 +1655,26 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       where: { id: row.id },
       data: {
         expiresAt,
-        assignedToId: effectiveCustomerId ?? row.assignedToId ?? null,
+        assignedToId: effectiveCustomerId ?? null,
         channel: 'GAME',
         // mantenemos acquisition = 'GAME'
         campaign: req.body.campaign ?? row.campaign ?? null
       }
     });
 
-    // Leemos la fila final para usar exactamente lo que queda en BD
+    // ---------- 3) Recargar ----------
     stage = 'reload_coupon';
-    const finalCoupon = await prisma.coupon.findUnique({
-      where: { id: row.id }
-    });
+    const finalCoupon = await prisma.coupon.findUnique({ where: { id: row.id } });
 
     if (!finalCoupon) {
-      console.warn('[games.issue] finalCoupon not found after update', {
-        id: row.id
-      });
-      return res.status(500).json({
-        ok: false,
-        error: 'server',
-        stage: 'finalCoupon_not_found'
-      });
+      console.warn('[games.issue] finalCoupon not found after update', { id: row.id });
+      return res.status(500).json({ ok: false, error: 'server', stage: 'finalCoupon_not_found' });
     }
-
-    console.log('[games.issue] finalCoupon:', {
-      id: finalCoupon.id,
-      code: finalCoupon.code,
-      kind: finalCoupon.kind,
-      variant: finalCoupon.variant,
-      percent: finalCoupon.percent,
-      amount: finalCoupon.amount,
-      maxAmount: finalCoupon.maxAmount,
-      expiresAt: finalCoupon.expiresAt,
-      assignedToId: finalCoupon.assignedToId
-    });
 
     const code = finalCoupon.code;
     const effectiveExpiresAt = finalCoupon.expiresAt || expiresAt;
 
-    // ---------- 3) Notificación opcional al usuario/admin ----------
+    // ---------- 4) Notificación opcional ----------
     stage = 'send_sms';
 
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
@@ -1714,18 +1714,13 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       }
     }
 
-    // ---------- 4) Respuesta homogénea ----------
+    // ---------- 5) Respuesta homogénea ----------
     const legacyKind =
       finalCoupon.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
 
-    const amountNum =
-      finalCoupon.amount != null ? Number(finalCoupon.amount) : null;
-    const percentNum =
-      finalCoupon.kind === 'PERCENT'
-        ? Number(finalCoupon.percent || 0)
-        : null;
-    const maxAmountNum =
-      finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
+    const amountNum = finalCoupon.amount != null ? Number(finalCoupon.amount) : null;
+    const percentNum = finalCoupon.kind === 'PERCENT' ? Number(finalCoupon.percent || 0) : null;
+    const maxAmountNum = finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
 
     return res.json({
       ok: true,
@@ -1737,15 +1732,12 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       maxAmount: maxAmountNum,
       expiresAt: effectiveExpiresAt,
       kind: legacyKind,
-      value:
-        finalCoupon.kind === 'AMOUNT'
-          ? amountNum || 0
-          : percentNum || 0,
+      value: finalCoupon.kind === 'AMOUNT' ? (amountNum || 0) : (percentNum || 0),
       notify
     });
   } catch (e) {
     console.error('[games.issue] FATAL error at stage', stage, e);
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       error: 'server',
       stage,
