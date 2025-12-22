@@ -35,8 +35,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error:"internal" });
     }
   });
-
-
   router.get("/admin", async (req, res) => {
     const q    = (req.query.q || "").trim();
     const take = Math.min(toInt(req.query.take) || 50, 200);
@@ -70,7 +68,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error:"internal" });
     }
   });
-
   /* 2) búsqueda rápida por phone/address_1 (rápida) */
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
@@ -94,7 +91,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error:"internal" });
     }
   });
-
   /* 3) alta (con email) — phone obligatorio, address opcional, geocoding “suave” y sin duplicar phone */
 router.post("/", async (req, res) => {
   try {
@@ -197,8 +193,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "internal" });
   }
 });
-
-
   /* 3.b) edición simple (incluye email) */
   router.patch("/:id", async (req, res) => {
     const id = +req.params.id;
