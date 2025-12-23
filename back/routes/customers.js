@@ -105,7 +105,7 @@ module.exports = (prisma) => {
     }
   });
 
-  /* 2) búsqueda rápida por phone/address_1 */
+
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
     if (!q) return res.json([]);
@@ -130,8 +130,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
-
-
   router.post("/", async (req, res) => {
     try {
       let { name, phone, email, address_1, portal, observations, lat, lng } =
@@ -142,10 +140,6 @@ module.exports = (prisma) => {
 
       const { base9, phoneE164 } = n;
 
-      // (opcional) si quieres FORZAR name para evitar null:
-      // if (!String(name || "").trim()) {
-      //   return res.status(400).json({ error: "name requerido" });
-      // }
 
       // duplicado por base9
       const existing = await findByBase9(base9);
@@ -158,10 +152,12 @@ module.exports = (prisma) => {
       if (!address) address = `(PICKUP) ${phoneE164}`;
 
       // coords iniciales
-      let geo = {
-        lat: lat != null ? +lat : null,
-        lng: lng != null ? +lng : null,
-      };
+      const geo = {};
+      const latNum = lat != null ? Number(lat) : NaN;
+      const lngNum = lng != null ? Number(lng) : NaN;
+
+      if (Number.isFinite(latNum)) geo.lat = latNum;
+      if (Number.isFinite(lngNum)) geo.lng = lngNum;
 
       // geocode si procede
       const isPickup = /^\(PICKUP\)/i.test(address);
@@ -177,7 +173,8 @@ module.exports = (prisma) => {
             typeof loc.lat === "number" &&
             typeof loc.lng === "number"
           ) {
-            geo = { lat: loc.lat, lng: loc.lng };
+            geo.lat = loc.lat;
+            geo.lng = loc.lng;
           } else {
             console.warn(
               "[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:",
@@ -259,8 +256,8 @@ module.exports = (prisma) => {
         ...(address_1 != null ? { address_1: String(address_1) } : {}),
         ...(portal != null ? { portal: String(portal).trim() } : {}),
         ...(observations != null ? { observations: String(observations) } : {}),
-        ...(lat != null ? { lat: +lat } : {}),
-        ...(lng != null ? { lng: +lng } : {}),
+        ...(Number.isFinite(Number(lat)) ? { lat: Number(lat) } : {}),
+        ...(Number.isFinite(Number(lng)) ? { lng: Number(lng) } : {}),
       };
 
       // ✅ si actualizan phone desde admin, lo normalizamos igual que en POST
