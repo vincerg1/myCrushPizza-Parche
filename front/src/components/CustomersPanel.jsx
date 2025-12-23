@@ -286,6 +286,20 @@ export default function CustomersPanel() {
     }
   };
 
+  function displayESPhone(phone = "") {
+  const s = String(phone || "").trim();
+
+  // Caso ideal: +34XXXXXXXXX → mostramos solo los 9 dígitos
+  const m = s.match(/^\+34(\d{9})$/);
+  if (m) return m[1];
+
+  // Caso: viene algo raro → devolvemos solo dígitos finales
+  const digits = s.replace(/\D/g, "");
+  if (digits.length >= 9) return digits.slice(-9);
+
+  return s;
+}
+
   return (
     <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
@@ -364,7 +378,7 @@ export default function CustomersPanel() {
               <div style={{ fontWeight:600 }}>{c.name || "—"}</div>
               {c.observations ? <div className="small" style={{ opacity:.7 }}>{c.observations}</div> : null}
             </div>
-            <div>{c.phone || "—"}</div>
+            <div>{displayESPhone(c.phone) || "—"}</div>
             <div><Badge tone="default">{c.segment || "—"}</Badge></div>
             <div>
               {c.isRestricted
