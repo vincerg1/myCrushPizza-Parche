@@ -7,20 +7,29 @@
  * - params: { phone, name?, origin?, portal? }
  *
  * IMPORTANTE:
- * - origin es enum CustomerOrigin: PHONE|WALKIN|UBER|GLOVO|QR
+ * - origin es enum CustomerOrigin: PHONE|WALKIN|UBER|GLOVO|QR (y los que tengas en schema)
  * - portal es string libre para tags tipo "GAME_2"
  */
+
+async function genCustomerCode(prisma) {
+  let code;
+  do {
+    code = 'CUS-' + Math.floor(10000 + Math.random() * 90000);
+  } while (await prisma.customer.findFirst({ where: { code } }));
+  return code;
+}
+
 async function findOrCreateCustomerByPhone(prisma, params = {}) {
   const phoneRaw = String(params.phone || '').trim();
   if (!phoneRaw) {
     throw new Error('missing_phone');
   }
 
-  const name   = params.name != null ? String(params.name).trim() : null;
+  const name = params.name != null ? String(params.name).trim() : null;
   const origin = params.origin != null ? String(params.origin).trim() : null;
   const portal = params.portal != null ? String(params.portal).trim() : null;
 
-  // 1) Buscar por teléfono
+  // 1) Buscar por teléfono (exact match como lo tenías)
   let customer = await prisma.customer.findFirst({
     where: { phone: phoneRaw },
   });
@@ -29,29 +38,30 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
     // 2) Crear si no existe
     customer = await prisma.customer.create({
       data: {
-        code: `C${Date.now()}`,   // patrón único tipo C1763...
+        code: await genCustomerCode(prisma), // ✅ CUS-#####
         name,
         phone: phoneRaw,
         address_1: '-',
-        ...(origin ? { origin } : {}), // debe ser un valor válido del enum
+        ...(origin ? { origin } : {}),
         ...(portal ? { portal } : {}),
       },
     });
 
     console.log('[customers] CREATED', {
       id: customer.id,
+      code: customer.code,
       phone: customer.phone,
       origin: customer.origin,
       portal: customer.portal,
     });
   } else {
-    // 3) Si ya existe, actualizaciones suaves:
-    // - si llega name y no hay name, lo rellenamos
-    // - si llega portal y está vacío o distinto, lo actualizamos (útil para GAME_2, etc.)
+    // 3) Si ya existe, actualizaciones suaves
     const data = {};
 
+    // si llega name y no hay name, lo rellenamos
     if (name && !customer.name) data.name = name;
 
+    // si llega portal y está vacío o distinto, lo actualizamos
     if (portal) {
       const curPortal = customer.portal ? String(customer.portal).trim() : '';
       if (!curPortal || curPortal !== portal) data.portal = portal;
@@ -66,6 +76,7 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
 
       console.log('[customers] UPDATED', {
         id: customer.id,
+        code: customer.code,
         phone: customer.phone,
         name: customer.name,
         portal: customer.portal,
@@ -73,6 +84,7 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
     } else {
       console.log('[customers] FOUND', {
         id: customer.id,
+        code: customer.code,
         phone: customer.phone,
         name: customer.name,
         portal: customer.portal,

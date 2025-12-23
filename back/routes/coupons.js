@@ -1586,25 +1586,35 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
 
     // ---------- 0) Resolver customerId a partir del teléfono (si hace falta) ----------
     stage = 'resolve_customer';
-    let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
+let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
 
-    // ✅ normaliza teléfono a solo dígitos
-    const contactRaw = normPhone(req.body.contact || '');
+// ✅ normaliza teléfono a solo dígitos
+const contactRaw = normPhone(req.body.contact || '');
 
-    if (!effectiveCustomerId && contactRaw) {
-      try {
-        const customer = await findOrCreateCustomerByPhone(prisma, {
-          phone: contactRaw,
-          name: null,
-          origin: 'QR',             
-          portal: `GAME_${gameId}`, 
-        });
-        effectiveCustomerId = customer.id;
-      } catch (err) {
-        console.error('[games.issue] findOrCreateCustomerByPhone error', err);
-        // si falla, seguimos sin customerId, pero NO rompemos la emisión
-      }
-    }
+// ✅ NUEVO: nombre (trim) para evitar null
+const nameRaw = String(req.body.name || '').trim() || null;
+
+console.log('[games.issue] customer input', {
+  contact: contactRaw || null,
+  name: nameRaw,
+  customerId: req.body.customerId || null,
+  portal: `GAME_${gameId}`,
+});
+
+if (!effectiveCustomerId && contactRaw) {
+  try {
+    const customer = await findOrCreateCustomerByPhone(prisma, {
+      phone: contactRaw,
+      name: nameRaw,            // ✅ AQUÍ VA EL CAMBIO
+      origin: 'QR',             // ✅ enum válido
+      portal: `GAME_${gameId}`, // ✅ tag del juego
+    });
+    effectiveCustomerId = customer.id;
+  } catch (err) {
+    console.error('[games.issue] findOrCreateCustomerByPhone error', err);
+    // si falla, seguimos sin customerId, pero NO rompemos la emisión
+  }
+}
 
     // ---------- 1) Buscar cupón válido del pool del juego ----------
     stage = 'find_pool_coupon';
