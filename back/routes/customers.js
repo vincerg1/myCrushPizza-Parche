@@ -31,23 +31,33 @@ module.exports = (prisma) => {
     return { ok: true, base9, phoneE164 };
   }
 
-  /** Busca por base9 usando phoneBase9 si existe */
+  /**
+   * Busca por base9 dentro de phone (SIN phoneBase9 en DB).
+   * Devuelve un select amplio porque lo reutilizamos en /restriction y en phone_exists.
+   */
   async function findByBase9(b9) {
-    try {
-      return await prisma.customer.findFirst({
-        where: { OR: [{ phone: { contains: b9 } }, { phoneBase9: b9 }] },
-        select: { id: true, code: true, phone: true, phoneBase9: true, name: true },
-      });
-    } catch {
-      // fallback si no existe phoneBase9 en el esquema
-      return await prisma.customer.findFirst({
-        where: { phone: { contains: b9 } },
-        select: { id: true, code: true, phone: true, name: true },
-      });
-    }
+    return await prisma.customer.findFirst({
+      where: { phone: { contains: b9 } },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        email: true,
+        address_1: true,
+        portal: true,
+        observations: true,
+        isRestricted: true,
+        restrictedAt: true,
+        restrictionReason: true,
+        segment: true,
+        segmentUpdatedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
   }
 
-  /* 1) lista compacta (mapa) */
   router.get("/", async (_, res) => {
     try {
       const list = await prisma.customer.findMany({
@@ -105,7 +115,6 @@ module.exports = (prisma) => {
     }
   });
 
-
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
     if (!q) return res.json([]);
@@ -130,18 +139,17 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.post("/", async (req, res) => {
     try {
-      let { name, phone, email, address_1, portal, observations, lat, lng } =
-        req.body;
+      let { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
 
       const n = normalizePhoneForSave(phone);
       if (!n.ok) return res.status(400).json({ error: n.error });
 
       const { base9, phoneE164 } = n;
 
-
-      // duplicado por base9
+      // ✅ duplicado por base9 (sin phoneBase9)
       const existing = await findByBase9(base9);
       if (existing) {
         return res.status(409).json({ error: "phone_exists", customer: existing });
@@ -168,24 +176,14 @@ module.exports = (prisma) => {
             { params: { address, components: "country:ES", key: GOOGLE } }
           );
           const loc = g?.results?.[0]?.geometry?.location;
-          if (
-            loc &&
-            typeof loc.lat === "number" &&
-            typeof loc.lng === "number"
-          ) {
+          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
             geo.lat = loc.lat;
             geo.lng = loc.lng;
           } else {
-            console.warn(
-              "[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:",
-              address
-            );
+            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
           }
         } catch (e) {
-          console.warn(
-            "[CUSTOMERS/post] Geocode error, guardo sin coords:",
-            e?.message
-          );
+          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
         }
       }
 
@@ -199,56 +197,40 @@ module.exports = (prisma) => {
         ...geo,
       };
 
-      // crear (intentando guardar phoneBase9 si existe la columna)
-      let saved;
       const code = await genCustomerCode();
 
-      try {
-        saved = await prisma.customer.create({
-          data: {
-            code,
-            origin: "PHONE",
-            phoneBase9: base9,
-            ...baseData,
-          },
-        });
-      } catch (e) {
-        // si la columna no existe en el esquema -> reintenta sin ella
-        if (/Unknown arg `phoneBase9`/i.test(e?.message)) {
-          saved = await prisma.customer.create({
-            data: {
-              code,
-              origin: "PHONE",
-              ...baseData,
-            },
-          });
-        } else {
-          throw e;
-        }
-      }
+      // ✅ crear SIN phoneBase9
+      const saved = await prisma.customer.create({
+        data: {
+          code,
+          origin: "PHONE",
+          ...baseData,
+        },
+      });
 
       res.json(saved);
     } catch (err) {
       console.error("[CUSTOMERS/post]", err);
       if (err.code === "P2002") {
-        return res
-          .status(409)
-          .json({ error: "Unique constraint violation", meta: err.meta });
+        return res.status(409).json({
+          error: "Unique constraint violation",
+          meta: err.meta,
+        });
       }
       res.status(500).json({
         error: "internal",
         message: err?.message || "unknown",
-        code: err?.code || null
+        code: err?.code || null,
       });
     }
   });
+
   router.patch("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
 
     try {
-      const { name, phone, email, address_1, portal, observations, lat, lng } =
-        req.body;
+      const { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
 
       const data = {
         ...(name != null ? { name: String(name).trim() } : {}),
@@ -260,44 +242,31 @@ module.exports = (prisma) => {
         ...(Number.isFinite(Number(lng)) ? { lng: Number(lng) } : {}),
       };
 
-      // ✅ si actualizan phone desde admin, lo normalizamos igual que en POST
+      // ✅ si actualizan phone desde admin:
       if (phone != null) {
         const n = normalizePhoneForSave(phone);
         if (!n.ok) return res.status(400).json({ error: n.error });
+
+        // ✅ anti-duplicado por base9 contra OTRO customer
+        const hit = await findByBase9(n.base9);
+        if (hit && hit.id !== id) {
+          return res.status(409).json({ error: "phone_exists", customer: hit });
+        }
+
         data.phone = n.phoneE164;
-
-        // intentamos guardar phoneBase9 si existe
-        try {
-          data.phoneBase9 = n.base9;
-        } catch {
-          // no-op
-        }
       }
 
-      let updated;
-      try {
-        updated = await prisma.customer.update({ where: { id }, data });
-      } catch (e) {
-        // Si phoneBase9 no existe, reintenta sin esa prop
-        if (/Unknown arg `phoneBase9`/i.test(e?.message) && data.phoneBase9) {
-          const { phoneBase9, ...rest } = data;
-          updated = await prisma.customer.update({ where: { id }, data: rest });
-        } else {
-          throw e;
-        }
-      }
-
+      const updated = await prisma.customer.update({ where: { id }, data });
       res.json(updated);
     } catch (err) {
       console.error("[CUSTOMERS/patch]", err);
       if (err.code === "P2002") {
-        return res
-          .status(409)
-          .json({ error: "Unique constraint violation", meta: err.meta });
+        return res.status(409).json({ error: "Unique constraint violation", meta: err.meta });
       }
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.patch("/:id/restrict", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -320,6 +289,7 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.post("/resegment", async (_req, res) => {
     try {
       const moneyKeys = [
@@ -429,8 +399,7 @@ module.exports = (prisma) => {
       const customers = await fetchCustomersWithSales();
 
       const nowMs = Date.now();
-      const daysBetween = (ms1, ms2) =>
-        Math.floor((ms1 - ms2) / (1000 * 60 * 60 * 24));
+      const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000 * 60 * 60 * 24));
 
       const updates = [];
       const counts = { S1: 0, S2: 0, S3: 0, S4: 0 };
@@ -481,6 +450,7 @@ module.exports = (prisma) => {
       });
     }
   });
+
   router.get("/segment-stats", async (_req, res) => {
     try {
       const [bySeg, total, restricted] = await Promise.all([
@@ -510,6 +480,7 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -521,6 +492,7 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.get("/restriction", async (req, res) => {
     try {
       const q = req.query.phone || req.query.q || "";
