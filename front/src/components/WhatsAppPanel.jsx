@@ -9,41 +9,36 @@ export default function WhatsAppPanel() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
 
-  /* ───────── Load conversations ───────── */
   const loadConversations = async () => {
     const { data } = await api.get("/api/whatsapp/conversations");
     setConversations(data);
   };
 
-  /* ───────── Load messages ───────── */
   const openConversation = async (conv) => {
     setActive(conv);
     const { data } = await api.get(`/api/whatsapp/messages/${conv.id}`);
     setMessages(data);
   };
 
-  /* ───────── Send message ───────── */
+  const refreshActiveMessages = async () => {
+    if (!active?.id) return;
+    const { data } = await api.get(`/api/whatsapp/messages/${active.id}`);
+    setMessages(data);
+  };
+
   const sendMessage = async () => {
     if (!text.trim() || !active) return;
     setLoading(true);
 
     try {
       await api.post("/api/whatsapp/send", {
-        to: active.phone,
-        text
+        to: active.phoneE164, // <-- FIX
+        text,
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          direction: "OUT",
-          text,
-          timestamp: new Date().toISOString()
-        }
-      ]);
-
       setText("");
-      loadConversations();
+      await refreshActiveMessages();
+      await loadConversations();
     } finally {
       setLoading(false);
     }
@@ -51,13 +46,16 @@ export default function WhatsAppPanel() {
 
   useEffect(() => {
     loadConversations();
-    const t = setInterval(loadConversations, 5000);
+    const t = setInterval(async () => {
+      await loadConversations();
+      await refreshActiveMessages();
+    }, 5000);
     return () => clearInterval(t);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
 
   return (
     <div className="wa-panel">
-      {/* LEFT */}
       <aside className="wa-list">
         {conversations.map((c) => (
           <div
@@ -65,30 +63,29 @@ export default function WhatsAppPanel() {
             className={`wa-item ${active?.id === c.id ? "active" : ""}`}
             onClick={() => openConversation(c)}
           >
-            <div className="wa-phone">{c.phone}</div>
+            <div className="wa-phone">{c.username || c.phoneE164}</div>
             <div className="wa-last">{c.lastMessage}</div>
             {c.unread > 0 && <span className="wa-badge">{c.unread}</span>}
           </div>
         ))}
       </aside>
 
-      {/* RIGHT */}
       <section className="wa-chat">
         {!active && <div className="wa-empty">Select a conversation</div>}
 
         {active && (
           <>
             <header className="wa-header">
-              <strong>{active.phone}</strong>
+              <strong>{active.username || active.phoneE164}</strong>
             </header>
 
             <div className="wa-messages">
-              {messages.map((m, i) => (
+              {messages.map((m) => (
                 <div
-                  key={i}
+                  key={m.id}
                   className={`wa-msg ${m.direction === "OUT" ? "out" : "in"}`}
                 >
-                  {m.text}
+                  {m.text || (m.type === "template" ? "[TEMPLATE]" : "")}
                 </div>
               ))}
             </div>
