@@ -78,7 +78,7 @@
   background: #fff;
   border-radius: 16px;
   padding: 10px;
-  text-align: left;
+  text-align: center;
 }
 
 .lsf-card.is-active {
@@ -382,4 +382,93 @@
 @media (min-width: 880px) {
   .lsf-grid { grid-template-columns: repeat(4, 1fr); }
   .lsf-mobile { padding-bottom: 168px; }
+}
+/* ───── Flip card ───── */
+.lsf-flip { position: relative; cursor: pointer; }
+.lsf-flip__inner {
+  position: relative;
+  width: 100%;
+  height: 168px;
+  transform-style: preserve-3d;
+  transition: transform .45s;
+}
+.lsf-flip.is-flipped .lsf-flip__inner { transform: rotateY(180deg); }
+
+.lsf-flip__front, .lsf-flip__back {
+  position: absolute; inset: 0;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.lsf-flip__front { display: grid; gap: 8px; }
+.lsf-flip__back {
+  transform: rotateY(180deg);
+  border: 1px solid #e7e7e7;
+  background: #ffffff;
+  padding: 10px;
+  display: grid;
+  text-align: center;
+  place-items: center;  
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+}
+
+.lsf-back__title{
+  font-size: 12px;       /* baja protagonismo */
+  font-weight: 800;
+  opacity: .85;
+  line-height: 1.1;
+}
+.lsf-back__desc {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 10px;
+  opacity: .85;
+  overflow: auto;
+}
+.lsf-back__close {
+  border: 1px solid #e7e7e7;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+  font-weight: 900;
+}
+.lsf-desc__ings{
+  font-weight: 900;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.lsf-desc__hook{
+  font-weight: 800;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lsf-desc__close{
+  font-weight: 800;
+  opacity: .8;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ───── Add button más marcado + pulso cuando listo ───── */
+.lsf-btn--primary {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+}
+.lsf-btn--primary.is-ready { animation: lsfPulse 1.05s infinite; }
+@keyframes lsfPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.035); }
+  100% { transform: scale(1); }
 }

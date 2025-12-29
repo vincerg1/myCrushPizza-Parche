@@ -1,132 +1,223 @@
-.pc-grid {
-  display: grid;
-  grid-template-columns: 1fr;           /* single column on mobile */
-  gap: 18px;
-  max-width: 520px;
-}
-
-.pc-title {
-  margin: 0 0 10px 0;
-  grid-column: 1 / -1;
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.pc-grid > label,
-.pc-grid > fieldset { width: 100%; }
+/* ─────────────────────────────────────────────
+   PizzaCreator (Backoffice PC-first)
+   Reusa lo que ya tienes, pero adaptado al nuevo JSX
+───────────────────────────────────────────── */
 
 .pizza-form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 480px;
+  display: block;
 }
 
+/* contenedor principal */
+.pc-grid {
+  display: grid;
+  gap: 16px;
+  max-width: 980px;
+}
+
+/* título */
+.pc-title {
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+/* cajas */
+.pc-section {
+  border: 1px solid #e7e7e7;
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px;
+}
+
+/* subtítulos internos */
+.pc-subtitle {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+/* labels/inputs */
 .pizza-form label {
   display: flex;
   flex-direction: column;
-  font-weight: 600;
   gap: 6px;
+  font-weight: 800;
+  margin-bottom: 10px;
 }
 
-.sizes-fieldset {
-  border: 1px solid #ddd;
+.pizza-form input[type="text"],
+.pizza-form input[type="number"],
+.pizza-form select {
+  border: 1px solid #e7e7e7;
   border-radius: 12px;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-  gap: 10px;
+  padding: 10px 12px;
+  outline: none;
 }
 
-.size-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+.pizza-form input[type="file"] {
+  border: 1px solid #e7e7e7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #fff;
 }
-.size-box input[type="number"] {
-  width: 100%;
-  max-width: 56px;
-}
+
+/* botón guardar */
 .save-btn {
-  padding: 10px 20px;
+  padding: 14px 16px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   background: #ff6933;
   color: #fff;
-  font-weight: 600;
+  font-weight: 900;
   cursor: pointer;
+  width: fit-content;
+  min-width: 220px;
 }
-.save-btn:hover {
-  opacity: 0.9;
-}
-/* ─────────────────────────  INGREDIENT ROW  ───────────────────────── */
 
-.ing-row {
+.save-btn:hover {
+  opacity: 0.92;
+}
+
+/* ─────────────────────────
+   Tamaños y precios (horizontal)
+───────────────────────── */
+
+/* si quieres, puedes usar esta clase; en JSX ya hay inline styles,
+   pero esto ayuda a unificar si luego quitas inline */
+.pc-sizesRow {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
-.ing-row select { min-width: 160px; }
-/* dropdown */
-.ing-row select {
-  min-width: 140px;
-  padding: 6px 8px;
+
+.pc-sizeItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e7e7e7;
+  border-radius: 12px;
+  background: #fff;
 }
 
-/* each qty input goes inside a tiny column with its size label */
+.pc-sizeItem input[type="number"] {
+  width: 90px;
+}
+
+/* ─────────────────────────
+   Ingredientes (Arma tu pizza)
+───────────────────────── */
+
+.ingredients-fieldset {
+  border: 1px solid #e7e7e7;
+  border-radius: 14px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ing-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ing-row select {
+  min-width: 220px;
+  padding: 10px 12px;
+}
+
 .ing-col {
-  width: 56px;
+  width: 64px;
   font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  gap: 6px;
 }
 
 .ing-qty {
   width: 100%;
-  max-width: 52px;
-  padding: 4px;
+  padding: 8px 8px;
   text-align: center;
-  border: 1px solid #ccc;
+  border: 1px solid #e7e7e7;
   border-radius: 12px;
   font-size: 12px;
 }
 
-/* delete button */
 .ing-row button {
-  all: unset;
-  cursor: pointer;
-  color: #c62828;
-  font-weight: 700;
-  padding: 2px 6px;
-}
-.ing-row button:hover { opacity: .7; }
-.ingredients-fieldset {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;      /* ← one row per ingredient */
-  gap: 12px;
-}
-
-/* each .ing-row already is flex; prevent wrap so inputs stay on one line */
-.ingredients-fieldset .ing-row { flex-wrap: nowrap; }
-
-
-.table-wrapper {
-  max-height: 320px;       /* ajusta a la altura que quieras */
-  overflow-y: auto;
-  border: 1px solid #ddd;
-}
-
-/* Que la cabecera quede fija si quieres (opcional) */
-.table-wrapper thead th {
-  position: sticky;
-  top: 0;
+  border: 1px solid #e7e7e7;
   background: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
-/* Pequeño layout del área de controles */
-.table-controls {
-  margin: 20px 0 8px;
+.ing-row button:hover {
+  opacity: 0.85;
+}
+
+/* botón "+ Añadir ingrediente" (al final del fieldset) */
+.ingredients-fieldset > button[type="button"] {
+  border: 1px solid #e7e7e7;
+  background: #f7f7f7;
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ingredients-fieldset > button[type="button"]:hover {
+  opacity: 0.92;
+}
+
+/* ─────────────────────────
+   Cards de categorías (debajo del form)
+───────────────────────── */
+
+.pc-cats button {
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.pc-cats button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+/* ─────────────────────────
+   Desktop: 2 columnas (producto + ingredientes), botón abajo
+───────────────────────── */
+@media (min-width: 980px) {
+  .pc-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+
+  .pc-title {
+    grid-column: 1 / -1;
+  }
+
+  /* Datos del producto (incluye tamaños y precios dentro) */
+  .pc-section:nth-of-type(1) {
+    grid-column: 1 / 2;
+  }
+
+  /* Arma tu pizza */
+  .pc-section:nth-of-type(2) {
+    grid-column: 1 / 2;
+  }
+
+  /* Imagen */
+  .pc-section:nth-of-type(3) {
+    grid-column: 2 / 3;
+    align-self: start;
+  }
+
+  .save-btn {
+    grid-column: 2 / 3;
+    justify-self: start;
+  }
 }

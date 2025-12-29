@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────────────────────
-// LocalSaleForm – Mobile-first TPV UI (tabs + product grid + bottom bar + modals)
-//  ✅ Reusa tu lógica de precios, extras (1º gratis), carrito y confirmación.
-//  ✅ Cambia SOLO la UI/UX.
+// LocalSaleForm – Mobile-first TPV UI
+//  • Tabs + grid con FLIP (descripción) + bottom bar + modales
+//  • Reusa tu lógica de precios, extras (1º gratis), carrito y confirmación.
 // ──────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
@@ -9,7 +9,7 @@ import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 import "../styles/LocalSaleForm.css";
 
-const categories = ["Pizza", "Sides", "Drinks", "Desserts"]; // ocultamos “Extras” al usuario
+const categories = ["Pizza", "Sides", "Drinks", "Desserts"];
 const normalize = (c) => (c || "Pizza").trim().toLowerCase();
 const CATEGORY_LABELS = {
   pizza: "Pizza",
@@ -84,9 +84,83 @@ const coerceRow = (row) => ({
   category: row.category,
   selectSize: parseMaybeJSON(row.selectSize, []) || [],
   priceBySize: parseMaybeJSON(row.priceBySize, {}) || {},
+  ingredients: parseMaybeJSON(row.ingredients, []) || [], // ✅ CLAVE (antes faltaba)
   stock: row.stock ?? null,
-  image: row.image ?? null, // por si lo tienes ya
+  image: row.image ?? null,
+  description: row.description ?? row.desc ?? row.shortDescription ?? "",
 });
+const capWords = (s = "") =>
+  String(s)
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : "")
+    .join(" ");
+
+const joinWithY = (arr = []) => {
+  const clean = arr.filter(Boolean);
+  if (clean.length === 0) return "";
+  if (clean.length === 1) return clean[0];
+  if (clean.length === 2) return `${clean[0]} y ${clean[1]}`;
+  return `${clean.slice(0, -1).join(", ")} y ${clean[clean.length - 1]}`;
+};
+
+const ingredientsForSize = (item, size = "") => {
+  const raw = item?.ingredients;
+  const list = parseMaybeJSON(raw, []);
+
+  if (!Array.isArray(list)) return [];
+
+  const hasQtyForSize = (row) => {
+    const qRaw = row?.qtyBySize ?? row?.qty_by_size ?? row?.qtySize ?? {};
+    const q = parseMaybeJSON(qRaw, {});
+
+    if (size && q && q[size] != null) return num(q[size]) > 0;
+    return Object.values(q || {}).some((v) => num(v) > 0);
+  };
+
+  return list
+    .filter(hasQtyForSize)
+    .map((r) => capWords(r?.name || ""))
+    .filter(Boolean);
+};
+
+
+// Random estable por item (no cambia en cada render) usando pizzaId como semilla simple
+const seededPick = (seed, arr) => {
+  if (!arr.length) return "";
+  const n = Math.abs(Number(seed) || 1);
+  return arr[n % arr.length];
+};
+
+const CRUSH_TITLES = [
+  "Tu crush más salvaje",
+  "Tu crush italiano",
+  "Tu crush irresistible",
+  "Tu crush sin filtro",
+  "Tu crush de verdad",
+  "Tu crush más hot",
+];
+
+const CRUSH_HOOKS = ["Un flechazo.", "Exquisita.", "Atrevida.", "Brutal.", "Wow."];
+
+const CRUSH_CLOSERS = [
+  "First taste, first love.",
+  "Sabor que no se olvida.",
+  "Te mira… y caes.",
+  "Una mordida y listo.",
+  "Crush confirmado en 10 segundos.",
+  "Te enamora sin avisar.",
+];
+
+const buildAutoDescription = (item, size = "") => {
+  const ings = ingredientsForSize(item, size);
+  const lineA = ings.length ? `${joinWithY(ings)}.` : "Ingredientes seleccionados a mano.";
+  const title = seededPick(item?.pizzaId, CRUSH_TITLES);
+  const hook = seededPick(item?.pizzaId + 7, CRUSH_HOOKS);
+  const close = seededPick(item?.pizzaId + 13, CRUSH_CLOSERS);
+  return { lineA, title, hook, close };
+};
 
 export default function LocalSaleForm({
   forcedStoreId = null,
@@ -101,15 +175,16 @@ export default function LocalSaleForm({
   /* state */
   const [storeId, setStoreId] = useState(forcedStoreId);
   const [stores, setStores] = useState([]);
-  const [menu, setMenu] = useState([]); // incluye Extras
+  const [menu, setMenu] = useState([]);
   const [cat, setCat] = useState("Pizza");
   const [cart, setCart] = useState([]);
   const [sel, setSel] = useState({ pizzaId: "", size: "", qty: 1, extras: {} });
   const [toast, setToast] = useState(null);
 
-  // UI state (solo UI)
+  // UI state
   const [extrasOpen, setExtrasOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [flippedId, setFlippedId] = useState(null);
 
   // errores visuales
   const [errors, setErrors] = useState({ item: false, size: false });
@@ -143,6 +218,7 @@ export default function LocalSaleForm({
     setSel({ pizzaId: "", size: "", qty: 1, extras: {} });
     setErrors({ item: false, size: false });
     setTriedAdd(false);
+    setFlippedId(null);
   }, [cat]);
 
   // limpiar errores al corregir
@@ -162,7 +238,6 @@ export default function LocalSaleForm({
     [menu, cat]
   );
 
-  // Extras (category='Extras')
   const extrasAvail = useMemo(
     () => menu.filter((m) => normalize(m.category) === "extras" && (m.stock == null || m.stock > 0)),
     [menu]
@@ -195,7 +270,6 @@ export default function LocalSaleForm({
     const selectedPrices = extrasAvail
       .filter((ex) => !!sel.extras[ex.pizzaId])
       .map((ex) => priceForSize(ex.priceBySize, sel.size || "M"));
-
     if (selectedPrices.length === 0) return 0;
     const sum = selectedPrices.reduce((s, p) => s + (Number(p) || 0), 0);
     return Math.max(0, sum - (Number(selectedPrices[0]) || 0)); // 1º gratis
@@ -239,6 +313,12 @@ export default function LocalSaleForm({
     const max = qtyOptions[qtyOptions.length - 1] || 1;
     setSel((s) => ({ ...s, qty: Math.min(max, Number(s.qty || 1) + 1) }));
   };
+
+  const toggleFlip = (id) => {
+    setFlippedId((prev) => (prev === id ? null : id));
+  };
+
+  const closeFlip = () => setFlippedId(null);
 
   const addLine = () => {
     const invalidItem = !current;
@@ -288,7 +368,8 @@ export default function LocalSaleForm({
     setSel({ pizzaId: "", size: "", qty: 1, extras: {} });
     setTriedAdd(false);
     setExtrasOpen(false);
-    setCartOpen(true); // feedback rápido: abre carrito
+    setCartOpen(true);
+    closeFlip();
   };
 
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
@@ -296,20 +377,17 @@ export default function LocalSaleForm({
 
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
 
-  // Imagen: si no hay, placeholder (CSS)
   const getImg = (it) => it?.image || "";
-
+  const isReadyToAdd = !!current && !!sel.size;
+  
   /* UI */
   return (
     <>
       <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         {/* Header */}
         <div className="lsf-top">
-          <div className="lsf-top__title">
-            {compact ? "Selecciona productos" : "Local sale"}
-          </div>
+          <div className="lsf-top__title">{compact ? "Selecciona productos" : "Local sale"}</div>
 
-          {/* botón carrito */}
           <button
             type="button"
             className="lsf-cartbtn"
@@ -354,28 +432,72 @@ export default function LocalSaleForm({
           })}
         </div>
 
-        {/* Grid productos */}
+       {/* Grid productos (FLIP para descripción) */}
         <div className="lsf-grid" role="list">
           {itemsAvail.map((it) => {
             const active = Number(sel.pizzaId) === Number(it.pizzaId);
             const from = priceForSize(it.priceBySize, (it.selectSize?.[0] || "M") ?? "M");
             const img = getImg(it);
+            const flipped = flippedId === it.pizzaId;
+            const fallbackSize = sel.size || it.selectSize?.[0] || "M";
+            const d = buildAutoDescription(it, fallbackSize);
+     
+
             return (
-              <button
+              <div
                 key={it.pizzaId}
-                type="button"
-                className={`lsf-card ${active ? "is-active" : ""}`}
-                onClick={() => pickProduct(it.pizzaId)}
+                className={`lsf-card lsf-flip ${active ? "is-active" : ""} ${flipped ? "is-flipped" : ""}`}
                 role="listitem"
+                tabIndex={0}
+                onClick={() => {
+                  pickProduct(it.pizzaId);
+                  toggleFlip(it.pizzaId);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    pickProduct(it.pizzaId);
+                    toggleFlip(it.pizzaId);
+                  }
+                }}
               >
-                <div className={`lsf-card__img ${img ? "" : "is-placeholder"}`}>
-                  {img ? <img src={img} alt={it.name} /> : <span>🍕</span>}
+                {/* Botón info (solo flip) */}
+
+
+                <div className="lsf-flip__inner">
+                  {/* FRONT */}
+                  <div className="lsf-flip__front">
+                    <div className={`lsf-card__img ${img ? "" : "is-placeholder"}`}>
+                      {img ? <img src={img} alt={it.name} /> : <span>🍕</span>}
+                    </div>
+                    <div className="lsf-card__meta">
+                      <div className="lsf-card__name">{it.name}</div>
+                      <div className="lsf-card__sub">Desde €{from.toFixed(2)}</div>
+                    </div>
+                  </div>
+
+                  {/* BACK */}
+                  <div
+                    className="lsf-flip__back"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="lsf-back__title">{d.title}</div>
+                    <div className="lsf-back__desc">
+                      <div className="lsf-desc__ings">{d.lineA}</div>
+                      <div className="lsf-desc__hook">{d.hook}</div>
+                      <div className="lsf-desc__close">{d.close}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="lsf-back__close"
+                      onClick={() => toggleFlip(it.pizzaId)}
+                    >
+                      Volver
+                    </button>
+                  </div>
                 </div>
-                <div className="lsf-card__meta">
-                  <div className="lsf-card__name">{it.name}</div>
-                  <div className="lsf-card__sub">Desde €{from.toFixed(2)}</div>
-                </div>
-              </button>
+              </div>
             );
           })}
           {!itemsAvail.length && <div className="lsf-empty">No hay items disponibles.</div>}
@@ -384,12 +506,10 @@ export default function LocalSaleForm({
         {/* Barra inferior fija (editor rápido) */}
         <div className="lsf-bottom">
           <div className="lsf-bottom__row">
-            {/* Producto seleccionado */}
             <div className={`lsf-pill ${triedAdd && errors.item ? "is-error" : ""}`}>
               {current ? current.name : "Elige un producto"}
             </div>
 
-            {/* Qty stepper */}
             <div className="lsf-qty">
               <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={!current || sel.qty <= 1}>
                 –
@@ -409,13 +529,13 @@ export default function LocalSaleForm({
           {/* Size chips */}
           <div className={`lsf-sizes ${triedAdd && errors.size ? "is-error" : ""}`}>
             {(current?.selectSize || []).map((sz) => {
-              const active = sel.size === sz;
+              const a = sel.size === sz;
               const p = priceForSize(current?.priceBySize, sz);
               return (
                 <button
                   key={sz}
                   type="button"
-                  className={`lsf-chip ${active ? "is-active" : ""}`}
+                  className={`lsf-chip ${a ? "is-active" : ""}`}
                   onClick={() => pickSize(sz)}
                   disabled={!current}
                 >
@@ -439,24 +559,20 @@ export default function LocalSaleForm({
 
             <button
               type="button"
-              className={`lsf-btn lsf-btn--primary ${
+              className={`lsf-btn lsf-btn--primary ${isReadyToAdd ? "is-ready" : ""} ${
                 triedAdd && (errors.item || errors.size) && shakeAdd ? "is-error pc-shake" : ""
               }`}
               onClick={addLine}
               disabled={!current}
             >
-              Add • {current && sel.size ? `€${linePreview.toFixed(2)}` : "—"}
+              Add • {isReadyToAdd ? `€${linePreview.toFixed(2)}` : "—"}
             </button>
           </div>
         </div>
       </div>
 
       {/* MODAL EXTRAS */}
-      <Modal
-        open={extrasOpen}
-        title="Extras (1º gratis)"
-        onClose={() => setExtrasOpen(false)}
-      >
+      <Modal open={extrasOpen} title="Extras (1º gratis)" onClose={() => setExtrasOpen(false)}>
         {!current || normalize(current?.category) !== "pizza" ? (
           <div className="lsf-muted">Los extras solo aplican a pizzas.</div>
         ) : extrasAvail.length === 0 ? (
@@ -478,11 +594,7 @@ export default function LocalSaleForm({
                 const p = priceForSize(ex.priceBySize, sel.size || "M");
                 return (
                   <label key={ex.pizzaId} className="lsf-extrasitem">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleExtra(ex.pizzaId)}
-                    />
+                    <input type="checkbox" checked={checked} onChange={() => toggleExtra(ex.pizzaId)} />
                     <span className="lsf-extrasitem__name">{ex.name}</span>
                     <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
                   </label>
@@ -513,9 +625,7 @@ export default function LocalSaleForm({
                       {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
                     </div>
                     {l.extras?.length ? (
-                      <div className="lsf-cartrow__extras">
-                        + {l.extras.map((e) => e.name).join(", ")}
-                      </div>
+                      <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
                     ) : null}
                   </div>
                   <div className="lsf-cartrow__right">
@@ -590,7 +700,10 @@ export default function LocalSaleForm({
                         price: c.price,
                         extras: extrasArrayForItem(c),
                       })),
-                      totalProducts: cart.reduce((t, l) => t + Number(l.price || 0) * Number(l.qty || 1), 0),
+                      totalProducts: cart.reduce(
+                        (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
+                        0
+                      ),
                       discounts: 0,
                       total,
                       extras: aggregatedExtras,
@@ -601,6 +714,7 @@ export default function LocalSaleForm({
                     setToast("Sale saved ✓");
                     setCart([]);
                     setCartOpen(false);
+                    closeFlip();
                     setTimeout(() => onDone(), 1200);
                   } catch (e) {
                     console.error(e);
