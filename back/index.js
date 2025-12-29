@@ -4,6 +4,7 @@ require('./cron/updateDaysOff');
 require('./cron/couponsTick');
 
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 
@@ -69,7 +70,10 @@ const appRouter             = require('./routes/app')(prisma);
 const whatsappWebhookRouter = require('./routes/whatsappWebhook')(prisma);
 const whatsappRouter        = require("./routes/whatsapp")(prisma);
 const gamesRouter           = require("./routes/games")(prisma);
+
+
 /* Montaje */
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/pizzas',          pizzasRouter);
 app.use('/api/menu_pizzas',     pizzasRouter);
 app.use('/api/ingredients',     ingredientsRouter);

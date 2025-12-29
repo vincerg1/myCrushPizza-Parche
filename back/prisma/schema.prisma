@@ -144,7 +144,6 @@ model StorePizzaStock {
   stock     Int      @default(0)
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
-
   store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   pizza MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
 
