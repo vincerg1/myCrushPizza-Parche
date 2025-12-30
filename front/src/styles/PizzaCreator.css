@@ -1,43 +1,62 @@
 /* ─────────────────────────────────────────────
    PizzaCreator (Backoffice PC-first)
-   Reusa lo que ya tienes, pero adaptado al nuevo JSX
 ───────────────────────────────────────────── */
 
-.pizza-form {
-  display: block;
+.pizza-form{
+  grid-column: 1;
+  min-width: 0;
 }
 
-/* contenedor principal */
-.pc-grid {
+/* LAYOUT: 2 columnas (form | categorías) */
+.pc-layout{
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 10px;
+  align-items: start;
+  grid-auto-flow: row;
+}
+
+@media (min-width: 680px){
+  .pc-layout{
+    grid-template-columns: 1.2fr .8fr;
+  }
+}
+
+/* LEFT: form container */
+.pc-grid{
+  display: flex !important;
+  flex-direction: column !important;
   gap: 16px;
-  max-width: 980px;
+  min-width: 0;
 }
 
 /* título */
-.pc-title {
-  margin: 0 0 6px 0;
+.pc-title{
+  grid-column: 1 / -1;
+  
   font-size: 24px;
   font-weight: 800;
 }
 
 /* cajas */
-.pc-section {
+.pc-section{
   border: 1px solid #e7e7e7;
   border-radius: 16px;
   background: #fff;
   padding: 14px;
 }
 
-/* subtítulos internos */
-.pc-subtitle {
+.pc-section--tight{ padding: 12px; }
+
+/* subtítulos */
+.pc-subtitle{
   margin: 0 0 10px 0;
   font-size: 16px;
   font-weight: 900;
 }
 
 /* labels/inputs */
-.pizza-form label {
+.pizza-form label{
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -47,121 +66,105 @@
 
 .pizza-form input[type="text"],
 .pizza-form input[type="number"],
-.pizza-form select {
+.pizza-form select{
   border: 1px solid #e7e7e7;
   border-radius: 12px;
   padding: 10px 12px;
   outline: none;
 }
 
-.pizza-form input[type="file"] {
+.pizza-form input[type="file"]{
   border: 1px solid #e7e7e7;
   border-radius: 12px;
   padding: 10px 12px;
   background: #fff;
 }
 
-/* botón guardar */
-.save-btn {
-  padding: 14px 16px;
-  border: none;
-  border-radius: 14px;
-  background: #ff6933;
-  color: #fff;
-  font-weight: 900;
-  cursor: pointer;
-  width: fit-content;
-  min-width: 220px;
-}
-
-.save-btn:hover {
-  opacity: 0.92;
-}
-
 /* ─────────────────────────
-   Tamaños y precios (horizontal)
+   Tamaños y precios
 ───────────────────────── */
-
-/* si quieres, puedes usar esta clase; en JSX ya hay inline styles,
-   pero esto ayuda a unificar si luego quitas inline */
-.pc-sizesRow {
+.pc-sizesRow{
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
 }
 
-.pc-sizeItem {
+.pc-sizeItem{
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid #e7e7e7;
   border-radius: 12px;
   background: #fff;
 }
 
-.pc-sizeItem input[type="number"] {
-  width: 90px;
-}
+.pc-sizeItem input[type="number"]{ width: 90px; }
 
 /* ─────────────────────────
-   Ingredientes (Arma tu pizza)
+   Ingredientes
 ───────────────────────── */
-
-.ingredients-fieldset {
+.ingredients-fieldset{
   border: 1px solid #e7e7e7;
   border-radius: 14px;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 150px;       
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;            
 }
 
-.ing-row {
+.ing-row{
   display: flex;
-  gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap; /* clave */
+   min-width: max-content; 
 }
 
-.ing-row select {
-  min-width: 220px;
-  padding: 10px 12px;
+.ing-row select{
+  flex: 1 1 180px;   /* ocupa lo justo */
+  max-width: 220px;
+  min-width: 160px;
 }
 
-.ing-col {
-  width: 64px;
-  font-size: 11px;
-  font-weight: 800;
-  display: grid;
+.ing-col{
+  display: flex;
+  align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
-.ing-qty {
-  width: 100%;
-  padding: 8px 8px;
+.ing-qty{
+  width: 56px;
+  padding: 6px;
   text-align: center;
   border: 1px solid #e7e7e7;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: 10px;
+  font-size: 13px;
 }
 
-.ing-row button {
+.ing-row button{
   border: 1px solid #e7e7e7;
-  background: #fff;
-  border-radius: 12px;
-  padding: 10px 12px;
+  background: #fc8080;
+  border-radius: 10px;
+  padding: 6px 10px;
   font-weight: 900;
   cursor: pointer;
+  line-height: 1;
+  margin-left: auto;
+  
 }
 
-.ing-row button:hover {
-  opacity: 0.85;
-}
+.ing-row button:hover{ opacity: 0.85; }
 
-/* botón "+ Añadir ingrediente" (al final del fieldset) */
-.ingredients-fieldset > button[type="button"] {
+.ingredients-fieldset > button[type="button"]{
+ 
+  bottom: 0;
   border: 1px solid #e7e7e7;
   background: #f7f7f7;
   border-radius: 12px;
@@ -170,54 +173,79 @@
   cursor: pointer;
 }
 
-.ingredients-fieldset > button[type="button"]:hover {
-  opacity: 0.92;
-}
+.ingredients-fieldset > button[type="button"]:hover{ opacity: 0.92; }
 
 /* ─────────────────────────
-   Cards de categorías (debajo del form)
+   Imagen + Guardar (misma fila)
 ───────────────────────── */
-
-.pc-cats button {
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
+.pc-actionsRow{
+  display: grid;
+  gap: 12px;
+  align-items: start;
 }
 
-.pc-cats button:hover {
+@media (min-width: 980px){
+  .pc-actionsRow{
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+}
+
+/* botón guardar */
+.save-btn{
+  padding: 14px 16px;
+  border: none;
+  border-radius: 14px;
+  background: #ff6933;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+  min-width: 220px;
+  height: fit-content;
+}
+
+.save-btn:hover{ opacity: 0.92; }
+
+/* ─────────────────────────
+   RIGHT: categorías
+───────────────────────── */
+.pc-right{
+  grid-column: 2;
+  min-width: 0;
+}
+.pc-layout > *{
+  min-width: 0;
+}
+
+.pc-right__title{
+  font-weight: 900;
+  margin-bottom: 10px;
+}
+
+.pc-catsGrid{
+  display: grid;
+  gap: 10px;
+}
+
+.pc-catCard{
+  border: 1px solid #e7e7e7;
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: transform .08s ease, box-shadow .08s ease;
+}
+
+.pc-catCard:hover{
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(0,0,0,0.06);
 }
 
-/* ─────────────────────────
-   Desktop: 2 columnas (producto + ingredientes), botón abajo
-───────────────────────── */
-@media (min-width: 980px) {
-  .pc-grid {
-    grid-template-columns: 1fr 1fr;
-    align-items: start;
-  }
+.pc-catCard__name{ font-weight: 900; }
+.pc-catCard__count{ opacity: .75; font-weight: 800; }
 
-  .pc-title {
-    grid-column: 1 / -1;
-  }
-
-  /* Datos del producto (incluye tamaños y precios dentro) */
-  .pc-section:nth-of-type(1) {
-    grid-column: 1 / 2;
-  }
-
-  /* Arma tu pizza */
-  .pc-section:nth-of-type(2) {
-    grid-column: 1 / 2;
-  }
-
-  /* Imagen */
-  .pc-section:nth-of-type(3) {
-    grid-column: 2 / 3;
-    align-self: start;
-  }
-
-  .save-btn {
-    grid-column: 2 / 3;
-    justify-self: start;
-  }
+/* MOBILE: el aside baja debajo */
+@media (max-width: 979px){
+  .pc-right{ position: static; }
 }

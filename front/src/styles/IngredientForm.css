@@ -1,61 +1,297 @@
-.ing-wrapper { display: flex; flex-direction: column; gap: 24px; }
+/* src/styles/IngredientForm.css */
 
-.ing-form {
+.ing-wrapper{
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 14px 18px;                 /* row / column gap */
-  align-items: end;               /* align inputs to bottom line */
-  max-width: 960px;
-  width: 100%;
-}
-.ing-title {
-  grid-column: 1 / -1;
-  margin: 0 0 6px 0;
-  font-size: 22px;
-  font-weight: 600;
+  gap: 14px;
+  padding: 14px;
 }
 
-.ing-save {
-  grid-column: 1 / -1;
-  padding: 12px;
-  border: none;
-  border-radius: 12px;
-  background: #4285f4;
-  color: #fff;
-  cursor: pointer;
+/* ✅ evita desbordes */
+.ing-wrapper *{ box-sizing: border-box; }
+
+/* FORM */
+.ing-form{
+  border: 1px solid #e7e7e7;
+  border-radius: 16px;
+  background: #fff;
+  padding: 14px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
-.ing-field {
+.ing-title{
+  margin: 0 0 10px 0;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.ing-field{
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  min-width: 0;
 }
 
-.ing-form label { 
-  font-weight: 600; 
-  display: flex; 
-  flex-direction: 
-  column; gap: 4px; }
-
-.ing-form button {
-  grid-column: 1 / -1;
-  padding: 10px;
-  border: none;
+.ing-field input,
+.ing-field select{
+  border: 1px solid #e7e7e7;
   border-radius: 12px;
+  padding: 10px 12px;
+  outline: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ing-row2{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.ing-save{
+  width: 100%;
+  border: none;
+  border-radius: 14px;
+  padding: 12px;
+  font-weight: 900;
+  cursor: pointer;
   background: #4285f4;
   color: #fff;
-  cursor: pointer;
+}
+.ing-save:hover{ opacity: .95; }
+.ing-save:active{ transform: translateY(1px); }
+
+/* CATEGORIES */
+.ing-cats{
+  display: grid;
+  gap: 10px;
 }
 
-.ing-table { border-collapse: collapse; width: 100%; }
-.ing-table th, .ing-table td {
-  border: 1px solid #ddd; padding: 6px 10px; text-align: left;
+.ing-catCard{
+  border: 1px solid #e7e7e7;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
 }
-.del-btn {
-  all: unset;
+
+.ing-catHead{
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
   cursor: pointer;
-  color: #c62828;
-  font-weight: 700;
-  padding: 2px 6px;
+  background: #fafafa;
+  border: none;
+  text-align: left;
 }
-.del-btn:hover { opacity: .7; }
+.ing-catHead:hover{ background: #f5f5f5; }
+
+.ing-catName{ font-weight: 900; }
+
+.ing-catCount{
+  font-weight: 900;
+  opacity: .7;
+  border: 1px solid #eee;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: #fff;
+}
+
+/* ✅ scroll interno por categoría */
+.ing-catListScroll{
+  max-height: 140px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}
+
+.ing-catList{
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  min-width: 0;
+}
+
+/* ING ROW */
+.ing-itemRow{
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto; /* ✅ evita overflow */
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  background: #fff;
+  min-width: 0;
+}
+
+.ing-itemRow:hover{ background: #fcfcfc; }
+
+.ing-itemLeft{ min-width: 0; }
+
+.ing-itemName{
+  font-weight: 900;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ACTIONS */
+.ing-itemActions{
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/* STATUS: que “se note” que se pulsa */
+.ing-statusBtn,
+.ing-actionBtn{
+  min-width: 92px;              /* 👈 mismo ancho */
+  height: 34px;                 /* 👈 misma altura */
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s ease;
+}
+
+.ing-statusBtn:hover{
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+.ing-statusBtn:active{
+  transform: translateY(1px);
+}
+
+.ing-statusBtn.is-on{
+  color: #15803d;
+  background: rgba(34,197,94,.15);
+  border-color: rgba(34,197,94,.35);
+}
+
+.ing-statusBtn.is-off{
+  color: #b91c1c;
+  background: rgba(255,59,48,.12);
+  border-color: rgba(255,59,48,.30);
+}
+
+.ing-statusBtn:hover{
+  filter: brightness(.95);
+}
+
+/* BUTTONS */
+.ing-actionBtn{
+  color: #000000;
+  border-color: #000000;
+}
+
+.ing-actionBtn:hover{
+  background: rgba(171, 170, 170, 0.08);
+}
+
+.ing-actionBtn:hover{
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+.ing-actionBtn:active{
+  transform: translateY(1px);
+}
+
+.ing-actionBtn.danger{
+  color: #000000;
+  border-color: #000000;
+  background: #fff;
+}
+
+.ing-actionBtn.danger:hover{
+    background: rgba(171, 170, 170, 0.08);
+}
+/* MODAL (edit) */
+.ing-modalOverlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  z-index: 50;
+}
+
+.ing-modal{
+  width: min(820px, 96vw);
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid #eee;
+  overflow: hidden;
+}
+
+.ing-modalTop{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ing-modalName{ font-weight: 900; }
+.ing-modalSub{ font-weight: 800; opacity: .7; font-size: 12px; }
+
+.ing-x{
+  border: 1px solid #eee;
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.ing-modalBody{
+  padding: 14px;
+}
+
+.ing-modalActions{
+  padding: 12px 14px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+/* Responsive */
+@media (max-width: 720px){
+  .ing-row2{ grid-template-columns: 1fr; }
+
+  .ing-itemRow{
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+.ing-itemActions{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+  .ing-catListScroll{
+    max-height: 220px;
+  }
+}

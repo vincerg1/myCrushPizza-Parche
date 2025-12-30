@@ -254,25 +254,38 @@ export default function PizzaCreator() {
   const selectedSizes = form.sizes;
 
   /* ====================================================== */
-  return (
-    <>
-      {/* ─────────── FORM ─────────── */}
+return (
+  <>
+    <div className="pc-layout">
+      <h2 className="pc-title">Crear producto</h2>
+
+      {/* ─────────── LEFT: FORM ─────────── */}
       <form className="pizza-form" onSubmit={onSubmit}>
         <div className="pc-grid">
-          <h2 className="pc-title">Crear producto</h2>
-
-          {/* UNA CAJA / DATOS + TAMAÑOS+PRECIOS (HORIZONTAL) */}
+          {/* DATOS DEL PRODUCTO */}
           <section className="pc-section">
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Datos del producto</div>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>
+              Datos del producto
+            </div>
 
             <label>
               Nombre
-              <input name="name" value={form.name} onChange={onChange} required />
+              <input
+                name="name"
+                value={form.name}
+                onChange={onChange}
+                required
+              />
             </label>
 
             <label>
               Categoría
-              <select name="category" value={form.category} onChange={onChange} required>
+              <select
+                name="category"
+                value={form.category}
+                onChange={onChange}
+                required
+              >
                 <option value="">– elegir –</option>
                 {categoryOptions.map((c) => (
                   <option key={c} value={c}>
@@ -282,54 +295,33 @@ export default function PizzaCreator() {
               </select>
             </label>
 
-            {/* Tamaños y precios EN LA MISMA CAJA, debajo de categoría */}
+            {/* TAMAÑOS Y PRECIOS */}
             <div style={{ marginTop: 10 }}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>Tamaños y precios</div>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                Tamaños y precios
+              </div>
 
-              {/* Horizontal: cada size = checkbox + input */}
-              <div
-                className="pc-sizesRow"
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
+              <div className="pc-sizesRow">
                 {sizeList.map((sz) => {
                   const checked = form.sizes.includes(sz);
                   return (
-                    <div
-                      key={sz}
-                      className="pc-sizeItem"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "8px 10px",
-                        border: "1px solid #e7e7e7",
-                        borderRadius: 12,
-                        background: "#fff",
-                      }}
-                    >
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
-                        <input type="checkbox" value={sz} checked={checked} onChange={onSizeToggle} />
-                        <span style={{ fontWeight: 900 }}>{sz}</span>
+                    <div key={sz} className="pc-sizeItem">
+                      <label style={{ display: "flex", gap: 6, margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          value={sz}
+                          checked={checked}
+                          onChange={onSizeToggle}
+                        />
+                        <strong>{sz}</strong>
                       </label>
 
                       <input
                         type="number"
-                        inputMode="decimal"
                         placeholder="€"
                         value={form.priceBySize[sz]}
                         onChange={(e) => onPriceChange(e, sz)}
                         disabled={!checked}
-                        style={{
-                          width: 90,
-                          borderRadius: 10,
-                          border: "1px solid #e7e7e7",
-                          padding: "8px 10px",
-                        }}
                       />
                     </div>
                   );
@@ -342,16 +334,19 @@ export default function PizzaCreator() {
           <section className="pc-section">
             <h3 className="pc-subtitle">Arma tu pizza</h3>
 
-            {!selectedSizes.length ? (
+            {!selectedSizes.length && (
               <div style={{ opacity: 0.75, fontWeight: 700 }}>
-                Selecciona al menos un tamaño para poder poner cantidades por tamaño.
+                Selecciona al menos un tamaño para poder poner cantidades.
               </div>
-            ) : null}
+            )}
 
             <fieldset className="ingredients-fieldset">
               {form.ingredients.map((row, i) => (
                 <div key={i} className="ing-row">
-                  <select value={row.id} onChange={(e) => onIngredientSelect(i, e.target.value)}>
+                  <select
+                    value={row.id}
+                    onChange={(e) => onIngredientSelect(i, e.target.value)}
+                  >
                     <option value="">– ingrediente –</option>
                     {inventory.map((item) => (
                       <option key={item.id} value={item.id}>
@@ -384,136 +379,160 @@ export default function PizzaCreator() {
             </fieldset>
           </section>
 
-          {/* IMAGEN (después de arma tu pizza) */}
+          {/* IMAGEN */}
           <section className="pc-section">
             <h3 className="pc-subtitle">Imagen</h3>
-            <label style={{ margin: 0 }}>
-              <input type="file" accept="image/*" onChange={onImageSelect} />
-            </label>
-            {form.imageFile ? (
+            <input type="file" accept="image/*" onChange={onImageSelect} />
+
+            {form.imageFile && (
               <div style={{ marginTop: 8, opacity: 0.8, fontWeight: 700 }}>
                 Seleccionado: {form.imageFile.name}
               </div>
-            ) : null}
+            )}
           </section>
 
-          {/* BOTÓN */}
-          <button className="save-btn">Guardar producto</button>
+          {/* BOTÓN ABAJO, SOLO */}
+          <button className="save-btn" type="submit">
+            Guardar producto
+          </button>
         </div>
       </form>
 
-      {/* ─────────── CATEGORÍAS (cards) ─────────── */}
+      {/* ─────────── RIGHT: CATEGORÍAS ─────────── */}
+      <aside className="pc-right">
+        <div className="pc-right__title">Categorías</div>
+
+        <div className="pc-catsGrid">
+          {categoryOptions.map((c) => {
+            const count = (pizzasByCategory[c] || []).length;
+            return (
+              <button
+                key={c}
+                type="button"
+                className="pc-catCard"
+                onClick={() => setOpenCat(c)}
+              >
+                <div className="pc-catCard__name">{c}</div>
+                <div className="pc-catCard__count">{count} productos</div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+
+    {/* ─────────── MODAL POR CATEGORÍA (INTOCABLE) ─────────── */}
+    <Modal
+      open={!!openCat}
+      title={
+        openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""
+      }
+      onClose={() => setOpenCat(null)}
+    >
       <div
-        className="pc-cats"
         style={{
-          marginTop: 18,
           display: "flex",
-          flexWrap: "wrap",
+          justifyContent: "space-between",
           gap: 10,
-          alignItems: "stretch",
+          alignItems: "center",
         }}
       >
-        {categoryOptions.map((c) => {
-          const count = (pizzasByCategory[c] || []).length;
-          return (
+        <div style={{ opacity: 0.75, fontWeight: 700 }}>
+          Aquí luego añadimos “en qué tienda está habilitada” (stock) y edición
+          inline.
+        </div>
+
+        <button
+          type="button"
+          onClick={fetchPizzas}
+          style={{
+            border: "1px solid #e7e7e7",
+            background: "#fff",
+            borderRadius: 12,
+            padding: "10px 12px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          Recargar
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+        {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              border: "1px solid #eee",
+              borderRadius: 14,
+              padding: 12,
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontWeight: 900,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {p.name}
+              </div>
+
+              <div
+                style={{
+                  opacity: 0.75,
+                  fontWeight: 800,
+                  fontSize: 12,
+                }}
+              >
+                Tamaños:{" "}
+                {Array.isArray(p.selectSize) ? p.selectSize.join(", ") : ""}
+              </div>
+
+              <div
+                style={{
+                  opacity: 0.7,
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >
+                Imagen: {p.image || "—"}
+              </div>
+            </div>
+
             <button
-              key={c}
               type="button"
-              onClick={() => setOpenCat(c)}
+              onClick={() => deletePizza(p.id)}
               style={{
-                border: "1px solid #e7e7e7",
+                border: "1px solid #ff3b30",
                 background: "#fff",
                 borderRadius: 12,
                 padding: "10px 12px",
+                fontWeight: 900,
                 cursor: "pointer",
-                minWidth: 140,
-                textAlign: "left",
               }}
             >
-              <div style={{ fontWeight: 900 }}>{c}</div>
-              <div style={{ opacity: 0.75, fontWeight: 800 }}>{count} productos</div>
+              Eliminar
             </button>
-          );
-        })}
-      </div>
-
-      {/* ─────────── MODAL POR CATEGORÍA ─────────── */}
-      <Modal
-        open={!!openCat}
-        title={openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""}
-        onClose={() => setOpenCat(null)}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ opacity: 0.75, fontWeight: 700 }}>
-            Aquí luego añadimos “en qué tienda está habilitada” (stock) y edición inline.
           </div>
-          <button
-            type="button"
-            onClick={fetchPizzas}
-            style={{
-              border: "1px solid #e7e7e7",
-              background: "#fff",
-              borderRadius: 12,
-              padding: "10px 12px",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            Recargar
-          </button>
-        </div>
+        ))}
 
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 14,
-                padding: 12,
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.name}
-                </div>
-                <div style={{ opacity: 0.75, fontWeight: 800, fontSize: 12 }}>
-                  Tamaños: {Array.isArray(p.selectSize) ? p.selectSize.join(", ") : ""}
-                </div>
-                <div style={{ opacity: 0.7, fontWeight: 700, fontSize: 12 }}>
-                  Imagen: {p.image ? p.image : "—"}
-                </div>
-              </div>
+        {openCat && (pizzasByCategory[openCat] || []).length === 0 && (
+          <div style={{ opacity: 0.7, fontWeight: 700 }}>
+            No hay productos en esta categoría.
+          </div>
+        )}
+      </div>
+    </Modal>
+  </>
+);
 
-              <div style={{ display: "flex", gap: 8 }}>
-                {/* edición la haremos luego (cuando definamos UX + endpoint PUT) */}
-                <button
-                  type="button"
-                  onClick={() => deletePizza(p.id)}
-                  style={{
-                    border: "1px solid #ff3b30",
-                    background: "#fff",
-                    borderRadius: 12,
-                    padding: "10px 12px",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          ))}
 
-          {openCat && (pizzasByCategory[openCat] || []).length === 0 ? (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>No hay productos en esta categoría.</div>
-          ) : null}
-        </div>
-      </Modal>
-    </>
-  );
+
 }
