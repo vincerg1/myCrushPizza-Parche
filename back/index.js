@@ -70,7 +70,7 @@ const appRouter             = require('./routes/app')(prisma);
 const whatsappWebhookRouter = require('./routes/whatsappWebhook')(prisma);
 const whatsappRouter        = require("./routes/whatsapp")(prisma);
 const gamesRouter           = require("./routes/games")(prisma);
-
+const productStatus         = require("./routes/productStatus");
 
 /* Montaje */
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -92,9 +92,8 @@ app.use('/api/app',             appRouter);
 app.use('/api/whatsapp',        whatsappWebhookRouter);
 app.use("/api/whatsapp",        whatsappRouter);
 app.use("/api/games",           gamesRouter);
-/* === Twilio Status Callback (usar la MISMA ruta que en el env) ===
-   TWILIO_STATUS_CALLBACK_URL = https://mycrushpizza-parche-production.up.railway.app/twilio/status-callback
-   Debe ir ANTES del 404. Twilio envía application/x-www-form-urlencoded. */
+app.use("/api/product-status", productStatus(prisma));
+
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),

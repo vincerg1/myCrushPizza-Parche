@@ -1,6 +1,7 @@
 // back/routes/menuDisponible.js
 const express = require("express");
 const auth = require("../middleware/auth");
+const { computeProductStatus } = require("../services/productStatus");
 
 module.exports = (prisma) => {
   const r = express.Router();
@@ -23,22 +24,31 @@ module.exports = (prisma) => {
           stock: true,
           pizza: {
             select: {
+              id: true,
               name: true,
               selectSize: true,
               priceBySize: true,
               category: true,
               image: true,
-              ingredients: true, 
+              ingredients: {
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                },
+              },
             },
           },
         },
         orderBy: { pizzaId: "asc" },
       });
 
-      res.json(
-        rows
-          .filter((r) => r.pizza)
-          .map((r) => ({
+      const menu = rows
+        .filter((r) => r.pizza)
+        .map((r) => {
+          const status = computeProductStatus(r.pizza.ingredients);
+
+          return {
             pizzaId: r.pizzaId,
             stock: r.stock,
             name: r.pizza.name,
@@ -46,9 +56,15 @@ module.exports = (prisma) => {
             priceBySize: r.pizza.priceBySize,
             category: r.pizza.category,
             image: r.pizza.image,
-            ingredients: r.pizza.ingredients ?? [], 
-          }))
-      );
+            // ⚠️ SOLO PARA BACKOFFICE / DEBUG (opcional)
+            // blockedBy: status.blockedBy,
+            available: status.available,
+          };
+        })
+        // ✅ AQUÍ está la regla de oro:
+        .filter((p) => p.available);
+
+      res.json(menu);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "No se pudo cargar el menú disponible" });

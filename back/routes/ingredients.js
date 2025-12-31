@@ -1,54 +1,165 @@
 // routes/ingredients.js
-const express = require('express');
+const express = require("express");
 
 module.exports = function (prisma) {
   const r = express.Router();
 
+  const toUpperSafe = (v) => (v ?? "").toString().trim().toUpperCase();
+
+  const parseId = (req) => {
+    const id = Number(req.params.id);
+    return Number.isFinite(id) ? id : null;
+  };
+
+  const parseNumberOrNull = (v) => {
+    if (v === "" || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  const parseIntOrZero = (v) => {
+    if (v === "" || v === null || v === undefined) return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+  };
+
   /* GET /api/ingredients → list all */
-  r.get('/', async (_, res) => {
+  r.get("/", async (_, res) => {
     try {
-      const data = await prisma.ingredient.findMany({ orderBy: { id: 'desc' } });
+      const data = await prisma.ingredient.findMany({ orderBy: { id: "desc" } });
       res.json(data);
     } catch (err) {
       console.error(err);
-      res.status(500).json({ error: 'Error fetching ingredients' });
+      res.status(500).json({ error: "Error fetching ingredients" });
     }
   });
 
   /* POST /api/ingredients → create new */
-  r.post('/', async (req, res) => {
+  r.post("/", async (req, res) => {
     try {
       const { name, category, stock, unit, costPrice } = req.body;
-      if (!name?.trim()) {
-        return res.status(400).json({ error: 'Name is required' });
+
+      if (!name?.toString().trim()) {
+        return res.status(400).json({ error: "Name is required" });
       }
+      if (!category?.toString().trim()) {
+        return res.status(400).json({ error: "Category is required" });
+      }
+
       const ingredient = await prisma.ingredient.create({
         data: {
-          name: name.trim(),
-          category,
-          stock: Number(stock) || 0,
-          unit,
-          costPrice: costPrice ? Number(costPrice) : null,
+          name: toUpperSafe(name),
+          category: toUpperSafe(category),
+          stock: parseIntOrZero(stock),
+          unit: unit ? String(unit).trim() : null,
+          costPrice: parseNumberOrNull(costPrice),
+          // status default ACTIVE en schema
         },
       });
-      res.json(ingredient);
-    } catch (err) {
-      console.error(err);
-      res.status(400).json({ error: err.message });
-    }
-  });
 
-  /* DELETE /api/ingredients/:id → remove */
-  r.delete('/:id', async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      await prisma.ingredient.delete({ where: { id } });
-      res.json({ message: 'Ingredient deleted', id });
+      res.json(ingredient);
     } catch (err) {
       console.error(err);
       res.status(400).json({ error: err.meta?.cause || err.message });
     }
   });
 
-  return r;          // ← SIEMPRE al final, después de definir todas las rutas
+  /**
+   * PATCH /api/ingredients/:id → edit fields
+   * Permite actualizar: name, category, stock, unit, costPrice
+   * (status NO aquí para mantenerlo separado y simple)
+   */
+  r.patch("/:id", async (req, res) => {
+    try {
+      const id = parseId(req);
+      if (!id) return res.status(400).json({ error: "Invalid id" });
+
+      const { name, category, stock, unit, costPrice } = req.body;
+
+      const data = {};
+
+      if (name !== undefined) {
+        const n = toUpperSafe(name);
+        if (!n) return res.status(400).json({ error: "Name cannot be empty" });
+        data.name = n;
+      }
+
+      if (category !== undefined) {
+        const c = toUpperSafe(category);
+        if (!c) return res.status(400).json({ error: "Category cannot be empty" });
+        data.category = c;
+      }
+
+      if (stock !== undefined) data.stock = parseIntOrZero(stock);
+
+      if (unit !== undefined) {
+        data.unit = unit ? String(unit).trim() : null;
+      }
+
+      if (costPrice !== undefined) {
+        const cp = parseNumberOrNull(costPrice);
+        // si mandan algo no numérico tipo "abc" → error
+        if (costPrice !== "" && costPrice !== null && costPrice !== undefined && cp === null) {
+          return res.status(400).json({ error: "Invalid costPrice" });
+        }
+        data.costPrice = cp;
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ error: "No fields to update" });
+      }
+
+      const updated = await prisma.ingredient.update({
+        where: { id },
+        data,
+      });
+
+      res.json(updated);
+    } catch (err) {
+      console.error(err);
+      res.status(400).json({ error: err.meta?.cause || err.message });
+    }
+  });
+
+  /**
+   * PATCH /api/ingredients/:id/status → toggle/set status manually
+   * Body: { status: "ACTIVE" | "INACTIVE" }
+   */
+  r.patch("/:id/status", async (req, res) => {
+    try {
+      const id = parseId(req);
+      if (!id) return res.status(400).json({ error: "Invalid id" });
+
+      const status = toUpperSafe(req.body?.status);
+      if (status !== "ACTIVE" && status !== "INACTIVE") {
+        return res.status(400).json({ error: "Invalid status (ACTIVE|INACTIVE)" });
+      }
+
+      const updated = await prisma.ingredient.update({
+        where: { id },
+        data: { status },
+      });
+
+      res.json(updated);
+    } catch (err) {
+      console.error(err);
+      res.status(400).json({ error: err.meta?.cause || err.message });
+    }
+  });
+
+  /* DELETE /api/ingredients/:id → remove */
+  r.delete("/:id", async (req, res) => {
+    try {
+      const id = parseId(req);
+      if (!id) return res.status(400).json({ error: "Invalid id" });
+
+      await prisma.ingredient.delete({ where: { id } });
+      res.json({ message: "Ingredient deleted", id });
+    } catch (err) {
+      console.error(err);
+      res.status(400).json({ error: err.meta?.cause || err.message });
+    }
+  });
+
+  return r;
 };
