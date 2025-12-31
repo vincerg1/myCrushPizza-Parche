@@ -195,7 +195,16 @@ export default function Backoffice() {
       />
 
       {/* ───── CONTENIDO ───── */}
-      <main className="panel">{panel}</main>
+      <main className="panel">
+        <div className="panel-scroll">
+          <div className="panel-inner">{panel}</div>
+
+          <footer className="bo-footer">
+            <span>voltaPizza • Backoffice</span>
+            <span>v1.0</span>
+          </footer>
+        </div>
+      </main>
     </div>
   );
 }

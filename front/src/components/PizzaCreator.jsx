@@ -80,7 +80,11 @@ function Modal({ open, title, onClose, children }) {
         </div>
         <div
           className="pc-modal__body"
-          style={{ padding: 12, overflow: "auto", maxHeight: "calc(85vh - 60px)" }}
+          style={{
+            padding: 12,
+            overflow: "auto",
+            maxHeight: "calc(85vh - 60px)",
+          }}
         >
           {children}
         </div>
@@ -133,6 +137,35 @@ export default function PizzaCreator() {
     fetchPizzas();
   }, [fetchPizzas]);
 
+  /* ---------- STATUS CALCULADO (desde backend) ---------- */
+  // Mapa: pizzaId -> { status: "ACTIVE"|"INACTIVE", blockedBy?: [...] }
+  const [statusMap, setStatusMap] = useState({});
+  const [statusFetchState, setStatusFetchState] = useState({
+    loading: false,
+    loadedOnce: false,
+  });
+
+  const fetchAllProductStatus = useCallback(async (force = false) => {
+    if (!force && (statusFetchState.loading || statusFetchState.loadedOnce)) return;
+
+    setStatusFetchState((s) => ({ ...s, loading: true }));
+    try {
+      const r = await api.get("/api/product-status");
+      const map = {};
+      (Array.isArray(r.data) ? r.data : []).forEach((p) => {
+        map[p.id] = {
+          status: p.computedStatus,
+          blockedBy: p.blockedBy || [],
+        };
+      });
+      setStatusMap(map);
+      setStatusFetchState({ loading: false, loadedOnce: true });
+    } catch (e) {
+      console.error("Error loading product status", e);
+      setStatusFetchState((s) => ({ ...s, loading: false }));
+    }
+  }, [statusFetchState.loading, statusFetchState.loadedOnce]);
+
   /* ---------- Category cards + modal ---------- */
   const [openCat, setOpenCat] = useState(null);
 
@@ -144,10 +177,17 @@ export default function PizzaCreator() {
       map[c].push(p);
     }
     for (const c of Object.keys(map)) {
-      map[c] = (map[c] || []).slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+      map[c] = (map[c] || [])
+        .slice()
+        .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
     }
     return map;
   }, [pizzas]);
+
+  // ✅ cuando abres modal: carga status 1 vez
+  useEffect(() => {
+    if (openCat) fetchAllProductStatus(false);
+  }, [openCat, fetchAllProductStatus]);
 
   /* ---------- handlers (form) ---------- */
   const onChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -157,7 +197,6 @@ export default function PizzaCreator() {
     setForm((p) => {
       const nextSizes = checked ? [...p.sizes, value] : p.sizes.filter((s) => s !== value);
 
-      // opcional: al quitar size, limpia qtyBySize para evitar basura visual
       const nextIngredients = p.ingredients.map((row) => {
         const qtyBySize = { ...(row.qtyBySize || {}) };
         if (!checked) delete qtyBySize[value];
@@ -234,6 +273,10 @@ export default function PizzaCreator() {
         ingredients: [],
       });
       fetchPizzas();
+
+      // refresca status la próxima vez que abras el modal
+      setStatusMap({});
+      setStatusFetchState({ loading: false, loadedOnce: false });
     } catch (err) {
       console.error(err);
       alert("Error al guardar");
@@ -245,6 +288,12 @@ export default function PizzaCreator() {
     try {
       await api.delete(`/api/pizzas/${id}`);
       setPizzas((p) => p.filter((x) => x.id !== id));
+
+      setStatusMap((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
     } catch (e) {
       console.error(e);
       alert("No se pudo eliminar");
@@ -254,285 +303,258 @@ export default function PizzaCreator() {
   const selectedSizes = form.sizes;
 
   /* ====================================================== */
-return (
-  <>
-    <div className="pc-layout">
-      <h2 className="pc-title">Crear producto</h2>
+  return (
+    <>
+      <div className="pc-layout">
+        <h2 className="pc-title">Crear producto</h2>
 
-      {/* ─────────── LEFT: FORM ─────────── */}
-      <form className="pizza-form" onSubmit={onSubmit}>
-        <div className="pc-grid">
-          {/* DATOS DEL PRODUCTO */}
-          <section className="pc-section">
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>
-              Datos del producto
-            </div>
+        {/* ─────────── LEFT: FORM ─────────── */}
+        <form className="pizza-form" onSubmit={onSubmit}>
+          <div className="pc-grid">
+            {/* DATOS DEL PRODUCTO */}
+            <section className="pc-section">
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>Datos del producto</div>
 
-            <label>
-              Nombre
-              <input
-                name="name"
-                value={form.name}
-                onChange={onChange}
-                required
-              />
-            </label>
+              <label>
+                Nombre
+                <input name="name" value={form.name} onChange={onChange} required />
+              </label>
 
-            <label>
-              Categoría
-              <select
-                name="category"
-                value={form.category}
-                onChange={onChange}
-                required
-              >
-                <option value="">– elegir –</option>
-                {categoryOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {/* TAMAÑOS Y PRECIOS */}
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                Tamaños y precios
-              </div>
-
-              <div className="pc-sizesRow">
-                {sizeList.map((sz) => {
-                  const checked = form.sizes.includes(sz);
-                  return (
-                    <div key={sz} className="pc-sizeItem">
-                      <label style={{ display: "flex", gap: 6, margin: 0 }}>
-                        <input
-                          type="checkbox"
-                          value={sz}
-                          checked={checked}
-                          onChange={onSizeToggle}
-                        />
-                        <strong>{sz}</strong>
-                      </label>
-
-                      <input
-                        type="number"
-                        placeholder="€"
-                        value={form.priceBySize[sz]}
-                        onChange={(e) => onPriceChange(e, sz)}
-                        disabled={!checked}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          {/* ARMA TU PIZZA */}
-          <section className="pc-section">
-            <h3 className="pc-subtitle">Arma tu pizza</h3>
-
-            {!selectedSizes.length && (
-              <div style={{ opacity: 0.75, fontWeight: 700 }}>
-                Selecciona al menos un tamaño para poder poner cantidades.
-              </div>
-            )}
-
-            <fieldset className="ingredients-fieldset">
-              {form.ingredients.map((row, i) => (
-                <div key={i} className="ing-row">
-                  <select
-                    value={row.id}
-                    onChange={(e) => onIngredientSelect(i, e.target.value)}
-                  >
-                    <option value="">– ingrediente –</option>
-                    {inventory.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  {selectedSizes.map((sz) => (
-                    <div key={`${i}-${sz}`} className="ing-col">
-                      {sz}
-                      <input
-                        type="number"
-                        className="ing-qty"
-                        value={(row.qtyBySize || {})[sz] ?? 0}
-                        onChange={(e) => onQtyChange(i, sz, e.target.value)}
-                      />
-                    </div>
+              <label>
+                Categoría
+                <select name="category" value={form.category} onChange={onChange} required>
+                  <option value="">– elegir –</option>
+                  {categoryOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
+                </select>
+              </label>
 
-                  <button type="button" onClick={() => removeIngredient(i)}>
-                    ✕
-                  </button>
+              {/* TAMAÑOS Y PRECIOS */}
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 900, marginBottom: 8 }}>Tamaños y precios</div>
+
+                <div className="pc-sizesRow">
+                  {sizeList.map((sz) => {
+                    const checked = form.sizes.includes(sz);
+                    return (
+                      <div key={sz} className="pc-sizeItem">
+                        <label style={{ display: "flex", gap: 6, margin: 0 }}>
+                          <input type="checkbox" value={sz} checked={checked} onChange={onSizeToggle} />
+                          <strong>{sz}</strong>
+                        </label>
+
+                        <input
+                          type="number"
+                          placeholder="€"
+                          value={form.priceBySize[sz]}
+                          onChange={(e) => onPriceChange(e, sz)}
+                          disabled={!checked}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-
-              <button type="button" onClick={addIngredient}>
-                + Añadir ingrediente
-              </button>
-            </fieldset>
-          </section>
-
-          {/* IMAGEN */}
-          <section className="pc-section">
-            <h3 className="pc-subtitle">Imagen</h3>
-            <input type="file" accept="image/*" onChange={onImageSelect} />
-
-            {form.imageFile && (
-              <div style={{ marginTop: 8, opacity: 0.8, fontWeight: 700 }}>
-                Seleccionado: {form.imageFile.name}
               </div>
-            )}
-          </section>
+            </section>
 
-          {/* BOTÓN ABAJO, SOLO */}
-          <button className="save-btn" type="submit">
-            Guardar producto
-          </button>
-        </div>
-      </form>
+            {/* ARMA TU PIZZA */}
+            <section className="pc-section">
+              <h3 className="pc-subtitle">Arma tu pizza</h3>
 
-      {/* ─────────── RIGHT: CATEGORÍAS ─────────── */}
-      <aside className="pc-right">
-        <div className="pc-right__title">Categorías</div>
+              {!selectedSizes.length && (
+                <div style={{ opacity: 0.75, fontWeight: 700 }}>
+                  Selecciona al menos un tamaño para poder poner cantidades.
+                </div>
+              )}
 
-        <div className="pc-catsGrid">
-          {categoryOptions.map((c) => {
-            const count = (pizzasByCategory[c] || []).length;
-            return (
-              <button
-                key={c}
-                type="button"
-                className="pc-catCard"
-                onClick={() => setOpenCat(c)}
-              >
-                <div className="pc-catCard__name">{c}</div>
-                <div className="pc-catCard__count">{count} productos</div>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-    </div>
+              <fieldset className="ingredients-fieldset">
+                {form.ingredients.map((row, i) => (
+                  <div key={i} className="ing-row">
+                    <select value={row.id} onChange={(e) => onIngredientSelect(i, e.target.value)}>
+                      <option value="">– ingrediente –</option>
+                      {inventory.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
 
-    {/* ─────────── MODAL POR CATEGORÍA (INTOCABLE) ─────────── */}
-    <Modal
-      open={!!openCat}
-      title={
-        openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""
-      }
-      onClose={() => setOpenCat(null)}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 10,
-          alignItems: "center",
-        }}
-      >
-        <div style={{ opacity: 0.75, fontWeight: 700 }}>
-          Aquí luego añadimos “en qué tienda está habilitada” (stock) y edición
-          inline.
-        </div>
+                    {selectedSizes.map((sz) => (
+                      <div key={`${i}-${sz}`} className="ing-col">
+                        {sz}
+                        <input
+                          type="number"
+                          className="ing-qty"
+                          value={(row.qtyBySize || {})[sz] ?? 0}
+                          onChange={(e) => onQtyChange(i, sz, e.target.value)}
+                        />
+                      </div>
+                    ))}
 
-        <button
-          type="button"
-          onClick={fetchPizzas}
-          style={{
-            border: "1px solid #e7e7e7",
-            background: "#fff",
-            borderRadius: 12,
-            padding: "10px 12px",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          Recargar
-        </button>
-      </div>
+                    <button type="button" onClick={() => removeIngredient(i)}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
 
-      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-        {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              border: "1px solid #eee",
-              borderRadius: 14,
-              padding: 12,
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 10,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 900,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {p.name}
-              </div>
+                <button type="button" onClick={addIngredient}>
+                  + Añadir ingrediente
+                </button>
+              </fieldset>
+            </section>
 
-              <div
-                style={{
-                  opacity: 0.75,
-                  fontWeight: 800,
-                  fontSize: 12,
-                }}
-              >
-                Tamaños:{" "}
-                {Array.isArray(p.selectSize) ? p.selectSize.join(", ") : ""}
-              </div>
+            {/* IMAGEN */}
+            <section className="pc-section">
+              <h3 className="pc-subtitle">Imagen</h3>
+              <input type="file" accept="image/*" onChange={onImageSelect} />
 
-              <div
-                style={{
-                  opacity: 0.7,
-                  fontWeight: 700,
-                  fontSize: 12,
-                }}
-              >
-                Imagen: {p.image || "—"}
-              </div>
-            </div>
+              {form.imageFile && (
+                <div style={{ marginTop: 8, opacity: 0.8, fontWeight: 700 }}>
+                  Seleccionado: {form.imageFile.name}
+                </div>
+              )}
+            </section>
 
-            <button
-              type="button"
-              onClick={() => deletePizza(p.id)}
-              style={{
-                border: "1px solid #ff3b30",
-                background: "#fff",
-                borderRadius: 12,
-                padding: "10px 12px",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Eliminar
+            {/* BOTÓN ABAJO, SOLO */}
+            <button className="save-btn" type="submit">
+              Guardar producto
             </button>
           </div>
-        ))}
+        </form>
 
-        {openCat && (pizzasByCategory[openCat] || []).length === 0 && (
-          <div style={{ opacity: 0.7, fontWeight: 700 }}>
-            No hay productos en esta categoría.
+        {/* ─────────── RIGHT: CATEGORÍAS ─────────── */}
+        <aside className="pc-right">
+          <div className="pc-right__title">Categorías</div>
+
+          <div className="pc-catsGrid">
+            {categoryOptions.map((c) => {
+              const count = (pizzasByCategory[c] || []).length;
+              return (
+                <button key={c} type="button" className="pc-catCard" onClick={() => setOpenCat(c)}>
+                  <div className="pc-catCard__name">{c}</div>
+                  <div className="pc-catCard__count">{count} productos</div>
+                </button>
+              );
+            })}
           </div>
-        )}
+        </aside>
       </div>
-    </Modal>
-  </>
-);
 
+      {/* ─────────── MODAL POR CATEGORÍA ─────────── */}
+      <Modal
+        open={!!openCat}
+        title={openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""}
+        onClose={() => setOpenCat(null)}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div style={{ opacity: 0.75, fontWeight: 700 }}>
+            Estado calculado (depende de ingredientes ACTIVE/INACTIVE).
+          </div>
 
+          <button
+            type="button"
+            onClick={() => fetchAllProductStatus(true)}
+            style={{
+              border: "1px solid #e7e7e7",
+              background: "#fff",
+              borderRadius: 12,
+              padding: "10px 12px",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Recargar
+          </button>
+        </div>
 
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => {
+            const stObj = statusMap[p.id];
+            const st = stObj?.status; // "ACTIVE" | "INACTIVE"
+
+            return (
+              <div
+                key={p.id}
+                style={{
+                  border: "1px solid #eee",
+                  borderRadius: 14,
+                  padding: 12,
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.name}
+                  </div>
+
+                  <div style={{ opacity: 0.75, fontWeight: 800, fontSize: 12 }}>
+                    Tamaños: {Array.isArray(p.selectSize) ? p.selectSize.join(", ") : ""}
+                  </div>
+
+                  <div style={{ opacity: 0.7, fontWeight: 700, fontSize: 12 }}>Imagen: {p.image || "—"}</div>
+
+                  <div
+                    style={{
+                      marginTop: 8,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      border: "1px solid #eee",
+                      borderRadius: 999,
+                      padding: "6px 10px",
+                      fontWeight: 900,
+                      fontSize: 12,
+                      opacity: statusFetchState.loading && !statusFetchState.loadedOnce ? 0.65 : 1,
+                      background:
+                        st === "INACTIVE" ? "rgba(255, 59, 48, 0.08)" : "rgba(34, 197, 94, 0.10)",
+                      borderColor:
+                        st === "INACTIVE" ? "rgba(255, 59, 48, 0.25)" : "rgba(34, 197, 94, 0.25)",
+                    }}
+                    title="Estado calculado por ingredientes"
+                  >
+                    {statusFetchState.loading && !statusFetchState.loadedOnce ? "STATUS…" : `STATUS: ${st || "—"}`}
+                  </div>
+
+                  {stObj?.blockedBy?.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, opacity: 0.8 }}>
+                      Bloqueado por:{" "}
+                      {stObj.blockedBy
+                        .map((x) => x?.name)
+                        .filter(Boolean)
+                        .join(", ")}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => deletePizza(p.id)}
+                  style={{
+                    border: "1px solid #ff3b30",
+                    background: "#fff",
+                    borderRadius: 12,
+                    padding: "10px 12px",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            );
+          })}
+
+          {openCat && (pizzasByCategory[openCat] || []).length === 0 && (
+            <div style={{ opacity: 0.7, fontWeight: 700 }}>No hay productos en esta categoría.</div>
+          )}
+        </div>
+      </Modal>
+    </>
+  );
 }

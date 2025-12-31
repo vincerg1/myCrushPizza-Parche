@@ -11,7 +11,15 @@ const CATEGORY_OPTIONS = [
   "FRUTAS",
   "VEGETALES",
   "CARNES",
+  "PESCADOS",
+  "DEL MAR",
+  "SETAS",
   "ESPECIAS",
+  "INGRED_DULCES",
+  "ACEITES Y VINAGRES",
+  "BEBIDAS",
+  "POSTRES",
+  "COMPLEMENTOS",
   "OTROS",
 ];
 
@@ -26,6 +34,11 @@ export default function IngredientForm() {
     costPrice: "",
   });
 
+  const [errors, setErrors] = useState({
+    name: false,
+    category: false,
+  });
+
   const [ingredients, setIngredients] = useState([]);
   const [openCat, setOpenCat] = useState(null);
 
@@ -38,6 +51,11 @@ export default function IngredientForm() {
     stock: "",
     unit: "",
     costPrice: "",
+  });
+
+  const [editErrors, setEditErrors] = useState({
+    name: false,
+    category: false,
   });
 
   /* fetch list on mount */
@@ -70,11 +88,31 @@ export default function IngredientForm() {
   }, [ingredients]);
 
   /* handlers */
-  const onChange = (e) =>
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+
+    // limpiar error cuando el usuario corrige
+    if (name === "name") {
+      setErrors((prev) => ({ ...prev, name: !value.trim() }));
+    }
+    if (name === "category") {
+      setErrors((prev) => ({ ...prev, category: !value.trim() }));
+    }
+  };
+
+  const validateCreate = () => {
+    const next = {
+      name: !form.name.trim(),
+      category: !form.category.trim(),
+    };
+    setErrors(next);
+    return !(next.name || next.category);
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (!validateCreate()) return;
 
     const payload = {
       ...form,
@@ -90,6 +128,7 @@ export default function IngredientForm() {
       const res = await api.get("/api/ingredients");
       setIngredients(Array.isArray(res.data) ? res.data : []);
       setForm({ name: "", category: "", stock: "", unit: "", costPrice: "" });
+      setErrors({ name: false, category: false });
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.error || "Error saving ingredient");
@@ -118,7 +157,7 @@ export default function IngredientForm() {
     const next = current === "ACTIVE" ? "INACTIVE" : "ACTIVE";
 
     try {
-      const res = await api.patch(`/api/ingredients/${ing.id}`, { status: next });
+      const res = await api.patch(`/api/ingredients/${ing.id}/status`, { status: next });
       const updated = res.data || { ...ing, status: next };
 
       setIngredients((prev) =>
@@ -140,6 +179,7 @@ export default function IngredientForm() {
       unit: ing.unit ?? "",
       costPrice: ing.costPrice ?? "",
     });
+    setEditErrors({ name: false, category: false });
     setEditOpen(true);
   };
 
@@ -147,13 +187,33 @@ export default function IngredientForm() {
     setEditOpen(false);
     setEditTarget(null);
     setEditForm({ name: "", category: "", stock: "", unit: "", costPrice: "" });
+    setEditErrors({ name: false, category: false });
   };
 
-  const onEditChange = (e) =>
-    setEditForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  const onEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm((prev) => ({ ...prev, [name]: value }));
+
+    if (name === "name") {
+      setEditErrors((prev) => ({ ...prev, name: !value.trim() }));
+    }
+    if (name === "category") {
+      setEditErrors((prev) => ({ ...prev, category: !value.trim() }));
+    }
+  };
+
+  const validateEdit = () => {
+    const next = {
+      name: !editForm.name.trim(),
+      category: !editForm.category.trim(),
+    };
+    setEditErrors(next);
+    return !(next.name || next.category);
+  };
 
   const saveEdit = async () => {
     if (!editTarget?.id) return;
+    if (!validateEdit()) return;
 
     const payload = {
       name: toUpperSafe(editForm.name),
@@ -181,27 +241,34 @@ export default function IngredientForm() {
   return (
     <div className="ing-wrapper">
       {/* FORM */}
+      <h2 className="ing-title">Add Ingredient</h2>
       <form className="ing-form" onSubmit={onSubmit}>
-        <h2 className="ing-title">Add Ingredient</h2>
-
+    
         <label className="ing-field">
           Name
           <input
             name="name"
             value={form.name}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                name: e.target.value.toUpperCase(),
-              }))
-            }
-            required
+            onChange={(e) => {
+              const v = e.target.value.toUpperCase();
+              setForm((prev) => ({ ...prev, name: v }));
+              setErrors((prev) => ({ ...prev, name: !v.trim() }));
+            }}
+            className={errors.name ? "is-invalid" : ""}
+            aria-invalid={errors.name ? "true" : "false"}
           />
+          {errors.name && <span className="ing-error">Required</span>}
         </label>
 
         <label className="ing-field">
           Category
-          <select name="category" value={form.category} onChange={onChange} required>
+          <select
+            name="category"
+            value={form.category}
+            onChange={onChange}
+            className={errors.category ? "is-invalid" : ""}
+            aria-invalid={errors.category ? "true" : "false"}
+          >
             <option value="">— SELECT —</option>
             {CATEGORY_OPTIONS.map((c) => (
               <option key={c} value={c}>
@@ -209,17 +276,30 @@ export default function IngredientForm() {
               </option>
             ))}
           </select>
+          {errors.category && <span className="ing-error">Required</span>}
         </label>
 
         <div className="ing-row2">
           <label className="ing-field">
             Stock
-            <input type="number" name="stock" value={form.stock} onChange={onChange} min="0" />
+            <input
+              type="number"
+              name="stock"
+              value={form.stock}
+              onChange={onChange}
+              min="0"
+              placeholder="Optional"
+            />
           </label>
 
           <label className="ing-field">
             Unit
-            <input name="unit" value={form.unit} onChange={onChange} placeholder="g, ml, pcs…" />
+            <input
+              name="unit"
+              value={form.unit}
+              onChange={onChange}
+              placeholder="g, ml, pcs (optional)"
+            />
           </label>
 
           <label className="ing-field">
@@ -231,6 +311,7 @@ export default function IngredientForm() {
               value={form.costPrice}
               onChange={onChange}
               min="0"
+              placeholder="Optional"
             />
           </label>
         </div>
@@ -320,16 +401,26 @@ export default function IngredientForm() {
                 <input
                   name="name"
                   value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm((p) => ({ ...p, name: e.target.value.toUpperCase() }))
-                  }
-                  required
+                  onChange={(e) => {
+                    const v = e.target.value.toUpperCase();
+                    setEditForm((p) => ({ ...p, name: v }));
+                    setEditErrors((p) => ({ ...p, name: !v.trim() }));
+                  }}
+                  className={editErrors.name ? "is-invalid" : ""}
+                  aria-invalid={editErrors.name ? "true" : "false"}
                 />
+                {editErrors.name && <span className="ing-error">Required</span>}
               </label>
 
               <label className="ing-field">
                 Category
-                <select name="category" value={editForm.category} onChange={onEditChange} required>
+                <select
+                  name="category"
+                  value={editForm.category}
+                  onChange={onEditChange}
+                  className={editErrors.category ? "is-invalid" : ""}
+                  aria-invalid={editErrors.category ? "true" : "false"}
+                >
                   <option value="">— SELECT —</option>
                   {CATEGORY_OPTIONS.map((c) => (
                     <option key={c} value={c}>
@@ -337,17 +428,30 @@ export default function IngredientForm() {
                     </option>
                   ))}
                 </select>
+                {editErrors.category && <span className="ing-error">Required</span>}
               </label>
 
               <div className="ing-row2">
                 <label className="ing-field">
                   Stock
-                  <input type="number" name="stock" value={editForm.stock} onChange={onEditChange} min="0" />
+                  <input
+                    type="number"
+                    name="stock"
+                    value={editForm.stock}
+                    onChange={onEditChange}
+                    min="0"
+                    placeholder="Optional"
+                  />
                 </label>
 
                 <label className="ing-field">
                   Unit
-                  <input name="unit" value={editForm.unit} onChange={onEditChange} placeholder="g, ml, pcs…" />
+                  <input
+                    name="unit"
+                    value={editForm.unit}
+                    onChange={onEditChange}
+                    placeholder="g, ml, pcs (optional)"
+                  />
                 </label>
 
                 <label className="ing-field">
@@ -359,6 +463,7 @@ export default function IngredientForm() {
                     value={editForm.costPrice}
                     onChange={onEditChange}
                     min="0"
+                    placeholder="Optional"
                   />
                 </label>
               </div>

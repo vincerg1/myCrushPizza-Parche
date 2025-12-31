@@ -129,11 +129,11 @@
   padding: 10px 12px;
   border: 1px solid #eee;
   border-radius: 14px;
-  background: #fff;
+  background: #ffffff;
   min-width: 0;
 }
 
-.ing-itemRow:hover{ background: #fcfcfc; }
+.ing-itemRow:hover{ background: #e8e8e8; }
 
 .ing-itemLeft{ min-width: 0; }
 
@@ -274,6 +274,19 @@
   display: flex;
   gap: 10px;
   justify-content: flex-end;
+}
+/* ADD to src/styles/IngredientForm.css */
+
+.is-invalid{
+  border-color: #ff3b30 !important;
+  box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.12);
+}
+
+.ing-error{
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #ff3b30;
 }
 
 /* Responsive */
