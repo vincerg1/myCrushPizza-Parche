@@ -137,34 +137,7 @@ export default function PizzaCreator() {
     fetchPizzas();
   }, [fetchPizzas]);
 
-  /* ---------- STATUS CALCULADO (desde backend) ---------- */
-  // Mapa: pizzaId -> { status: "ACTIVE"|"INACTIVE", blockedBy?: [...] }
-  const [statusMap, setStatusMap] = useState({});
-  const [statusFetchState, setStatusFetchState] = useState({
-    loading: false,
-    loadedOnce: false,
-  });
 
-  const fetchAllProductStatus = useCallback(async (force = false) => {
-    if (!force && (statusFetchState.loading || statusFetchState.loadedOnce)) return;
-
-    setStatusFetchState((s) => ({ ...s, loading: true }));
-    try {
-      const r = await api.get("/api/product-status");
-      const map = {};
-      (Array.isArray(r.data) ? r.data : []).forEach((p) => {
-        map[p.id] = {
-          status: p.computedStatus,
-          blockedBy: p.blockedBy || [],
-        };
-      });
-      setStatusMap(map);
-      setStatusFetchState({ loading: false, loadedOnce: true });
-    } catch (e) {
-      console.error("Error loading product status", e);
-      setStatusFetchState((s) => ({ ...s, loading: false }));
-    }
-  }, [statusFetchState.loading, statusFetchState.loadedOnce]);
 
   /* ---------- Category cards + modal ---------- */
   const [openCat, setOpenCat] = useState(null);
@@ -184,10 +157,7 @@ export default function PizzaCreator() {
     return map;
   }, [pizzas]);
 
-  // ✅ cuando abres modal: carga status 1 vez
-  useEffect(() => {
-    if (openCat) fetchAllProductStatus(false);
-  }, [openCat, fetchAllProductStatus]);
+
 
   /* ---------- handlers (form) ---------- */
   const onChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
@@ -472,8 +442,7 @@ export default function PizzaCreator() {
 
         <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
           {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => {
-            const stObj = statusMap[p.id];
-            const st = stObj?.status; // "ACTIVE" | "INACTIVE"
+            const st = p.status;
 
             return (
               <div
