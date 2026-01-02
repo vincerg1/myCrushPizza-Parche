@@ -94,6 +94,11 @@ enum IngredientStatus {
   INACTIVE
 }
 
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
 /**
  * ======================= MODELOS =======================
  */
@@ -107,6 +112,7 @@ model MenuPizza {
   ingredients   Json
   cookingMethod String?
   image         String?
+  status ProductStatus @default(ACTIVE)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

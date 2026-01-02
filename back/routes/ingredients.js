@@ -1,5 +1,8 @@
 // routes/ingredients.js
 const express = require("express");
+const {
+  recomputeMenuPizzasForIngredient,
+} = require("../services/recomputeMenuPizzasForIngredient");
 
 module.exports = function (prisma) {
   const r = express.Router();
@@ -53,7 +56,6 @@ module.exports = function (prisma) {
           stock: parseIntOrZero(stock),
           unit: unit ? String(unit).trim() : null,
           costPrice: parseNumberOrNull(costPrice),
-          // status default ACTIVE en schema
         },
       });
 
@@ -66,8 +68,6 @@ module.exports = function (prisma) {
 
   /**
    * PATCH /api/ingredients/:id → edit fields
-   * Permite actualizar: name, category, stock, unit, costPrice
-   * (status NO aquí para mantenerlo separado y simple)
    */
   r.patch("/:id", async (req, res) => {
     try {
@@ -75,7 +75,6 @@ module.exports = function (prisma) {
       if (!id) return res.status(400).json({ error: "Invalid id" });
 
       const { name, category, stock, unit, costPrice } = req.body;
-
       const data = {};
 
       if (name !== undefined) {
@@ -98,8 +97,12 @@ module.exports = function (prisma) {
 
       if (costPrice !== undefined) {
         const cp = parseNumberOrNull(costPrice);
-        // si mandan algo no numérico tipo "abc" → error
-        if (costPrice !== "" && costPrice !== null && costPrice !== undefined && cp === null) {
+        if (
+          costPrice !== "" &&
+          costPrice !== null &&
+          costPrice !== undefined &&
+          cp === null
+        ) {
           return res.status(400).json({ error: "Invalid costPrice" });
         }
         data.costPrice = cp;
@@ -122,7 +125,7 @@ module.exports = function (prisma) {
   });
 
   /**
-   * PATCH /api/ingredients/:id/status → toggle/set status manually
+   * PATCH /api/ingredients/:id/status → set status
    * Body: { status: "ACTIVE" | "INACTIVE" }
    */
   r.patch("/:id/status", async (req, res) => {
@@ -139,6 +142,9 @@ module.exports = function (prisma) {
         where: { id },
         data: { status },
       });
+
+      // 🔥 AQUÍ VA EL RECOMPUTE (JUSTO DESPUÉS DEL CAMBIO)
+      await recomputeMenuPizzasForIngredient(prisma, id);
 
       res.json(updated);
     } catch (err) {

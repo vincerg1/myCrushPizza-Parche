@@ -1,7 +1,7 @@
 // back/routes/menuDisponible.js
 const express = require("express");
 const auth = require("../middleware/auth");
-const { computeProductStatus } = require("../services/productStatus");
+const { computeProductStatus } = require("../services/productStatusService");
 
 module.exports = (prisma) => {
   const r = express.Router();
