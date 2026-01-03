@@ -114,6 +114,103 @@ module.exports = function (prisma) {
       res.status(400).json({ error: err.meta?.cause || err.message });
     }
   });
+/* ──────────────────────────────────────────
+   PUT /api/pizzas/:id – update pizza
+────────────────────────────────────────── */
+router.put("/:id", upload.single("image"), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid pizza id" });
+    }
+
+    const {
+      name,
+      category,
+      sizes,
+      priceBySize,
+      cookingMethod,
+      ingredients,
+    } = req.body;
+
+    const existing = await prisma.menuPizza.findUnique({
+      where: { id },
+      include: {
+        ingredients: { include: { ingredient: true } },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Pizza not found" });
+    }
+
+    // parse payload
+    const parsedSizes = JSON.parse(sizes || "[]");
+    const parsedPrices = JSON.parse(priceBySize || "{}");
+    const parsedIngredients = JSON.parse(ingredients || "[]");
+
+    const ingredientRelations = parsedIngredients
+      .filter((x) => x && Number(x.id))
+      .map((x) => ({
+        ingredientId: Number(x.id),
+        qtyBySize: x.qtyBySize || {},
+      }));
+
+    const imagePath = req.file
+      ? `/uploads/${req.file.filename}`
+      : existing.image;
+
+    // 1️⃣ actualizar pizza base
+    await prisma.menuPizza.update({
+      where: { id },
+      data: {
+        name: name?.trim() ?? existing.name,
+        category: category ?? existing.category,
+        selectSize: parsedSizes,
+        priceBySize: parsedPrices,
+        cookingMethod: cookingMethod ?? null,
+        image: imagePath,
+      },
+    });
+
+    // 2️⃣ resetear ingredientes
+    await prisma.menuPizzaIngredient.deleteMany({
+      where: { menuPizzaId: id },
+    });
+
+    // 3️⃣ crear ingredientes nuevos
+    if (ingredientRelations.length) {
+      await prisma.menuPizzaIngredient.createMany({
+        data: ingredientRelations.map((row) => ({
+          menuPizzaId: id,
+          ingredientId: row.ingredientId,
+          qtyBySize: row.qtyBySize,
+        })),
+      });
+    }
+
+    // 4️⃣ recalcular status
+    const updatedPizza = await prisma.menuPizza.findUnique({
+      where: { id },
+      include: {
+        ingredients: { include: { ingredient: true } },
+      },
+    });
+
+    const { computeProductStatus } = require("../services/productStatusService");
+    const { available } = computeProductStatus(updatedPizza.ingredients);
+
+    await prisma.menuPizza.update({
+      where: { id },
+      data: { status: available ? "ACTIVE" : "INACTIVE" },
+    });
+
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message });
+  }
+});
 
   return router;
 };

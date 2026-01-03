@@ -2,7 +2,7 @@
 const { computeProductStatus } = require("./productStatusService");
 
 /**
- * Recalcula y persiste el status de un MenuPizza
+ * Recalcula y persiste el status de una MenuPizza
  */
 async function recomputeMenuPizzaStatus(prisma, menuPizzaId) {
   if (!menuPizzaId) return;
@@ -11,9 +11,7 @@ async function recomputeMenuPizzaStatus(prisma, menuPizzaId) {
     where: { id: menuPizzaId },
     include: {
       ingredients: {
-        include: {
-          ingredient: true,
-        },
+        include: { ingredient: true },
       },
     },
   });

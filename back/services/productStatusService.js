@@ -5,8 +5,8 @@
  * según el estado de sus ingredientes.
  *
  * REGLA:
- * - Si TODOS los ingredientes están ACTIVE → AVAILABLE
- * - Si ALGUNO está INACTIVE → NOT AVAILABLE
+ * - Si TODOS los ingredientes están ACTIVE → available = true
+ * - Si ALGUNO está INACTIVE → available = false
  */
 function computeProductStatus(menuPizzaIngredients = []) {
   if (!Array.isArray(menuPizzaIngredients) || menuPizzaIngredients.length === 0) {
