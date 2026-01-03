@@ -1,41 +1,35 @@
-const { computeProductStatus } = require("./productStatusService");
+// services/productStatusService.js
 
 /**
- * Recalcula y persiste el status de un producto (MenuPizza)
- * en función del estado de sus ingredientes.
+ * Calcula el estado derivado de un producto
+ * según el estado de sus ingredientes.
  *
- * @param {object} prisma
- * @param {number} menuPizzaId
+ * REGLA:
+ * - Si TODOS los ingredientes están ACTIVE → AVAILABLE
+ * - Si ALGUNO está INACTIVE → NOT AVAILABLE
  */
-async function recomputeMenuPizzaStatus(prisma, menuPizzaId) {
-  // 1️⃣ Cargar ingredientes del producto
-  const menuPizza = await prisma.menuPizza.findUnique({
-    where: { id: menuPizzaId },
-    include: {
-      ingredients: {
-        include: {
-          ingredient: true,
-        },
-      },
-    },
-  });
-
-  if (!menuPizza) return;
-
-  // 2️⃣ Calcular estado derivado
-  const { available } = computeProductStatus(menuPizza.ingredients);
-
-  const newStatus = available ? "ACTIVE" : "INACTIVE";
-
-  // 3️⃣ Persistir solo si cambia
-  if (menuPizza.status !== newStatus) {
-    await prisma.menuPizza.update({
-      where: { id: menuPizzaId },
-      data: { status: newStatus },
-    });
+function computeProductStatus(menuPizzaIngredients = []) {
+  if (!Array.isArray(menuPizzaIngredients) || menuPizzaIngredients.length === 0) {
+    return { available: true, blockedBy: [] };
   }
+
+  const blockedBy = [];
+
+  for (const row of menuPizzaIngredients) {
+    const ing = row.ingredient;
+    if (!ing) continue;
+
+    if (ing.status === "INACTIVE") {
+      blockedBy.push({ id: ing.id, name: ing.name });
+    }
+  }
+
+  return {
+    available: blockedBy.length === 0,
+    blockedBy,
+  };
 }
 
 module.exports = {
-  recomputeMenuPizzaStatus,
+  computeProductStatus,
 };

@@ -11,7 +11,7 @@ module.exports = function (prisma) {
 
   const parseId = (req) => {
     const id = Number(req.params.id);
-    return Number.isFinite(id) ? id : null;
+    return Number.isInteger(id) && id > 0 ? id : null;
   };
 
   const parseNumberOrNull = (v) => {
@@ -29,7 +29,9 @@ module.exports = function (prisma) {
   /* GET /api/ingredients → list all */
   r.get("/", async (_, res) => {
     try {
-      const data = await prisma.ingredient.findMany({ orderBy: { id: "desc" } });
+      const data = await prisma.ingredient.findMany({
+        orderBy: { id: "desc" },
+      });
       res.json(data);
     } catch (err) {
       console.error(err);
@@ -72,20 +74,26 @@ module.exports = function (prisma) {
   r.patch("/:id", async (req, res) => {
     try {
       const id = parseId(req);
-      if (!id) return res.status(400).json({ error: "Invalid id" });
+      if (!id) {
+        return res.status(400).json({ error: "Invalid id" });
+      }
 
       const { name, category, stock, unit, costPrice } = req.body;
       const data = {};
 
       if (name !== undefined) {
         const n = toUpperSafe(name);
-        if (!n) return res.status(400).json({ error: "Name cannot be empty" });
+        if (!n) {
+          return res.status(400).json({ error: "Name cannot be empty" });
+        }
         data.name = n;
       }
 
       if (category !== undefined) {
         const c = toUpperSafe(category);
-        if (!c) return res.status(400).json({ error: "Category cannot be empty" });
+        if (!c) {
+          return res.status(400).json({ error: "Category cannot be empty" });
+        }
         data.category = c;
       }
 
@@ -131,11 +139,15 @@ module.exports = function (prisma) {
   r.patch("/:id/status", async (req, res) => {
     try {
       const id = parseId(req);
-      if (!id) return res.status(400).json({ error: "Invalid id" });
+      if (!id) {
+        return res.status(400).json({ error: "Invalid id" });
+      }
 
       const status = toUpperSafe(req.body?.status);
       if (status !== "ACTIVE" && status !== "INACTIVE") {
-        return res.status(400).json({ error: "Invalid status (ACTIVE|INACTIVE)" });
+        return res
+          .status(400)
+          .json({ error: "Invalid status (ACTIVE|INACTIVE)" });
       }
 
       const updated = await prisma.ingredient.update({
@@ -143,8 +155,15 @@ module.exports = function (prisma) {
         data: { status },
       });
 
-      // 🔥 AQUÍ VA EL RECOMPUTE (JUSTO DESPUÉS DEL CAMBIO)
-      await recomputeMenuPizzasForIngredient(prisma, id);
+      // 🔥 Recalcular pizzas afectadas (NO rompe la request)
+      try {
+        await recomputeMenuPizzasForIngredient(prisma, id);
+      } catch (recomputeErr) {
+        console.error(
+          "[WARN] recomputeMenuPizzasForIngredient failed:",
+          recomputeErr
+        );
+      }
 
       res.json(updated);
     } catch (err) {
@@ -157,7 +176,9 @@ module.exports = function (prisma) {
   r.delete("/:id", async (req, res) => {
     try {
       const id = parseId(req);
-      if (!id) return res.status(400).json({ error: "Invalid id" });
+      if (!id) {
+        return res.status(400).json({ error: "Invalid id" });
+      }
 
       await prisma.ingredient.delete({ where: { id } });
       res.json({ message: "Ingredient deleted", id });

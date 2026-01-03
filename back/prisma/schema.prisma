@@ -19,56 +19,66 @@ enum CustomerOrigin {
   GLOVO
   QR
 }
+
 enum CustomerSegment {
   S1 // Potencial: 0–1 compras
   S2 // Inactivo: >1 compras y última > 30 días
   S3 // Activo:   última ≤ 30 días
   S4 // CMV:      S3 y ticket medio > ticket medio empresa
 }
+
 enum DeliveryMethod {
   PICKUP
   COURIER
   UBER
   GLOVO
 }
+
 enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
   PAID
   CANCELED
 }
+
 enum Channel {
   WHATSAPP
   PHONE
   WEB
 }
+
 enum CouponKind {
   PERCENT
   AMOUNT
 }
+
 enum CouponVariant {
   FIXED
   RANGE
 }
+
 enum CouponStatus {
   ACTIVE
   USED
   EXPIRED
   DISABLED
 }
+
 enum CouponAcquisition {
-  GAME      // premio de juego
-  CLAIM     // reclamo manual / galería
-  REWARD    // recompensa (p.ej. after-purchase)
-  BULK      // carga masiva u operación
-  DIRECT    // entregado ad-hoc
+  GAME // premio de juego
+  CLAIM // reclamo manual / galería
+  REWARD // recompensa (p.ej. after-purchase)
+  BULK // carga masiva u operación
+  DIRECT // entregado ad-hoc
   OTHER
 }
+
 enum CouponLogic {
-  RANDOM   
-  PERCENT  
-  AMOUNT   
+  RANDOM
+  PERCENT
+  AMOUNT
 }
+
 enum CouponChannel {
   GAME
   WEB
@@ -78,17 +88,20 @@ enum CouponChannel {
   SMS
   EMAIL
 }
+
 enum WhatsAppDirection {
   IN
   OUT
 }
+
 enum WhatsAppMessageStatus {
-  RECEIVED    
-  SENT         
-  DELIVERED    
-  READ         
-  FAILED       
+  RECEIVED
+  SENT
+  DELIVERED
+  READ
+  FAILED
 }
+
 enum IngredientStatus {
   ACTIVE
   INACTIVE
@@ -104,33 +117,48 @@ enum ProductStatus {
  */
 
 model MenuPizza {
-  id            Int      @id @default(autoincrement())
+  id            Int                   @id @default(autoincrement())
   name          String
   category      String?
   selectSize    Json
   priceBySize   Json
-  ingredients   Json
   cookingMethod String?
   image         String?
-  status ProductStatus @default(ACTIVE)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status        ProductStatus         @default(ACTIVE)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  ingredients   MenuPizzaIngredient[]
+  stocks        StorePizzaStock[]
+}
 
-  stocks StorePizzaStock[]
+model MenuPizzaIngredient {
+  id           Int  @id @default(autoincrement())
+  menuPizzaId  Int
+  ingredientId Int
+  qtyBySize    Json
+
+  menuPizza  MenuPizza  @relation(fields: [menuPizzaId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@index([ingredientId])
+  @@index([menuPizzaId])
 }
+
 model Ingredient {
-  id        Int      @id @default(autoincrement())
-  name      String
-  category  String
-  stock     Int      @default(0)
-  unit      String?
-  costPrice Float?
-  status    IngredientStatus @default(ACTIVE)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int                   @id @default(autoincrement())
+  name       String
+  category   String
+  stock      Int                   @default(0)
+  unit       String?
+  costPrice  Float?
+  menuPizzas MenuPizzaIngredient[]
+  status     IngredientStatus      @default(ACTIVE)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
 }
+
 model Store {
-  id              Int      @id @default(autoincrement())
+  id              Int                @id @default(autoincrement())
   storeName       String
   address         String
   latitude        Float?
@@ -139,33 +167,35 @@ model Store {
   zipCode         String?
   email           String?
   tlf             String?
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  acceptingOrders Boolean  @default(true)
-  stocks      StorePizzaStock[]
-  sales       Sale[]
-  redemptions CouponRedemption[] @relation("StoreToRedemptions")
-  games       Game[]
+  active          Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  acceptingOrders Boolean            @default(true)
+  stocks          StorePizzaStock[]
+  sales           Sale[]
+  redemptions     CouponRedemption[] @relation("StoreToRedemptions")
+  games           Game[]
 }
+
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
-  stock     Int      @default(0)
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
-  store Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  pizza MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
+  stock     Int       @default(0)
+  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  pizza     MenuPizza @relation(fields: [pizzaId], references: [id], onDelete: Cascade)
 
   @@id([storeId, pizzaId])
 }
+
 model Customer {
   id                Int             @id @default(autoincrement())
   code              String          @unique
   name              String?
   phone             String?         @unique
   email             String?         @unique
-  address_1         String          
+  address_1         String
   portal            String?
   observations      String?
   lat               Float?
@@ -183,8 +213,9 @@ model Customer {
   assignedCoupons Coupon[]           @relation("CustomerAssignedCoupons")
   sales           Sale[]             @relation("CustomerSales")
   redemptions     CouponRedemption[] @relation("CustomerToRedemptions")
-  plays           GamePlay[]     
+  plays           GamePlay[]
 }
+
 model Sale {
   id                      Int            @id @default(autoincrement())
   code                    String         @unique
@@ -219,53 +250,55 @@ model Sale {
 
   @@index([date])
 }
+
 model AppMeta {
   id              Int      @id @default(1)
   acceptingOrders Boolean  @default(true)
   closedMessage   String?  @db.Text
   updatedAt       DateTime @updatedAt
 }
+
 model Coupon {
-  id    Int    @id @default(autoincrement())
-  code  String @unique
-  kind    CouponKind    @default(PERCENT)
-  variant CouponVariant @default(FIXED)
-  percent    Int?
-  amount     Decimal? @db.Decimal(10, 2)
-  percentMin Int?
-  percentMax Int?
-  maxAmount  Decimal? @db.Decimal(10, 2)
-  acquisition CouponAcquisition?   
-  channel     CouponChannel?       
-  gameId      Int?                
-  campaign    String?           
-  meta        Json?
+  id           Int                @id @default(autoincrement())
+  code         String             @unique
+  kind         CouponKind         @default(PERCENT)
+  variant      CouponVariant      @default(FIXED)
+  percent      Int?
+  amount       Decimal?           @db.Decimal(10, 2)
+  percentMin   Int?
+  percentMax   Int?
+  maxAmount    Decimal?           @db.Decimal(10, 2)
+  acquisition  CouponAcquisition?
+  channel      CouponChannel?
+  gameId       Int?
+  campaign     String?
+  meta         Json?
   segments     Json?
   assignedToId Int?
-  assignedTo   Customer? @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
-  activeFrom  DateTime?
-  expiresAt   DateTime?
-  daysActive  Json?
-  windowStart Int?
-  windowEnd   Int?
-  usageLimit Int          @default(1)
-  usedCount  Int          @default(0)
-  status     CouponStatus @default(ACTIVE)
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  game      Game? @relation("GameCoupons", fields: [gameId], references: [id], onDelete: SetNull)
-  redemptions CouponRedemption[] @relation("CouponToRedemptions")
+  assignedTo   Customer?          @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
+  activeFrom   DateTime?
+  expiresAt    DateTime?
+  daysActive   Json?
+  windowStart  Int?
+  windowEnd    Int?
+  usageLimit   Int                @default(1)
+  usedCount    Int                @default(0)
+  status       CouponStatus       @default(ACTIVE)
+  usedAt       DateTime?
+  createdAt    DateTime           @default(now())
+  game         Game?              @relation("GameCoupons", fields: [gameId], references: [id], onDelete: SetNull)
+  redemptions  CouponRedemption[] @relation("CouponToRedemptions")
 
   @@index([status])
   @@index([assignedToId])
   @@index([expiresAt])
-
   // Índices útiles para pools y analítica
   @@index([acquisition])
   @@index([channel])
   @@index([gameId])
   @@index([acquisition, gameId])
 }
+
 model CouponRedemption {
   id Int @id @default(autoincrement())
 
@@ -284,16 +317,16 @@ model CouponRedemption {
   couponCode String
 
   // Snapshot de contexto (NUEVO - opcional)
-  acquisition   CouponAcquisition?
-  channel       CouponChannel?
-  gameId        Int?
-  campaign      String?
+  acquisition CouponAcquisition?
+  channel     CouponChannel?
+  gameId      Int?
+  campaign    String?
 
   segmentAtRedeem CustomerSegment?
   kind            CouponKind
   variant         CouponVariant
   percentApplied  Int?
-  amountApplied   Decimal? @db.Decimal(10, 2)
+  amountApplied   Decimal?         @db.Decimal(10, 2)
 
   discountValue Decimal? @db.Decimal(10, 2)
 
@@ -309,64 +342,68 @@ model CouponRedemption {
   @@index([channel])
   @@index([acquisition])
 }
+
 model Game {
-  id          Int       @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   name        String
-  slug        String    @unique
+  slug        String     @unique
   description String?
   image       String?
-  active      Boolean   @default(true)
+  active      Boolean    @default(true)
   storeId     Int?
-  store       Store?    @relation(fields: [storeId], references: [id], onDelete: SetNull)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  coupons     Coupon[]  @relation("GameCoupons")
+  store       Store?     @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  coupons     Coupon[]   @relation("GameCoupons")
   plays       GamePlay[]
 }
+
 model GamePlay {
-  id         Int       @id @default(autoincrement())
-  gameId     Int
-  playerId   Int?
-  ip         String?
-  result     Json?
-  won        Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  game       Game      @relation(fields: [gameId], references: [id])
-  customer   Customer? @relation(fields: [playerId], references: [id])
+  id        Int       @id @default(autoincrement())
+  gameId    Int
+  playerId  Int?
+  ip        String?
+  result    Json?
+  won       Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  game      Game      @relation(fields: [gameId], references: [id])
+  customer  Customer? @relation(fields: [playerId], references: [id])
+
   @@index([gameId, createdAt])
   @@index([playerId, createdAt])
 }
+
 model WhatsAppConversation {
-  id               Int      @id @default(autoincrement())
-  phoneE164         String   @unique @db.VarChar(32) 
-  phoneBase9        String?  @db.VarChar(16)
-  username          String?  @db.VarChar(191)
-  addressText       String?  @db.Text
-  addressUpdatedAt  DateTime?
-  lastMessageAt     DateTime?
-  isOpen            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  messages          WhatsAppMessage[]
+  id               Int               @id @default(autoincrement())
+  phoneE164        String            @unique @db.VarChar(32)
+  phoneBase9       String?           @db.VarChar(16)
+  username         String?           @db.VarChar(191)
+  addressText      String?           @db.Text
+  addressUpdatedAt DateTime?
+  lastMessageAt    DateTime?
+  isOpen           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  messages         WhatsAppMessage[]
 
   @@index([lastMessageAt])
   @@index([phoneBase9])
 }
+
 model WhatsAppMessage {
-  id              Int                   @id @default(autoincrement())
-  conversationId  Int
-  waMessageId     String?               @unique @db.VarChar(191)
-  direction       WhatsAppDirection
-  status          WhatsAppMessageStatus @default(RECEIVED)
-  from            String                @db.VarChar(32)
-  to              String?               @db.VarChar(32)
-  type            String?               @db.VarChar(32) 
-  text            String?               @db.Text
-  timestamp       DateTime?
-  createdAt       DateTime              @default(now())
-  conversation    WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id             Int                   @id @default(autoincrement())
+  conversationId Int
+  waMessageId    String?               @unique @db.VarChar(191)
+  direction      WhatsAppDirection
+  status         WhatsAppMessageStatus @default(RECEIVED)
+  from           String                @db.VarChar(32)
+  to             String?               @db.VarChar(32)
+  type           String?               @db.VarChar(32)
+  text           String?               @db.Text
+  timestamp      DateTime?
+  createdAt      DateTime              @default(now())
+  conversation   WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([from])
 }
-

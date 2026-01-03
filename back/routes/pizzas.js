@@ -1,7 +1,11 @@
+// routes/pizzas.js
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const { zeroStockForNewPizza } = require("../utils/stockSync");
+const {
+  recomputeMenuPizzaStatus,
+} = require("../services/recomputeMenuPizzaStatus");
 
 /* ───────────── Multer config (DISK) ───────────── */
 const storage = multer.diskStorage({
@@ -21,47 +25,57 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-/* ─────────────────────────────────────────────── */
-
 module.exports = function (prisma) {
   const router = express.Router();
 
-  /* ──────────────────────────────────────────
-     GET /api/pizzas – list all
-  ────────────────────────────────────────── */
+  /* GET /api/pizzas */
   router.get("/", async (_, res) => {
     try {
       const pizzas = await prisma.menuPizza.findMany({
         orderBy: { id: "desc" },
+        include: {
+          ingredients: {
+            include: { ingredient: true },
+          },
+        },
       });
-      res.json(pizzas);
+
+      const normalized = pizzas.map((p) => ({
+        ...p,
+        ingredients: (p.ingredients || []).map((rel) => ({
+          id: rel.ingredientId,
+          name: rel.ingredient?.name,
+          qtyBySize: rel.qtyBySize,
+          status: rel.ingredient?.status,
+        })),
+      }));
+
+      res.json(normalized);
     } catch (err) {
       console.error(err);
       res.status(500).json({ error: "Error fetching pizzas" });
     }
   });
 
-  /* ──────────────────────────────────────────
-     POST /api/pizzas – create new (multipart)
-  ────────────────────────────────────────── */
+  /* POST /api/pizzas */
   router.post("/", upload.single("image"), async (req, res) => {
     try {
-      const {
-        name,
-        category,
-        sizes,
-        priceBySize,
-        cookingMethod,
-        ingredients,
-      } = req.body;
+      const { name, category, sizes, priceBySize, cookingMethod, ingredients } =
+        req.body;
 
       if (!name || !category) {
         return res.status(400).json({ error: "Name and category required" });
       }
 
-      const imagePath = req.file
-        ? `/uploads/${req.file.filename}`
-        : null;
+      const imagePath = req.file ? `/uploads/${req.file.filename}` : null;
+
+      const ingArr = JSON.parse(ingredients || "[]");
+      const ingredientRelations = (Array.isArray(ingArr) ? ingArr : [])
+        .filter((x) => Number(x?.id))
+        .map((x) => ({
+          ingredient: { connect: { id: Number(x.id) } },
+          qtyBySize: x.qtyBySize || {},
+        }));
 
       const pizza = await prisma.menuPizza.create({
         data: {
@@ -70,12 +84,16 @@ module.exports = function (prisma) {
           selectSize: JSON.parse(sizes || "[]"),
           priceBySize: JSON.parse(priceBySize || "{}"),
           cookingMethod: cookingMethod || null,
-          ingredients: JSON.parse(ingredients || "[]"),
           image: imagePath,
+          ingredients: {
+            create: ingredientRelations,
+          },
         },
       });
 
-      // 🔥 crea stock=0 en TODAS las tiendas
+      // 🔥 cálculo de status CENTRALIZADO
+      await recomputeMenuPizzaStatus(prisma, pizza.id);
+
       await zeroStockForNewPizza(prisma, pizza.id);
 
       res.json(pizza);
@@ -85,9 +103,7 @@ module.exports = function (prisma) {
     }
   });
 
-  /* ──────────────────────────────────────────
-     DELETE /api/pizzas/:id
-  ────────────────────────────────────────── */
+  /* DELETE /api/pizzas/:id */
   router.delete("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
