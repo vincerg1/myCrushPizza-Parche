@@ -132,6 +132,28 @@
   background: #ffffff;
   min-width: 0;
 }
+.ing-catInactive {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff3b30;
+}
+.ing-catHeadRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ing-catDrag {
+  cursor: grab;
+  font-size: 18px;
+  padding: 6px 8px;
+  user-select: none;
+}
+
+.ing-catDrag:active {
+  cursor: grabbing;
+}
 
 .ing-itemRow:hover{ background: #e8e8e8; }
 

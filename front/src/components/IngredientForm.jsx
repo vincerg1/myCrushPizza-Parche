@@ -2,6 +2,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../setupAxios";
 import "../styles/IngredientForm.css";
+import {
+  DndContext,
+  closestCenter,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
 
 const CATEGORY_OPTIONS = [
   "SALSAS",
@@ -26,6 +39,8 @@ const CATEGORY_OPTIONS = [
 const toUpperSafe = (v) => (v ?? "").toString().trim().toUpperCase();
 
 export default function IngredientForm() {
+  
+const [categoryOrder, setCategoryOrder] = useState(CATEGORY_OPTIONS);
   const [form, setForm] = useState({
     name: "",
     category: "",
@@ -58,6 +73,19 @@ export default function IngredientForm() {
     category: false,
   });
 
+useEffect(() => {
+  const saved = localStorage.getItem("ingredientCategoryOrder");
+  if (saved) {
+    try {
+      setCategoryOrder(JSON.parse(saved));
+    } catch {}
+  }
+}, []);
+
+const persistCategoryOrder = (order) => {
+  setCategoryOrder(order);
+  localStorage.setItem("ingredientCategoryOrder", JSON.stringify(order));
+};
   /* fetch list on mount */
   useEffect(() => {
     api
@@ -168,6 +196,38 @@ export default function IngredientForm() {
       alert(err.response?.data?.error || "Error updating status");
     }
   };
+  const onDragEnd = (event) => {
+  const { active, over } = event;
+  if (!over || active.id === over.id) return;
+
+  const oldIndex = categoryOrder.indexOf(active.id);
+  const newIndex = categoryOrder.indexOf(over.id);
+
+  const next = arrayMove(categoryOrder, oldIndex, newIndex);
+  persistCategoryOrder(next);
+}; 
+
+function SortableCategory({ id, children }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ attributes, listeners })}
+    </div>
+  );
+}
+
 
   // EDIT MODAL open/close
   const openEditModal = (ing) => {
@@ -320,66 +380,120 @@ export default function IngredientForm() {
       </form>
 
       {/* CATEGORIES PANEL */}
-      <div className="ing-cats">
-        {Object.entries(grouped)
-          .filter(([_, list]) => list.length > 0)
-          .map(([cat, list]) => (
-            <div key={cat} className="ing-catCard">
-              <button
-                type="button"
-                className="ing-catHead"
-                onClick={() => setOpenCat((prev) => (prev === cat ? null : cat))}
-              >
-                <span className="ing-catName">{cat}</span>
-                <span className="ing-catCount">{list.length}</span>
-              </button>
+      <DndContext onDragEnd={onDragEnd} collisionDetection={closestCenter}>
+        <SortableContext
+          items={categoryOrder}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="ing-cats">
+            {categoryOrder
+              .filter((cat) => grouped[cat]?.length > 0)
+              .map((cat) => {
+                const list = grouped[cat];
 
-              {openCat === cat && (
-                <div className="ing-catListScroll">
-                  <div className="ing-catList">
-                    {list.map((ing) => {
-                      const st = ing.status || "ACTIVE";
-                      return (
-                        <div key={ing.id} className="ing-itemRow">
-                          <div className="ing-itemLeft">
-                            <div className="ing-itemName">{ing.name}</div>
-                          </div>
+                const inactiveCount = list.filter(
+                  (ing) => (ing.status || "ACTIVE") === "INACTIVE"
+                ).length;
 
-                          <div className="ing-itemActions">
-                            <button
-                              type="button"
-                              className={`ing-statusBtn ${st === "ACTIVE" ? "is-on" : "is-off"}`}
-                              onClick={() => onToggleStatus(ing)}
-                              title="Click to toggle status"
-                            >
-                              {st}
-                            </button>
+                return (
+                  <SortableCategory key={cat} id={cat}>
+                    {({ attributes, listeners }) => (
+                      <div className="ing-catCard">
+                        
+                        {/* HEADER */}
+                        <div className="ing-catHeadRow">
+                          {/* DRAG HANDLE */}
+                          <span
+                            className="ing-catDrag"
+                            {...attributes}
+                            {...listeners}
+                            title="Drag category"
+                          >
+                            ≡
+                          </span>
 
-                            <button
-                              type="button"
-                              className="ing-actionBtn"
-                              onClick={() => openEditModal(ing)}
-                            >
-                              Edit
-                            </button>
+                          {/* CLICK NORMAL */}
+                          <button
+                            type="button"
+                            className="ing-catHead"
+                            onClick={() =>
+                              setOpenCat((prev) =>
+                                prev === cat ? null : cat
+                              )
+                            }
+                          >
+                            <span className="ing-catName">{cat}</span>
 
-                            <button
-                              type="button"
-                              className="ing-actionBtn danger"
-                              onClick={() => onDelete(ing.id, ing.name)}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                            <span className="ing-catCount">
+                              {list.length}
+                              {inactiveCount > 0 && (
+                                <span className="ing-catInactive">
+                                  · {inactiveCount} inactive
+                                </span>
+                              )}
+                            </span>
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-      </div>
+
+                        {/* CONTENT */}
+                        {openCat === cat && (
+                          <div className="ing-catListScroll">
+                            <div className="ing-catList">
+                              {list.map((ing) => {
+                                const st = ing.status || "ACTIVE";
+                                return (
+                                  <div key={ing.id} className="ing-itemRow">
+                                    <div className="ing-itemLeft">
+                                      <div className="ing-itemName">
+                                        {ing.name}
+                                      </div>
+                                    </div>
+
+                                    <div className="ing-itemActions">
+                                      <button
+                                        type="button"
+                                        className={`ing-statusBtn ${
+                                          st === "ACTIVE"
+                                            ? "is-on"
+                                            : "is-off"
+                                        }`}
+                                        onClick={() => onToggleStatus(ing)}
+                                      >
+                                        {st}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="ing-actionBtn"
+                                        onClick={() => openEditModal(ing)}
+                                      >
+                                        Edit
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="ing-actionBtn danger"
+                                        onClick={() =>
+                                          onDelete(ing.id, ing.name)
+                                        }
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </SortableCategory>
+                );
+              })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {/* EDIT MODAL */}
       {editOpen && (

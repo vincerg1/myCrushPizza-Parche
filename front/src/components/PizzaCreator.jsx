@@ -5,6 +5,21 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import ReactDOM from "react-dom";
 import api from "../setupAxios";
 import "../styles/PizzaCreator.css";
+import {
+  DndContext,
+  closestCenter,
+} from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+
+import { CSS } from "@dnd-kit/utilities";
+
+
 
 /* ---------------------- constantes ---------------------- */
 const sizeList = ["S", "M", "L", "XL", "XXL", "ST"];
@@ -96,6 +111,27 @@ function Modal({ open, title, onClose, children }) {
 
 /* ======================================================== */
 export default function PizzaCreator() {
+  const [pizzaOrderByCat, setPizzaOrderByCat] = useState({});
+  function SortablePizza({ id, children, dragHandleProps }) {
+  const {
+    setNodeRef,
+    transform,
+    transition,
+    attributes,
+    listeners,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children(listeners)}
+    </div>
+  );
+}
   /* ---------- form state ---------- */
   const [form, setForm] = useState({
     name: "",
@@ -137,10 +173,31 @@ export default function PizzaCreator() {
     fetchPizzas();
   }, [fetchPizzas]);
 
-
-
   /* ---------- Category cards + modal ---------- */
   const [openCat, setOpenCat] = useState(null);
+  const [editingPizzaId, setEditingPizzaId] = useState(null);
+  const [existingImage, setExistingImage] = useState(null);
+
+  const loadPizzaForEdit = (pizza) => {
+  setEditingPizzaId(pizza.id);
+  setExistingImage(pizza.image || null);
+
+  setForm({
+    name: pizza.name || "",
+    category: pizza.category || "",
+    sizes: pizza.selectSize || [],
+    priceBySize: pizza.priceBySize || { S:"", M:"", L:"", XL:"", XXL:"", ST:"" },
+    imageFile: null, // solo si eligen nueva
+    ingredients: (pizza.ingredients || []).map((i) => ({
+      id: i.id,
+      name: i.name,
+      qtyBySize: i.qtyBySize || {},
+    })),
+  });
+
+  setOpenCat(null);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
   const pizzasByCategory = useMemo(() => {
     const map = Object.fromEntries(categoryOptions.map((c) => [c, []]));
@@ -157,31 +214,55 @@ export default function PizzaCreator() {
     return map;
   }, [pizzas]);
 
+  useEffect(() => {
+  if (!openCat) return;
 
+  setPizzaOrderByCat((prev) => {
+    if (prev[openCat]) return prev;
+
+    return {
+      ...prev,
+      [openCat]: (pizzasByCategory[openCat] || []).map((p) => p.id),
+    };
+  });
+}, [openCat, pizzasByCategory]);
 
   /* ---------- handlers (form) ---------- */
   const onChange = (e) => setForm((p) => ({ ...p, [e.target.name]: e.target.value }));
+    const onSizeToggle = (e) => {
+      const { value, checked } = e.target;
 
-  const onSizeToggle = (e) => {
-    const { value, checked } = e.target;
-    setForm((p) => {
-      const nextSizes = checked ? [...p.sizes, value] : p.sizes.filter((s) => s !== value);
+      setForm((p) => {
+        const nextSizes = checked
+          ? [...p.sizes, value]
+          : p.sizes.filter((s) => s !== value);
 
-      const nextIngredients = p.ingredients.map((row) => {
-        const qtyBySize = { ...(row.qtyBySize || {}) };
-        if (!checked) delete qtyBySize[value];
-        return { ...row, qtyBySize };
+        // 🔥 CLAVE: limpiar precio si se desmarca
+        const nextPriceBySize = { ...p.priceBySize };
+        if (!checked) {
+          nextPriceBySize[value] = "";
+        }
+
+        const nextIngredients = p.ingredients.map((row) => {
+          const qtyBySize = { ...(row.qtyBySize || {}) };
+          if (!checked) delete qtyBySize[value];
+          return { ...row, qtyBySize };
+        });
+
+        return {
+          ...p,
+          sizes: nextSizes,
+          priceBySize: nextPriceBySize,
+          ingredients: nextIngredients,
+        };
       });
-
-      return { ...p, sizes: nextSizes, ingredients: nextIngredients };
-    });
-  };
+    };
 
   const onPriceChange = (e, sz) =>
     setForm((p) => ({
       ...p,
       priceBySize: { ...p.priceBySize, [sz]: e.target.value },
-    }));
+  }));
 
   const onImageSelect = (e) => setForm((p) => ({ ...p, imageFile: e.target.files?.[0] || null }));
 
@@ -194,13 +275,11 @@ export default function PizzaCreator() {
       ingredients: [...p.ingredients, { id: "", name: "", qtyBySize: qty }],
     }));
   };
-
   const removeIngredient = (i) =>
     setForm((p) => ({
       ...p,
       ingredients: p.ingredients.filter((_, idx) => idx !== i),
-    }));
-
+  }));
   const onIngredientSelect = (i, id) => {
     const row = inventory.find((r) => r.id === Number(id));
     if (!row) return;
@@ -211,13 +290,12 @@ export default function PizzaCreator() {
       return { ...p, ingredients: ing };
     });
   };
-
   const onQtyChange = (i, sz, val) =>
     setForm((p) => {
       const ing = [...p.ingredients];
       ing[i] = { ...ing[i], qtyBySize: { ...(ing[i].qtyBySize || {}), [sz]: val } };
       return { ...p, ingredients: ing };
-    });
+  });
 
   /* ---------- submit ---------- */
   const onSubmit = async (e) => {
@@ -232,8 +310,19 @@ export default function PizzaCreator() {
     if (form.imageFile) fd.append("image", form.imageFile);
 
     try {
-      await api.post("/api/pizzas", fd);
-      alert("Producto guardado");
+      if (editingPizzaId) {
+        // 🔁 EDITAR
+        await api.put(`/api/pizzas/${editingPizzaId}`, fd);
+        alert("Producto actualizado");
+      } else {
+        // ➕ CREAR
+        await api.post("/api/pizzas", fd);
+        alert("Producto creado");
+      }
+
+      // 🧹 reset estado
+      setEditingPizzaId(null);
+      setExistingImage(null);
       setForm({
         name: "",
         category: "",
@@ -242,11 +331,8 @@ export default function PizzaCreator() {
         imageFile: null,
         ingredients: [],
       });
-      fetchPizzas();
 
-      // refresca status la próxima vez que abras el modal
-      setStatusMap({});
-      setStatusFetchState({ loading: false, loadedOnce: false });
+      fetchPizzas();
     } catch (err) {
       console.error(err);
       alert("Error al guardar");
@@ -258,17 +344,26 @@ export default function PizzaCreator() {
     try {
       await api.delete(`/api/pizzas/${id}`);
       setPizzas((p) => p.filter((x) => x.id !== id));
-
-      setStatusMap((m) => {
-        const next = { ...m };
-        delete next[id];
-        return next;
-      });
     } catch (e) {
       console.error(e);
       alert("No se pudo eliminar");
     }
   };
+  const onPizzaDragEnd = (event) => {
+  const { active, over } = event;
+  if (!over || active.id === over.id) return;
+
+  setPizzaOrderByCat((prev) => {
+    const list = prev[openCat] || [];
+    const oldIndex = list.indexOf(active.id);
+    const newIndex = list.indexOf(over.id);
+
+    return {
+      ...prev,
+      [openCat]: arrayMove(list, oldIndex, newIndex),
+    };
+  });
+};
 
   const selectedSizes = form.sizes;
 
@@ -276,7 +371,9 @@ export default function PizzaCreator() {
   return (
     <>
       <div className="pc-layout">
-        <h2 className="pc-title">Crear producto</h2>
+      <h2 className="pc-title">
+      {editingPizzaId ? "Editando producto" : "Crear producto"}
+     </h2>
 
         {/* ─────────── LEFT: FORM ─────────── */}
         <form className="pizza-form" onSubmit={onSubmit}>
@@ -302,7 +399,6 @@ export default function PizzaCreator() {
                 </select>
               </label>
 
-              {/* TAMAÑOS Y PRECIOS */}
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontWeight: 900, marginBottom: 8 }}>Tamaños y precios</div>
 
@@ -379,6 +475,16 @@ export default function PizzaCreator() {
             {/* IMAGEN */}
             <section className="pc-section">
               <h3 className="pc-subtitle">Imagen</h3>
+                {existingImage && !form.imageFile && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Imagen actual</div>
+                    <img
+                      src={existingImage}
+                      alt="actual"
+                      style={{ width: 120, borderRadius: 8, border: "1px solid #ddd" }}
+                    />
+                  </div>
+                )}
               <input type="file" accept="image/*" onChange={onImageSelect} />
 
               {form.imageFile && (
@@ -388,10 +494,37 @@ export default function PizzaCreator() {
               )}
             </section>
 
-            {/* BOTÓN ABAJO, SOLO */}
             <button className="save-btn" type="submit">
               Guardar producto
             </button>
+            {editingPizzaId && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingPizzaId(null);
+                setExistingImage(null);
+                setForm({
+                  name: "",
+                  category: "",
+                  sizes: [],
+                  priceBySize: { S:"", M:"", L:"", XL:"", XXL:"", ST:"" },
+                  imageFile: null,
+                  ingredients: [],
+                });
+              }}
+              style={{
+                marginTop: 10,
+                background: "#eee",
+                border: "1px solid #ccc",
+                borderRadius: 10,
+                padding: "10px 12px",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Cancelar edición
+            </button>
+          )}
           </div>
         </form>
 
@@ -414,116 +547,201 @@ export default function PizzaCreator() {
       </div>
 
       {/* ─────────── MODAL POR CATEGORÍA ─────────── */}
-      <Modal
-        open={!!openCat}
-        title={openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""}
-        onClose={() => setOpenCat(null)}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ opacity: 0.75, fontWeight: 700 }}>
-            Estado calculado (depende de ingredientes ACTIVE/INACTIVE).
-          </div>
-
-          <button
-            type="button"
-            onClick={() => fetchAllProductStatus(true)}
-            style={{
-              border: "1px solid #e7e7e7",
-              background: "#fff",
-              borderRadius: 12,
-              padding: "10px 12px",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
+    <Modal
+      open={!!openCat}
+      title={openCat ? `${openCat} • ${(pizzasByCategory[openCat] || []).length}` : ""}
+      onClose={() => setOpenCat(null)}
+    >
+      <div style={{ marginTop: 12 }}>
+        <DndContext
+          collisionDetection={closestCenter}
+          onDragEnd={onPizzaDragEnd}
+        >
+          <SortableContext
+            items={pizzaOrderByCat[openCat] || []}
+            strategy={verticalListSortingStrategy}
           >
-            Recargar
-          </button>
-        </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {(pizzaOrderByCat[openCat] || []).map((pizzaId) => {
+                const p = (pizzasByCategory[openCat] || []).find(
+                  (x) => x.id === pizzaId
+                );
+                if (!p) return null;
 
-        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-          {(openCat ? pizzasByCategory[openCat] : [])?.map((p) => {
-            const st = p.status;
+                const st = p.status;
+                const badgeBg =
+                  st === "INACTIVE"
+                    ? "rgba(255, 59, 48, 0.08)"
+                    : "rgba(34, 197, 94, 0.10)";
+                const badgeBorder =
+                  st === "INACTIVE"
+                    ? "rgba(255, 59, 48, 0.25)"
+                    : "rgba(34, 197, 94, 0.25)";
 
-            return (
-              <div
-                key={p.id}
-                style={{
-                  border: "1px solid #eee",
-                  borderRadius: 14,
-                  padding: 12,
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p.name}
+                return (
+                  <SortablePizza key={p.id} id={p.id}>
+                    {(listeners) => (
+                      <div
+                        style={{
+                          border: "1px solid #eee",
+                          borderRadius: 14,
+                          padding: 12,
+                          display: "grid",
+                          gridTemplateColumns: "auto 1fr auto",
+                          gap: 12,
+                          alignItems: "center",
+                        }}
+                      >
+                        {/* DRAG HANDLE */}
+                        <span
+                          {...listeners}
+                          style={{
+                            cursor: "grab",
+                            fontSize: 20,
+                            userSelect: "none",
+                            opacity: 0.6,
+                          }}
+                          title="Arrastrar"
+                        >
+                          ≡
+                        </span>
+
+                        {/* LEFT: info compacta */}
+                        <div style={{ minWidth: 0 }}>
+                          {/* Nombre */}
+                          <div
+                            style={{
+                              fontWeight: 900,
+                              fontSize: 16,
+                              marginBottom: 6,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {p.name}
+                          </div>
+
+                          {/* Línea compacta */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              flexWrap: "wrap",
+                              fontSize: 12,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {/* STATUS */}
+                            <span
+                              style={{
+                                border: `1px solid ${badgeBorder}`,
+                                background: badgeBg,
+                                borderRadius: 999,
+                                padding: "4px 8px",
+                                fontWeight: 900,
+                              }}
+                            >
+                              {st}
+                            </span>
+
+                            {/* PRECIOS */}
+                            {p.priceBySize &&
+                              Object.entries(p.priceBySize)
+                                .filter(([_, v]) => v)
+                                .map(([sz, price]) => (
+                                  <span
+                                    key={sz}
+                                    style={{
+                                      border: "1px solid #ddd",
+                                      borderRadius: 8,
+                                      padding: "4px 6px",
+                                    }}
+                                  >
+                                    {sz}: €{price}
+                                  </span>
+                                ))}
+
+                            {/* INGREDIENTES */}
+                            {p.ingredients?.map((ing) => (
+                              <span
+                                key={ing.id}
+                                title={ing.name}
+                                style={{
+                                  border: "1px solid #ccc",
+                                  borderRadius: 6,
+                                  padding: "3px 6px",
+                                  fontWeight: 700,
+                                  cursor: "help",
+                                  color:
+                                    ing.status === "INACTIVE"
+                                      ? "#ff3b30"
+                                      : "#333",
+                                  background: "#fafafa",
+                                }}
+                              >
+                                #{ing.id}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* RIGHT: acciones */}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => loadPizzaForEdit(p)}
+                            style={{
+                              border: "1px solid #333",
+                              background: "#fff",
+                              borderRadius: 12,
+                              padding: "10px 12px",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Editar
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => deletePizza(p.id)}
+                            style={{
+                              border: "1px solid #ff3b30",
+                              background: "#fff",
+                              borderRadius: 12,
+                              padding: "10px 12px",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </SortablePizza>
+                );
+              })}
+
+              {openCat &&
+                (pizzaOrderByCat[openCat]?.length ?? 0) === 0 && (
+                  <div style={{ opacity: 0.7, fontWeight: 700 }}>
+                    No hay productos en esta categoría.
                   </div>
-
-                  <div style={{ opacity: 0.75, fontWeight: 800, fontSize: 12 }}>
-                    Tamaños: {Array.isArray(p.selectSize) ? p.selectSize.join(", ") : ""}
-                  </div>
-
-                  <div style={{ opacity: 0.7, fontWeight: 700, fontSize: 12 }}>Imagen: {p.image || "—"}</div>
-
-                  <div
-                    style={{
-                      marginTop: 8,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      border: "1px solid #eee",
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontWeight: 900,
-                      fontSize: 12,
-                      opacity: statusFetchState.loading && !statusFetchState.loadedOnce ? 0.65 : 1,
-                      background:
-                        st === "INACTIVE" ? "rgba(255, 59, 48, 0.08)" : "rgba(34, 197, 94, 0.10)",
-                      borderColor:
-                        st === "INACTIVE" ? "rgba(255, 59, 48, 0.25)" : "rgba(34, 197, 94, 0.25)",
-                    }}
-                    title="Estado calculado por ingredientes"
-                  >
-                    {statusFetchState.loading && !statusFetchState.loadedOnce ? "STATUS…" : `STATUS: ${st || "—"}`}
-                  </div>
-
-                  {stObj?.blockedBy?.length > 0 && (
-                    <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, opacity: 0.8 }}>
-                      Bloqueado por:{" "}
-                      {stObj.blockedBy
-                        .map((x) => x?.name)
-                        .filter(Boolean)
-                        .join(", ")}
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => deletePizza(p.id)}
-                  style={{
-                    border: "1px solid #ff3b30",
-                    background: "#fff",
-                    borderRadius: 12,
-                    padding: "10px 12px",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  Eliminar
-                </button>
-              </div>
-            );
-          })}
-
-          {openCat && (pizzasByCategory[openCat] || []).length === 0 && (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>No hay productos en esta categoría.</div>
-          )}
-        </div>
-      </Modal>
+                )}
+            </div>
+          </SortableContext>
+        </DndContext>
+      </div>
+    </Modal>
     </>
   );
 }
