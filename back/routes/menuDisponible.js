@@ -1,6 +1,5 @@
 // back/routes/menuDisponible.js
 const express = require("express");
-const auth = require("../middleware/auth");
 const { computeProductStatus } = require("../services/productStatusService");
 
 module.exports = (prisma) => {
@@ -9,32 +8,39 @@ module.exports = (prisma) => {
   r.get("/:storeId", async (req, res) => {
     try {
       const storeId = Number(req.params.storeId);
-      const category = req.query.category;
-
-      const where = {
-        storeId,
-        stock: { gt: 0 },
-        ...(category ? { pizza: { category: String(category) } } : {}),
-      };
+      if (!storeId) return res.json([]);
 
       const rows = await prisma.storePizzaStock.findMany({
-        where,
+        where: {
+          storeId,
+          active: true, // ← StorePizzaStock manda aquí
+          pizza: {
+            status: "ACTIVE", // ← MenuPizza manda aquí
+          },
+        },
         select: {
           pizzaId: true,
           stock: true,
+          active: true,
           pizza: {
             select: {
               id: true,
               name: true,
+              category: true,
               selectSize: true,
               priceBySize: true,
-              category: true,
               image: true,
+              status: true,
               ingredients: {
                 select: {
-                  id: true,
-                  name: true,
-                  status: true,
+                  qtyBySize: true,
+                  ingredient: {
+                    select: {
+                      id: true,
+                      name: true,
+                      status: true,
+                    },
+                  },
                 },
               },
             },
@@ -44,30 +50,46 @@ module.exports = (prisma) => {
       });
 
       const menu = rows
-        .filter((r) => r.pizza)
         .map((r) => {
-          const status = computeProductStatus(r.pizza.ingredients);
+          if (!r?.pizza) return null;
+
+          const ingredients = Array.isArray(r.pizza.ingredients)
+            ? r.pizza.ingredients
+            : [];
+
+          let recipeStatus;
+          try {
+            recipeStatus = computeProductStatus(ingredients);
+          } catch (e) {
+            console.error("computeProductStatus error:", e);
+            return null;
+          }
+
+          const available =
+            r.active === true &&
+            r.pizza.status === "ACTIVE" &&
+            recipeStatus?.available === true;
+
+          if (!available) return null;
 
           return {
             pizzaId: r.pizzaId,
-            stock: r.stock,
+            stock: r.stock ?? null, // solo limita cantidad
             name: r.pizza.name,
-            selectSize: r.pizza.selectSize,
-            priceBySize: r.pizza.priceBySize,
             category: r.pizza.category,
-            image: r.pizza.image,
-            // ⚠️ SOLO PARA BACKOFFICE / DEBUG (opcional)
-            // blockedBy: status.blockedBy,
-            available: status.available,
+            selectSize: r.pizza.selectSize ?? [],
+            priceBySize: r.pizza.priceBySize ?? {},
+            image: r.pizza.image ?? null,
+            available: true,
           };
         })
-        // ✅ AQUÍ está la regla de oro:
-        .filter((p) => p.available);
+        .filter(Boolean);
 
       res.json(menu);
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: "No se pudo cargar el menú disponible" });
+      console.error("menuDisponible error:", err);
+      // regla de oro: nunca romper ventas
+      res.json([]);
     }
   });
 

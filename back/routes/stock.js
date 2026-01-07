@@ -5,56 +5,115 @@ const auth    = require('../middleware/auth'); // auth() – permite admin y sto
 module.exports = prisma => {
   const r = express.Router();
 
-  /* ───────────────────── GET /api/stock/:storeId ───────────────────── */
-  r.get('/:storeId', auth(), async (req, res) => {
-    const storeId = Number(req.params.storeId);
+r.get('/:storeId', auth(), async (req, res) => {
+  const storeId = Number(req.params.storeId);
 
-    /* ── seguridad ──: la tienda sólo puede ver su propio stock */
-    if (req.user.role === 'store' && req.user.storeId !== storeId) {
-      return res.sendStatus(403);
-    }
+  if (req.user.role === 'store' && req.user.storeId !== storeId) {
+    return res.sendStatus(403);
+  }
 
-    const rows = await prisma.storePizzaStock.findMany({
-      where  : { storeId },
-      include: { pizza: { select: { id: true, name: true } } },
-      orderBy: { pizzaId: 'asc' }
+  try {
+    const pizzas = await prisma.menuPizza.findMany({
+      orderBy: { name: 'asc' }
     });
 
-    res.json(rows);
-  });
+    const stockRows = await prisma.storePizzaStock.findMany({
+      where: { storeId }
+    });
 
-  /* ────────────────── PATCH /api/stock/:storeId/:pizzaId ────────────── */
-  r.patch('/:storeId/:pizzaId', auth(), async (req, res) => {
-    const storeId = Number(req.params.storeId);
-    const pizzaId = Number(req.params.pizzaId);
-    const { set, delta } = req.body;
+    const stockMap = new Map(
+      stockRows.map(r => [r.pizzaId, r.stock])
+    );
 
-    /* ── seguridad ──: la tienda sólo puede modificar su propio stock */
-    if (req.user.role === 'store' && req.user.storeId !== storeId) {
-      return res.sendStatus(403);
-    }
+    const result = pizzas.map(p => ({
+      pizzaId: p.id,                    // ✅ AQUÍ estaba el bug
+      pizza: {
+        id: p.id,
+        name: p.name,
+        category: p.category
+      },
+      stock: stockMap.get(p.id) ?? 0,
+    }));
 
-    /* al menos uno de los campos */
-    if (set === undefined && delta === undefined) {
-      return res.status(400).json({ error: 'set o delta requerido' });
-    }
+    res.json(result);
+  } catch (err) {
+    console.error('[STOCK GET ERROR]', err);
+    res.status(500).json({ error: 'Error loading stock' });
+  }
+});
+r.patch('/:storeId/:pizzaId', auth(), async (req, res) => {
+  const storeId = Number(req.params.storeId);
+  const pizzaId = Number(req.params.pizzaId);
+  const { set, delta } = req.body;
 
-    const data =
-      set !== undefined
-        ? { stock: Number(set) }
-        : { stock: { increment: Number(delta) } };
+  if (Number.isNaN(storeId) || Number.isNaN(pizzaId)) {
+    return res.status(400).json({ error: 'Invalid ids' });
+  }
 
-    try {
-      const updated = await prisma.storePizzaStock.update({
-        where: { storeId_pizzaId: { storeId, pizzaId } },
-        data
-      });
-      res.json(updated);
-    } catch (err) {
-      console.error(err);
-      res.status(400).json({ error: err.message });
-    }
-  });
+  if (req.user.role === 'store' && req.user.storeId !== storeId) {
+    return res.sendStatus(403);
+  }
+
+  if (set === undefined && delta === undefined) {
+    return res.status(400).json({ error: 'set o delta requerido' });
+  }
+
+  try {
+    const updated = await prisma.storePizzaStock.upsert({
+      where: {
+        storeId_pizzaId: { storeId, pizzaId }
+      },
+      update: {
+        stock:
+          set !== undefined
+            ? Number(set)
+            : { increment: Number(delta) }
+      },
+      create: {
+        storeId,
+        pizzaId,
+        stock: Number(set ?? delta ?? 0),
+        active: true
+      }
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update stock' });
+  }
+});
+r.patch('/:storeId/:pizzaId/active', auth(), async (req, res) => {
+  const storeId = Number(req.params.storeId);
+  const pizzaId = Number(req.params.pizzaId);
+  const { active } = req.body;
+
+  if (typeof active !== 'boolean') {
+    return res.status(400).json({ error: 'active boolean requerido' });
+  }
+
+  if (req.user.role === 'store' && req.user.storeId !== storeId) {
+    return res.sendStatus(403);
+  }
+
+  try {
+    const updated = await prisma.storePizzaStock.upsert({
+      where: { storeId_pizzaId: { storeId, pizzaId } },
+      update: { active },
+      create: {
+        storeId,
+        pizzaId,
+        stock: 0,
+        active
+      }
+    });
+
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to toggle active' });
+  }
+});
 
   return r;
 };
