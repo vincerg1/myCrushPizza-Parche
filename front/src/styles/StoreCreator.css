@@ -52,3 +52,439 @@
 }
 .st-btn.on{ background:#38d16a; color:#fff; }     /* verde   */
 .st-btn.off{background:#f5b5b5; color:#7a0000;}   /* rojizo  */
+
+/* ───────────────── TABLE BUTTONS (StoreCreator) ───────────────── */
+
+.table-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition:
+    transform .15s ease,
+    box-shadow .15s ease,
+    opacity .15s ease,
+    background .15s ease;
+}
+
+.table-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0,0,0,.15);
+}
+
+.table-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* ───── STATUS ───── */
+.table-btn.active {
+  background: #38d16a;
+  color: #fff;
+}
+
+.table-btn.inactive {
+  background: #f5b5b5;
+  color: #7a0000;
+}
+
+/* ───── STOCK ───── */
+.table-btn.stock {
+  background: #4285f4;
+  color: #fff;
+}
+
+.table-btn.stock:hover {
+  background: #357ae8;
+}
+
+/* ───── DELETE ───── */
+.table-btn.danger {
+  background: #ffe5e5;
+  color: #a40000;
+}
+
+.table-btn.danger:hover {
+  background: #ffcccc;
+}
+
+
+/* ───────────────────── StoreCreator.css ───────────────────── */
+
+/* PAGE */
+.sc-page {
+  padding: 18px 18px 30px;
+  max-width: 1100px;
+}
+
+.sc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sc-title {
+  margin: 0;
+  font-weight: 900;
+  font-size: 28px;
+}
+
+/* GRID */
+.sc-grid {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .sc-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* CARD */
+.sc-card {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.sc-cardHead {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-cardTitle {
+  margin: 0;
+  font-weight: 900;
+  font-size: 16px;
+}
+
+/* FORM */
+.store-form {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+@media (max-width: 980px) {
+  .store-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sc-label {
+  font-weight: 800;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.sc-input {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  padding: 0 10px;
+  outline: none;
+}
+
+.sc-input:focus {
+  border-color: #bbb;
+}
+
+.sc-btn {
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 10px 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sc-btn.primary {
+  grid-column: 1 / -1;
+  background: #ff6a3d;
+  border-color: #ff6a3d;
+  color: #fff;
+}
+
+.sc-btn.primary:hover {
+  filter: brightness(0.98);
+}
+
+.sc-btn.ghost {
+  background: #fff;
+}
+
+/* TABLE */
+.sc-tableWrap {
+  padding: 10px 12px 14px;
+}
+
+.store-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.store-table thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.75;
+  padding: 10px 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.store-table tbody td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+
+.store-name {
+  font-weight: 900;
+}
+
+.store-address {
+  max-width: 420px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.col-del {
+  width: 58px;
+}
+
+.col-status {
+  width: 120px;
+}
+
+.col-stock {
+  width: 120px;
+}
+
+.sc-emptyRow {
+  text-align: center;
+  opacity: 0.7;
+  font-weight: 800;
+  padding: 18px 10px !important;
+}
+
+/* unified buttons in table */
+.table-btn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+  means: auto;
+}
+
+.table-btn:hover {
+  filter: brightness(0.98);
+}
+
+.table-btn.danger {
+  width: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border-color: rgba(255, 59, 48, 0.25);
+  background: rgba(255, 59, 48, 0.10);
+  color: #ff3b30;
+}
+
+.table-btn.status.active {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.12);
+  color: #0f7a2f;
+}
+
+.table-btn.status.inactive {
+  border-color: rgba(255, 59, 48, 0.25);
+  background: rgba(255, 59, 48, 0.10);
+  color: #b10000;
+}
+
+.table-btn.stock {
+  border-color: rgba(66, 133, 244, 0.25);
+  background: rgba(66, 133, 244, 0.12);
+  color: #1e4fbf;
+}
+
+.table-btn.stock:hover {
+  background: rgba(66, 133, 244, 0.18);
+}
+
+/* MAP */
+.sc-mapCard {
+  margin-top: 16px;
+}
+
+.sc-mapWrap {
+  padding: 12px;
+  padding-top: 6px;
+}
+
+/* ───────────── Modal (Stock) ───────────── */
+.sc-modalBack {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 14px;
+}
+
+.sc-modalBox {
+  width: min(560px, 100%);
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #eee;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+.sc-modalHead {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-modalTitle {
+  margin: 0;
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.sc-iconBtn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid #e7e7e7;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sc-modalBody {
+  padding: 12px 14px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.sc-modalFooter {
+  padding: 12px 14px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* stock sections */
+.sc-stockSection {
+  margin-bottom: 14px;
+}
+
+.sc-stockSectionHead {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-start;
+  background: #f4f4f4;
+  border: 1px solid #eee;
+  border-radius: 10px;
+  padding: 10px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sc-caret {
+  width: 18px;
+  display: inline-block;
+}
+
+.sc-stockCount {
+  opacity: 0.7;
+  font-weight: 900;
+}
+
+/* inner table */
+.sc-stockTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+
+.sc-stockTable th {
+  font-size: 12px;
+  opacity: 0.7;
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.sc-stockTable td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.sc-right {
+  text-align: right;
+}
+
+.sc-actionsCol {
+  width: 58px;
+  text-align: center;
+}
+
+.sc-qtyInput {
+  width: 72px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  padding: 0 10px;
+  text-align: right;
+}
+
+.sc-miniBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sc-miniBtn.ok {
+  border-color: rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.12);
+}

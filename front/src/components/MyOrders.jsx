@@ -167,9 +167,8 @@ function Dashboard() {
   return (
     <div className="orders-dashboard">
       <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12 }}>
-        <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
-
-        <button type="button" style={logoutBtn} onClick={logout}>Logout</button>
+        {/* <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
+        <button type="button" style={logoutBtn} onClick={logout}>Logout</button> */}
 
         {isAdmin && (
           <div style={{ marginLeft:"auto" }}>
@@ -214,14 +213,14 @@ function Dashboard() {
         >
           Direct Pay
         </button>
-        <button
+        {/* <button
           className="level1-btn"
           style={{ marginLeft:8 }}
           disabled={view==="whatsapp"}
           onClick={()=>setView("whatsapp")}
         >
           WhatsApp
-        </button>
+        </button> */}
       </div>
 
       {/* CONTENT */}

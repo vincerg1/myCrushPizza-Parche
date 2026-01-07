@@ -53,7 +53,7 @@ const [categoryOrder, setCategoryOrder] = useState(CATEGORY_OPTIONS);
     name: false,
     category: false,
   });
-
+  const [createOpen, setCreateOpen] = useState(false);
   const [ingredients, setIngredients] = useState([]);
   const [openCat, setOpenCat] = useState(null);
 
@@ -301,85 +301,124 @@ function SortableCategory({ id, children }) {
   return (
     <div className="ing-wrapper">
       {/* FORM */}
-      <h2 className="ing-title">Add Ingredient</h2>
-      <form className="ing-form" onSubmit={onSubmit}>
     
-        <label className="ing-field">
-          Name
-          <input
-            name="name"
-            value={form.name}
-            onChange={(e) => {
-              const v = e.target.value.toUpperCase();
-              setForm((prev) => ({ ...prev, name: v }));
-              setErrors((prev) => ({ ...prev, name: !v.trim() }));
-            }}
-            className={errors.name ? "is-invalid" : ""}
-            aria-invalid={errors.name ? "true" : "false"}
-          />
-          {errors.name && <span className="ing-error">Required</span>}
-        </label>
+      <div className="ing-header">
+        
+        <h2 className="ing-title">Ingredients</h2>
+    <button
+          type="button"
+          className="ing-addBtn"
+          onClick={() => setCreateOpen(true)}
+        >
+          + Add ingredient
+        </button>
+  
+      </div>
+    {createOpen && (
+  <div
+    className="ing-modalOverlay"
+    onMouseDown={() => setCreateOpen(false)}
+  >
+    <div
+      className="ing-modal"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="ing-modalTop">
+        <div className="ing-modalName">Add Ingredient</div>
 
-        <label className="ing-field">
-          Category
-          <select
-            name="category"
-            value={form.category}
-            onChange={onChange}
-            className={errors.category ? "is-invalid" : ""}
-            aria-invalid={errors.category ? "true" : "false"}
-          >
-            <option value="">— SELECT —</option>
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          {errors.category && <span className="ing-error">Required</span>}
-        </label>
+        <button
+          type="button"
+          className="ing-x"
+          onClick={() => setCreateOpen(false)}
+        >
+          ✕
+        </button>
+      </div>
 
-        <div className="ing-row2">
-          <label className="ing-field">
-            Stock
-            <input
-              type="number"
-              name="stock"
-              value={form.stock}
-              onChange={onChange}
-              min="0"
-              placeholder="Optional"
-            />
-          </label>
 
-          <label className="ing-field">
-            Unit
-            <input
-              name="unit"
-              value={form.unit}
-              onChange={onChange}
-              placeholder="g, ml, pcs (optional)"
-            />
-          </label>
+    <form className="ing-form" onSubmit={onSubmit}>
+  <label className="ing-field">
+    Name
+    <input
+      name="name"
+      value={form.name}
+      onChange={(e) => {
+        const v = e.target.value.toUpperCase();
+        setForm((prev) => ({ ...prev, name: v }));
+        setErrors((prev) => ({ ...prev, name: !v.trim() }));
+      }}
+      className={errors.name ? "is-invalid" : ""}
+      aria-invalid={errors.name ? "true" : "false"}
+    />
+    {errors.name && <span className="ing-error">Required</span>}
+  </label>
 
-          <label className="ing-field">
-            Cost price
-            <input
-              type="number"
-              step="0.01"
-              name="costPrice"
-              value={form.costPrice}
-              onChange={onChange}
-              min="0"
-              placeholder="Optional"
-            />
-          </label>
-        </div>
+  <label className="ing-field">
+    Category
+    <select
+      name="category"
+      value={form.category}
+      onChange={onChange}
+      className={errors.category ? "is-invalid" : ""}
+      aria-invalid={errors.category ? "true" : "false"}
+    >
+      <option value="">— SELECT —</option>
+      {CATEGORY_OPTIONS.map((c) => (
+        <option key={c} value={c}>{c}</option>
+      ))}
+    </select>
+    {errors.category && <span className="ing-error">Required</span>}
+  </label>
 
-        <button className="ing-save">Add ingredient</button>
-      </form>
+  <div className="ing-row2">
+    <label className="ing-field">
+      Stock
+      <input
+        type="number"
+        name="stock"
+        value={form.stock}
+        onChange={onChange}
+        min="0"
+        placeholder="Optional"
+      />
+    </label>
+
+    <label className="ing-field">
+      Unit
+      <input
+        name="unit"
+        value={form.unit}
+        onChange={onChange}
+        placeholder="g, ml, pcs (optional)"
+      />
+    </label>
+
+    <label className="ing-field">
+      Cost price
+      <input
+        type="number"
+        step="0.01"
+        name="costPrice"
+        value={form.costPrice}
+        onChange={onChange}
+        min="0"
+        placeholder="Optional"
+      />
+    </label>
+  </div>
+
+  <button type="submit" className="ing-save">
+    Add ingredient
+  </button>
+    </form>
+
+    </div>
+  </div>
+)}
+
 
       {/* CATEGORIES PANEL */}
+      
       <DndContext onDragEnd={onDragEnd} collisionDetection={closestCenter}>
         <SortableContext
           items={categoryOrder}

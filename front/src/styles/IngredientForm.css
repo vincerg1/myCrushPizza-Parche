@@ -310,6 +310,27 @@
   font-weight: 800;
   color: #ff3b30;
 }
+.ing-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.ing-addBtn {
+  padding: 10px 16px;
+  border-radius: 14px;
+  background: #ff6a3d;
+  border: none;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ing-addBtn:hover {
+  filter: brightness(0.97);
+}
+
 
 /* Responsive */
 @media (max-width: 720px){

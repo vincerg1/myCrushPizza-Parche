@@ -29,6 +29,7 @@ const categoryOptions = [
   "Pizza Frita",
   "Pizza Especial",
   "Pizza Dulce",
+  "Extras",
   "Bebidas",
   "Complementos",
   "Postres",

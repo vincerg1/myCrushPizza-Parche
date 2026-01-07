@@ -1,24 +1,18 @@
-// ──────────────────────────────────────────────────────────────
-// LocalSaleForm – Mobile-first TPV UI
-//  • Tabs + grid con FLIP (descripción) + bottom bar + modales
-//  • Reusa tu lógica de precios, extras (1º gratis), carrito y confirmación.
-// ──────────────────────────────────────────────────────────────
+// LocalSaleForm.jsx (versión completa basada en tu estado actual)
+// - Tabs SIN "extras" (extras solo en Product Modal)
+// - Botón "+" en card abre modal centrado
+// - Al añadir al carrito: el "+" del card pasa a "✔️" si ese producto ya está en carrito
+// - Modal: imagen + descripción + qty + sizes + checklist de extras + precio dinámico
+// - SIN “primer extra gratis” (extras suman normal)
+// - Mantiene Modal de carrito accesible desde el botón 🛒 del header
+
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 import "../styles/LocalSaleForm.css";
 
-const categories = ["Pizza", "Sides", "Drinks", "Desserts"];
-const normalize = (c) => (c || "Pizza").trim().toLowerCase();
-const CATEGORY_LABELS = {
-  pizza: "Pizza",
-  sides: "Entradas",
-  drinks: "Bebidas",
-  desserts: "Postres",
-  extras: "Extras",
-};
-const displayCategory = (c) => CATEGORY_LABELS[normalize(c)] ?? c ?? "";
+const normalize = (c) => String(c || "").trim().toLowerCase();
 
 /* Toast vía portal */
 function Toast({ msg, onClose }) {
@@ -33,10 +27,15 @@ function Toast({ msg, onClose }) {
 }
 
 /* Modal simple (portal) */
-function Modal({ open, title, onClose, children }) {
+function Modal({ open, title, onClose, children, className = "" }) {
   if (!open) return null;
   return ReactDOM.createPortal(
-    <div className="lsf-modal" role="dialog" aria-modal="true" onMouseDown={onClose}>
+    <div
+      className={`lsf-modal ${className}`}
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
       <div className="lsf-modal__panel" onMouseDown={(e) => e.stopPropagation()}>
         <div className="lsf-modal__head">
           <div className="lsf-modal__title">{title}</div>
@@ -59,12 +58,14 @@ const parseMaybeJSON = (v, fallback) => {
     return fallback;
   }
 };
+
 const num = (x) => {
   if (x == null || x === "") return 0;
   const s = typeof x === "string" ? x.replace(",", ".") : x;
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 };
+
 const priceForSize = (priceBySize = {}, size = "M") => {
   const pref = num(priceBySize?.[size]);
   if (pref > 0) return pref;
@@ -84,19 +85,24 @@ const coerceRow = (row) => ({
   category: row.category,
   selectSize: parseMaybeJSON(row.selectSize, []) || [],
   priceBySize: parseMaybeJSON(row.priceBySize, {}) || {},
-  ingredients: parseMaybeJSON(row.ingredients, []) || [], // ✅ CLAVE (antes faltaba)
+  ingredients: parseMaybeJSON(row.ingredients, []) || [],
   stock: row.stock ?? null,
   image: row.image ?? null,
   description: row.description ?? row.desc ?? row.shortDescription ?? "",
+  available: row.available,
+  type: row.type,
+  isExtra: row.isExtra,
 });
+
 const capWords = (s = "") =>
   String(s)
     .trim()
     .replace(/\s+/g, " ")
     .split(" ")
-    .map(w => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : "")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
     .join(" ");
 
+const displayCategory = (c) => capWords(String(c || ""));
 const joinWithY = (arr = []) => {
   const clean = arr.filter(Boolean);
   if (clean.length === 0) return "";
@@ -104,29 +110,23 @@ const joinWithY = (arr = []) => {
   if (clean.length === 2) return `${clean[0]} y ${clean[1]}`;
   return `${clean.slice(0, -1).join(", ")} y ${clean[clean.length - 1]}`;
 };
-
 const ingredientsForSize = (item, size = "") => {
   const raw = item?.ingredients;
   const list = parseMaybeJSON(raw, []);
-
   if (!Array.isArray(list)) return [];
 
   const hasQtyForSize = (row) => {
     const qRaw = row?.qtyBySize ?? row?.qty_by_size ?? row?.qtySize ?? {};
     const q = parseMaybeJSON(qRaw, {});
-
     if (size && q && q[size] != null) return num(q[size]) > 0;
     return Object.values(q || {}).some((v) => num(v) > 0);
   };
 
   return list
     .filter(hasQtyForSize)
-    .map((r) => capWords(r?.name || ""))
+    .map((r) => capWords(r?.name || "")) // ojo: si backend no manda name, quedará vacío
     .filter(Boolean);
 };
-
-
-// Random estable por item (no cambia en cada render) usando pizzaId como semilla simple
 const seededPick = (seed, arr) => {
   if (!arr.length) return "";
   const n = Math.abs(Number(seed) || 1);
@@ -135,15 +135,12 @@ const seededPick = (seed, arr) => {
 
 const CRUSH_TITLES = [
   "Tu crush más salvaje",
-  "Tu crush italiano",
   "Tu crush irresistible",
   "Tu crush sin filtro",
   "Tu crush de verdad",
   "Tu crush más hot",
 ];
-
 const CRUSH_HOOKS = ["Un flechazo.", "Exquisita.", "Atrevida.", "Brutal.", "Wow."];
-
 const CRUSH_CLOSERS = [
   "First taste, first love.",
   "Sabor que no se olvida.",
@@ -161,6 +158,44 @@ const buildAutoDescription = (item, size = "") => {
   const close = seededPick(item?.pizzaId + 13, CRUSH_CLOSERS);
   return { lineA, title, hook, close };
 };
+function getPizzaBadge(it) {
+  const seed = Number(it.pizzaId) || 1;
+
+  const BADGES = [
+    {
+      icon: "⭐",
+      metric: "Top ventas",
+      closer: "La piden y repiten",
+    },
+    {
+      icon: "🔥",
+      metric: "La más pedida",
+      closer: "En pedidos desde apertura",
+    },
+    {
+      icon: "❤️",
+      metric: "Favorita de clientes",
+      closer: "9 de cada 10 repiten",
+    },
+    {
+      icon: "⚡",
+      metric: "Trending hoy",
+      closer: "Popular en tu zona",
+    },
+  ];
+
+  const badge = BADGES[seed % BADGES.length];
+
+  return {
+    hook: seededPick(seed + 7, CRUSH_HOOKS), // 👈 solo UNO
+    icon: badge.icon,
+    metric: badge.metric,
+    closer: badge.closer,
+  };
+}
+
+
+
 
 export default function LocalSaleForm({
   forcedStoreId = null,
@@ -176,20 +211,14 @@ export default function LocalSaleForm({
   const [storeId, setStoreId] = useState(forcedStoreId);
   const [stores, setStores] = useState([]);
   const [menu, setMenu] = useState([]);
-  const [cat, setCat] = useState("Pizza");
+  const [cat, setCat] = useState("");
   const [cart, setCart] = useState([]);
   const [sel, setSel] = useState({ pizzaId: "", size: "", qty: 1, extras: {} });
   const [toast, setToast] = useState(null);
-
-  // UI state
-  const [extrasOpen, setExtrasOpen] = useState(false);
+  const [productModalOpen, setProductModalOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
 
-  // errores visuales
-  const [errors, setErrors] = useState({ item: false, size: false });
-  const [triedAdd, setTriedAdd] = useState(false);
-  const [shakeAdd, setShakeAdd] = useState(false);
   const MAX_QTY_SELECT = 12;
 
   /* effects */
@@ -213,69 +242,53 @@ export default function LocalSaleForm({
       .catch(() => setMenu([]));
   }, [storeId]);
 
-  // reset selección al cambiar categoría
+  // Extras: SOLO por category === "extras" (o flags opcionales)
+  const isExtraItem = (m) => {
+    if (m?.isExtra === true) return true;
+    if (normalize(m?.type) === "extra") return true;
+    return normalize(m?.category) === "extras";
+  };
+
+  const categories = useMemo(() => {
+    const set = new Map();
+    for (const m of menu) {
+      if (!m?.category) continue;
+      if (isExtraItem(m)) continue; // ✅ extras NO en tabs
+      const key = normalize(m.category);
+      if (!key) continue;
+      if (!set.has(key)) set.set(key, m.category);
+    }
+    return Array.from(set.values()).sort((a, b) => String(a).localeCompare(String(b), "es"));
+  }, [menu]);
+
   useEffect(() => {
-    setSel({ pizzaId: "", size: "", qty: 1, extras: {} });
-    setErrors({ item: false, size: false });
-    setTriedAdd(false);
-    setFlippedId(null);
-  }, [cat]);
+    if (!categories.length) {
+      if (cat) setCat("");
+      return;
+    }
+    const catExists = categories.some((c) => normalize(c) === normalize(cat));
+    if (!cat || !catExists) setCat(categories[0]);
+  }, [categories, cat]);
 
-  // limpiar errores al corregir
-  useEffect(() => {
-    if (sel.pizzaId) setErrors((e) => ({ ...e, item: false }));
-    setTriedAdd(false);
-  }, [sel.pizzaId]);
+  const itemsAvail = useMemo(() => {
+    if (!cat) return [];
+    return menu.filter((m) => !isExtraItem(m) && normalize(m.category) === normalize(cat));
+  }, [menu, cat]);
 
-  useEffect(() => {
-    if (sel.size) setErrors((e) => ({ ...e, size: false }));
-    setTriedAdd(false);
-  }, [sel.size]);
-
-  /* memo/selectores */
-  const itemsAvail = useMemo(
-    () => menu.filter((m) => normalize(m.category) === normalize(cat) && (m.stock == null || m.stock > 0)),
-    [menu, cat]
-  );
-
-  const extrasAvail = useMemo(
-    () => menu.filter((m) => normalize(m.category) === "extras" && (m.stock == null || m.stock > 0)),
-    [menu]
-  );
+  const extrasAvail = useMemo(() => menu.filter((m) => isExtraItem(m)), [menu]);
 
   const current = menu.find((m) => m.pizzaId === Number(sel.pizzaId));
-
-  // auto-select producto si no hay seleccionado (para acelerar)
-  useEffect(() => {
-    if (sel.pizzaId) return;
-    if (!itemsAvail.length) return;
-    const def = itemsAvail[0];
-    setSel((s) => ({ ...s, pizzaId: String(def.pizzaId), size: "", extras: {} }));
-  }, [itemsAvail, sel.pizzaId]);
 
   /* Auto-select size si solo hay uno */
   useEffect(() => {
     const sizes = (current?.selectSize || []).filter(Boolean);
     setSel((s) => {
-      if (!current) return s.size ? { ...s, size: "" } : s;
+      if (!current) return s;
       if (sizes.length === 1 && s.size !== sizes[0]) return { ...s, size: sizes[0] };
       if (s.size && !sizes.includes(s.size)) return { ...s, size: "" };
       return s;
     });
   }, [current]);
-
-  const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
-
-  const extrasUnitTotal = useMemo(() => {
-    const selectedPrices = extrasAvail
-      .filter((ex) => !!sel.extras[ex.pizzaId])
-      .map((ex) => priceForSize(ex.priceBySize, sel.size || "M"));
-    if (selectedPrices.length === 0) return 0;
-    const sum = selectedPrices.reduce((s, p) => s + (Number(p) || 0), 0);
-    return Math.max(0, sum - (Number(selectedPrices[0]) || 0)); // 1º gratis
-  }, [sel.extras, sel.size, extrasAvail]);
-
-  const linePreview = (baseUnitPrice + extrasUnitTotal) * Number(sel.qty || 1);
 
   /* qty según stock/tope */
   const qtyOptions = useMemo(() => {
@@ -291,65 +304,54 @@ export default function LocalSaleForm({
   }, [qtyOptions]);
 
   /* handlers */
-  const toggleExtra = (id) =>
-    setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
+  const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
 
-  const pickProduct = (pizzaId) => {
-    setSel((s) => ({
-      ...s,
-      pizzaId: String(pizzaId),
-      size: "",
-      qty: 1,
-      extras: {},
-    }));
+  const openProductModal = (pizzaId) => {
+    setSel({ pizzaId: String(pizzaId), size: "", qty: 1, extras: {} });
+    setProductModalOpen(true);
   };
 
   const pickSize = (sz) => setSel((s) => ({ ...s, size: sz }));
-
-  const decQty = () =>
-    setSel((s) => ({ ...s, qty: Math.max(1, Number(s.qty || 1) - 1) }));
-
+  const decQty = () => setSel((s) => ({ ...s, qty: Math.max(1, Number(s.qty || 1) - 1) }));
   const incQty = () => {
     const max = qtyOptions[qtyOptions.length - 1] || 1;
     setSel((s) => ({ ...s, qty: Math.min(max, Number(s.qty || 1) + 1) }));
   };
 
-  const toggleFlip = (id) => {
-    setFlippedId((prev) => (prev === id ? null : id));
-  };
+  const toggleFlip = (id) => setFlippedId((prev) => (prev === id ? null : id));
 
-  const closeFlip = () => setFlippedId(null);
+  const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
+
+  // ✅ NUEVO: extras suman normal (sin gratis)
+  const extrasUnitTotal = useMemo(() => {
+    const selected = extrasAvail.filter((ex) => !!sel.extras[ex.pizzaId]);
+    if (!selected.length) return 0;
+    return selected.reduce((sum, ex) => sum + priceForSize(ex.priceBySize, sel.size || "M"), 0);
+  }, [sel.extras, sel.size, extrasAvail]);
 
   const addLine = () => {
-    const invalidItem = !current;
-    const invalidSize = !sel.size;
+    if (!current) return;
 
-    if (invalidItem || invalidSize) {
-      setErrors({ item: invalidItem, size: invalidSize });
-      setTriedAdd(true);
-      setShakeAdd(false);
-      requestAnimationFrame(() => setShakeAdd(true));
-      setTimeout(() => setShakeAdd(false), 380);
+    if (!sel.size) {
+      alert("Selecc Size");
       return;
     }
 
-    const price = baseUnitPrice;
-    if (price == null) return alert("Price not set");
-    if (current.stock != null && current.stock < sel.qty) return alert("Not enough stock");
+    if (current.stock != null && current.stock < sel.qty) {
+      alert("Not enough stock");
+      return;
+    }
 
-    const chosenIds = extrasAvail.filter((x) => sel.extras[x.pizzaId]).map((x) => String(x.pizzaId));
-    let chosenExtras = chosenIds
-      .map((idStr) => {
-        const ex = extrasAvail.find((x) => x.pizzaId === Number(idStr));
-        return ex
-          ? { id: ex.pizzaId, name: ex.name, price: priceForSize(ex.priceBySize, sel.size || "M") }
-          : null;
-      })
-      .filter(Boolean);
+    const chosenExtras = extrasAvail
+      .filter((x) => sel.extras[x.pizzaId])
+      .map((ex) => ({
+        id: ex.pizzaId,
+        name: ex.name,
+        price: priceForSize(ex.priceBySize, sel.size || "M"),
+      }));
 
-    if (chosenExtras.length > 0) chosenExtras = [{ ...chosenExtras[0], price: 0 }, ...chosenExtras.slice(1)];
     const extrasPerUnit = chosenExtras.reduce((a, b) => a + num(b.price), 0);
-    const subtotal = (price + extrasPerUnit) * sel.qty;
+    const subtotal = (baseUnitPrice + extrasPerUnit) * sel.qty;
 
     setCart((c) => [
       ...c,
@@ -359,17 +361,13 @@ export default function LocalSaleForm({
         category: current.category,
         size: sel.size,
         qty: sel.qty,
-        price,
+        price: baseUnitPrice,
         extras: chosenExtras,
         subtotal,
       },
     ]);
 
-    setSel({ pizzaId: "", size: "", qty: 1, extras: {} });
-    setTriedAdd(false);
-    setExtrasOpen(false);
-    setCartOpen(true);
-    closeFlip();
+    setToast("Añadido al carrito");
   };
 
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
@@ -378,9 +376,11 @@ export default function LocalSaleForm({
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
 
   const getImg = (it) => it?.image || "";
-  const isReadyToAdd = !!current && !!sel.size;
-  
-  /* UI */
+
+const modalUnit = baseUnitPrice + extrasUnitTotal;
+const modalTotal = modalUnit * Number(sel.qty || 1);
+const modalReady = !!current && !!sel.size;
+
   return (
     <>
       <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
@@ -388,12 +388,7 @@ export default function LocalSaleForm({
         <div className="lsf-top">
           <div className="lsf-top__title">{compact ? "Selecciona productos" : "Local sale"}</div>
 
-          <button
-            type="button"
-            className="lsf-cartbtn"
-            onClick={() => setCartOpen(true)}
-            aria-label="Abrir carrito"
-          >
+          <button type="button" className="lsf-cartbtn" onClick={() => setCartOpen(true)} aria-label="Abrir carrito">
             🛒 <span className="lsf-cartbtn__count">{cartCount}</span>
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
@@ -413,7 +408,7 @@ export default function LocalSaleForm({
           </div>
         )}
 
-        {/* Tabs categorías */}
+        {/* Tabs categorías (reales, derivadas del menú) */}
         <div className="lsf-tabs" role="tablist" aria-label="Categorías">
           {categories.map((c) => {
             const active = normalize(cat) === normalize(c);
@@ -432,187 +427,274 @@ export default function LocalSaleForm({
           })}
         </div>
 
-       {/* Grid productos (FLIP para descripción) */}
+        {/* Grid productos (flip SOLO info; compra SOLO con "+") */}
         <div className="lsf-grid" role="list">
           {itemsAvail.map((it) => {
-            const active = Number(sel.pizzaId) === Number(it.pizzaId);
-            const from = priceForSize(it.priceBySize, (it.selectSize?.[0] || "M") ?? "M");
             const img = getImg(it);
             const flipped = flippedId === it.pizzaId;
-            const fallbackSize = sel.size || it.selectSize?.[0] || "M";
-            const d = buildAutoDescription(it, fallbackSize);
-     
+
+            const basePrice = priceForSize(it.priceBySize, it.selectSize?.[0] || "M");
+
+            const alreadyInCart = cart.some((l) => Number(l.pizzaId) === Number(it.pizzaId));
 
             return (
               <div
                 key={it.pizzaId}
-                className={`lsf-card lsf-flip ${active ? "is-active" : ""} ${flipped ? "is-flipped" : ""}`}
+                className={`lsf-card lsf-flip ${flipped ? "is-flipped" : ""}`}
+                onClick={() => toggleFlip(it.pizzaId)}
                 role="listitem"
-                tabIndex={0}
-                onClick={() => {
-                  pickProduct(it.pizzaId);
-                  toggleFlip(it.pizzaId);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    pickProduct(it.pizzaId);
-                    toggleFlip(it.pizzaId);
-                  }
-                }}
               >
-                {/* Botón info (solo flip) */}
-
-
                 <div className="lsf-flip__inner">
                   {/* FRONT */}
                   <div className="lsf-flip__front">
-                    <div className={`lsf-card__img ${img ? "" : "is-placeholder"}`}>
-                      {img ? <img src={img} alt={it.name} /> : <span>🍕</span>}
+                    <div className="lsf-card__image">
+                      {img ? <img src={img} alt={it.name} /> : <div className="lsf-card__img is-placeholder"><span>🍕</span></div>}
                     </div>
-                    <div className="lsf-card__meta">
+
+                    <button
+                      type="button"
+                      className={`lsf-card__addbtn ${alreadyInCart ? "is-added" : ""}`}
+               onClick={(e) => {
+                    e.stopPropagation();
+                    setSel({
+                      pizzaId: String(it.pizzaId),
+                      size: it.selectSize?.length === 1 ? it.selectSize[0] : "",
+                      qty: 1,
+                      extras: {},
+                    });
+                    setProductModalOpen(true);
+                  }}
+                      aria-label={`Añadir ${it.name}`}
+                    >
+                      {alreadyInCart ? "✔️" : "+add"}
+                    </button>
+
+                    <div className="lsf-card__overlay">
                       <div className="lsf-card__name">{it.name}</div>
-                      <div className="lsf-card__sub">Desde €{from.toFixed(2)}</div>
+                      <div className="lsf-card__price">€{basePrice.toFixed(2)}</div>
                     </div>
                   </div>
 
-                  {/* BACK */}
-                  <div
-                    className="lsf-flip__back"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <div className="lsf-back__title">{d.title}</div>
-                    <div className="lsf-back__desc">
-                      <div className="lsf-desc__ings">{d.lineA}</div>
-                      <div className="lsf-desc__hook">{d.hook}</div>
-                      <div className="lsf-desc__close">{d.close}</div>
-                    </div>
-                    <button
-                      type="button"
-                      className="lsf-back__close"
-                      onClick={() => toggleFlip(it.pizzaId)}
-                    >
-                      Volver
-                    </button>
-                  </div>
+                  {/* BACK (INFO ONLY) */}
+                <div className="lsf-flip__back">
+                  {(() => {
+                    const badge = getPizzaBadge(it);
+                    return (
+                      <div className="lsf-back__badge">
+                        {/* HOOK */}
+                        <div className="lsf-badge__hook">
+                          {badge.icon} {badge.hook}
+                        </div>
+
+                        {/* MÉTRICA */}
+                        <div className="lsf-badge__metric">
+                          {badge.metric}
+                        </div>
+
+                        {/* CLOSER */}
+                        <div className="lsf-badge__closer">
+                          {badge.closer}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
                 </div>
               </div>
             );
           })}
+
           {!itemsAvail.length && <div className="lsf-empty">No hay items disponibles.</div>}
         </div>
+      </div>
+      {cart.length > 0 && (
+        <div className="lsf-sticky">
+          
 
-        {/* Barra inferior fija (editor rápido) */}
-        <div className="lsf-bottom">
-          <div className="lsf-bottom__row">
-            <div className={`lsf-pill ${triedAdd && errors.item ? "is-error" : ""}`}>
-              {current ? current.name : "Elige un producto"}
-            </div>
+          <button
+            type="button"
+            className="lsf-sticky__btn"
+            onClick={() => {
+              if (!onConfirmCart) return;
+              if (!storeId) return alert("Select store");
 
-            <div className="lsf-qty">
-              <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={!current || sel.qty <= 1}>
-                –
-              </button>
-              <div className="lsf-qty__val">{sel.qty}</div>
+              const extrasArrayForItem = (line) =>
+                (line.extras || []).map((e) => ({
+                  id: e.id,
+                  code: "EXTRA",
+                  label: e.name,
+                  amount: Number(e.price) || 0,
+                }));
+
+              const extrasMapForItem = (line) =>
+                Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
+
+              onConfirmCart({
+                storeId: Number(storeId),
+                items: cart.map((c) => ({
+                  pizzaId: c.pizzaId,
+                  name: c.name,
+                  size: c.size,
+                  qty: c.qty,
+                  price: c.price,
+                  subtotal: c.subtotal,
+                  extras: extrasArrayForItem(c),
+                  extrasMap: extrasMapForItem(c),
+                })),
+                total,
+              });
+            }}
+          >
+            PAY NOW
+          </button>
+        </div>
+      )}
+
+
+
+      {/* PRODUCT MODAL (centrado) */}
+      <Modal
+        open={productModalOpen}
+        title={current?.name || "Producto"}
+        onClose={() => setProductModalOpen(false)}
+        className="lsf-modal--center"
+      >
+        {!current ? null : (
+          <>
+            <div className="lsf-pm">
+              <div className="lsf-pm__hero">
+                {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
+              </div>
+
+              <div className="lsf-pm__desc">
+                {current.description ? (
+                  <div className="lsf-muted">{current.description}</div>
+                ) : (
+                  (() => {
+                    const d = buildAutoDescription(current, sel.size || current.selectSize?.[0] || "M");
+                    return (
+                      <div className="lsf-muted">
+                        <div><b>{d.title}</b></div>
+                        <div>{d.lineA}</div>
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+
+              {/* QTY */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Qty</div>
+                <div className="lsf-qty">
+                  <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
+                    –
+                  </button>
+                  <div className="lsf-qty__val">{sel.qty}</div>
+                  <button
+                    type="button"
+                    className="lsf-qty__btn"
+                    onClick={incQty}
+                    disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* SIZES */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Size</div>
+                <div className="lsf-sizes">
+                  {(current.selectSize || []).map((sz) => {
+                    const a = sel.size === sz;
+                    const p = priceForSize(current.priceBySize, sz);
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        className={`lsf-chip ${a ? "is-active" : ""}`}
+                        onClick={() => pickSize(sz)}
+                      >
+                        <span className="lsf-chip__sz">{sz}</span>
+                        <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* EXTRAS */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Extras</div>
+                {extrasAvail.length === 0 ? (
+                  <div className="lsf-muted">No hay extras.</div>
+                ) : (
+                <div className="lsf-extraslist">
+                  {[...extrasAvail]
+                    .sort((a, b) => {
+                      const pa = priceForSize(
+                        a.priceBySize,
+                        sel.size || current.selectSize?.[0] || "M"
+                      );
+                      const pb = priceForSize(
+                        b.priceBySize,
+                        sel.size || current.selectSize?.[0] || "M"
+                      );
+                      return pb - pa; // de más caro a más barato
+                    })
+                    .map((ex) => {
+                      const checked = !!sel.extras[ex.pizzaId];
+                      const p = priceForSize(
+                        ex.priceBySize,
+                        sel.size || current.selectSize?.[0] || "M"
+                      );
+
+                      return (
+                        <label key={ex.pizzaId} className="lsf-extrasitem">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleExtra(ex.pizzaId)}
+                          />
+                          <span className="lsf-extrasitem__name">{ex.name}</span>
+                          <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+
+                )}
+              </div>
+
+              {/* ACTIONS */}
+              <div className="lsf-pm__actions">
+                <button
+                  type="button"
+                  className="lsf-btn lsf-btn--ghost"
+                  onClick={() => setProductModalOpen(false)}
+                >
+                  Continue
+                </button>
+
               <button
                 type="button"
-                className="lsf-qty__btn"
-                onClick={incQty}
-                disabled={!current || sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
+                className="lsf-btn lsf-btn--primary"
+                disabled={!modalReady}
+                onClick={() => {
+                  addLine();
+                  setProductModalOpen(false);
+                }}
               >
-                +
+                {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
               </button>
-            </div>
-          </div>
-
-          {/* Size chips */}
-          <div className={`lsf-sizes ${triedAdd && errors.size ? "is-error" : ""}`}>
-            {(current?.selectSize || []).map((sz) => {
-              const a = sel.size === sz;
-              const p = priceForSize(current?.priceBySize, sz);
-              return (
-                <button
-                  key={sz}
-                  type="button"
-                  className={`lsf-chip ${a ? "is-active" : ""}`}
-                  onClick={() => pickSize(sz)}
-                  disabled={!current}
-                >
-                  <span className="lsf-chip__sz">{sz}</span>
-                  <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="lsf-bottom__actions">
-            <button
-              type="button"
-              className="lsf-btn lsf-btn--ghost"
-              onClick={() => setExtrasOpen(true)}
-              disabled={!current || normalize(current?.category) !== "pizza"}
-              title="Extras (1º gratis)"
-            >
-              Extras <span className="lsf-badge">1º gratis</span>
-            </button>
-
-            <button
-              type="button"
-              className={`lsf-btn lsf-btn--primary ${isReadyToAdd ? "is-ready" : ""} ${
-                triedAdd && (errors.item || errors.size) && shakeAdd ? "is-error pc-shake" : ""
-              }`}
-              onClick={addLine}
-              disabled={!current}
-            >
-              Add • {isReadyToAdd ? `€${linePreview.toFixed(2)}` : "—"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* MODAL EXTRAS */}
-      <Modal open={extrasOpen} title="Extras (1º gratis)" onClose={() => setExtrasOpen(false)}>
-        {!current || normalize(current?.category) !== "pizza" ? (
-          <div className="lsf-muted">Los extras solo aplican a pizzas.</div>
-        ) : extrasAvail.length === 0 ? (
-          <div className="lsf-muted">No hay extras disponibles.</div>
-        ) : (
-          <>
-            <div className="lsf-extrasbar">
-              <div className="lsf-muted">
-                Selecciona extras. El primero seleccionado queda a <b>€0</b>.
               </div>
-              <div className="lsf-muted">
-                Extras por unidad: <b>€{extrasUnitTotal.toFixed(2)}</b>
-              </div>
-            </div>
-
-            <div className="lsf-extraslist">
-              {extrasAvail.map((ex) => {
-                const checked = !!sel.extras[ex.pizzaId];
-                const p = priceForSize(ex.priceBySize, sel.size || "M");
-                return (
-                  <label key={ex.pizzaId} className="lsf-extrasitem">
-                    <input type="checkbox" checked={checked} onChange={() => toggleExtra(ex.pizzaId)} />
-                    <span className="lsf-extrasitem__name">{ex.name}</span>
-                    <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
-                  </label>
-                );
-              })}
-            </div>
-
-            <div className="lsf-modal__foot">
-              <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setExtrasOpen(false)}>
-                Listo
-              </button>
             </div>
           </>
         )}
       </Modal>
 
-      {/* MODAL CARRITO */}
-      <Modal open={cartOpen} title={`Carrito • €${total.toFixed(2)}`} onClose={() => setCartOpen(false)}>
+      {/* CART MODAL */}
+      <Modal open={cartOpen} title={`Carrito • €${total.toFixed(2)}`} onClose={() => setCartOpen(false)} className="lsf-modal--center">
         {cart.length === 0 ? (
           <div className="lsf-muted">Carrito vacío.</div>
         ) : (
@@ -624,9 +706,7 @@ export default function LocalSaleForm({
                     <div className="lsf-cartrow__name">
                       {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
                     </div>
-                    {l.extras?.length ? (
-                      <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
-                    ) : null}
+                    {l.extras?.length ? <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div> : null}
                   </div>
                   <div className="lsf-cartrow__right">
                     <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
@@ -700,10 +780,7 @@ export default function LocalSaleForm({
                         price: c.price,
                         extras: extrasArrayForItem(c),
                       })),
-                      totalProducts: cart.reduce(
-                        (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
-                        0
-                      ),
+                      totalProducts: cart.reduce((t, l) => t + Number(l.price || 0) * Number(l.qty || 1), 0),
                       discounts: 0,
                       total,
                       extras: aggregatedExtras,
@@ -714,8 +791,7 @@ export default function LocalSaleForm({
                     setToast("Sale saved ✓");
                     setCart([]);
                     setCartOpen(false);
-                    closeFlip();
-                    setTimeout(() => onDone(), 1200);
+                    setTimeout(() => onDone(), 600);
                   } catch (e) {
                     console.error(e);
                     alert(e.response?.data?.error || "Error");
