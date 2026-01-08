@@ -582,7 +582,12 @@
 .lsf-badge__icon {
   margin-right: 6px;
 }
-
+.lsf-allergen {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #888;
+  line-height: 1.2;
+}
 
 .lsf-desc__ings {
   font-weight: 900;

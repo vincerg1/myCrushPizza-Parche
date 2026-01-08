@@ -578,20 +578,31 @@ const modalReady = !!current && !!sel.size;
               </div>
 
               <div className="lsf-pm__desc">
-                {current.description ? (
-                  <div className="lsf-muted">{current.description}</div>
-                ) : (
-                  (() => {
-                    const d = buildAutoDescription(current, sel.size || current.selectSize?.[0] || "M");
-                    return (
-                      <div className="lsf-muted">
-                        <div><b>{d.title}</b></div>
-                        <div>{d.lineA}</div>
+                {(() => {
+                  const size = sel.size || current.selectSize?.[0] || "M";
+                  const ingredients = ingredientsForSize(current, size);
+
+                  return (
+                    <div className="lsf-muted">
+                      <div><b>Tu crush sin filtro</b></div>
+
+                      {ingredients.length > 0 ? (
+                        <div>
+                          {ingredients.join(", ")}.
+                        </div>
+                      ) : (
+                        <div>Ingredientes seleccionados a mano.</div>
+                      )}
+
+                      {/* ⚠️ Aviso alérgenos */}
+                      <div className="lsf-allergen">
+                        Puede contener alérgenos. Consulta con nuestro personal si tienes alguna alergia.
                       </div>
-                    );
-                  })()
-                )}
+                    </div>
+                  );
+                })()}
               </div>
+
 
               {/* QTY */}
               <div className="lsf-pm__row">
