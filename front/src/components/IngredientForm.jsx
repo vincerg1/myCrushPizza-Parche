@@ -138,30 +138,38 @@ const persistCategoryOrder = (order) => {
     return !(next.name || next.category);
   };
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateCreate()) return;
+const onSubmit = async (e) => {
+  e.preventDefault();
+  if (!validateCreate()) return;
 
-    const payload = {
-      ...form,
-      name: toUpperSafe(form.name),
-      category: toUpperSafe(form.category),
-      unit: (form.unit ?? "").toString().trim() || null,
-      stock: form.stock === "" ? 0 : Number(form.stock),
-      costPrice: form.costPrice === "" ? null : Number(form.costPrice),
-    };
-
-    try {
-      await api.post("/api/ingredients", payload);
-      const res = await api.get("/api/ingredients");
-      setIngredients(Array.isArray(res.data) ? res.data : []);
-      setForm({ name: "", category: "", stock: "", unit: "", costPrice: "" });
-      setErrors({ name: false, category: false });
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.error || "Error saving ingredient");
-    }
+  const payload = {
+    ...form,
+    name: toUpperSafe(form.name),
+    category: toUpperSafe(form.category),
+    unit: (form.unit ?? "").toString().trim() || null,
+    stock: form.stock === "" ? 0 : Number(form.stock),
+    costPrice: form.costPrice === "" ? null : Number(form.costPrice),
   };
+
+  try {
+    await api.post("/api/ingredients", payload);
+
+    const res = await api.get("/api/ingredients");
+    setIngredients(Array.isArray(res.data) ? res.data : []);
+
+    // 🧹 reset form
+    setForm({ name: "", category: "", stock: "", unit: "", costPrice: "" });
+    setErrors({ name: false, category: false });
+
+    // ✅ CERRAR MODAL AUTOMÁTICAMENTE
+    setCreateOpen(false);
+
+  } catch (err) {
+    console.error(err);
+    alert(err.response?.data?.error || "Error saving ingredient");
+  }
+};
+
 
   const onDelete = async (id, name = "") => {
     const label = name ? ` "${name}"` : "";
