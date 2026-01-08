@@ -265,7 +265,10 @@ export default function PizzaCreator() {
       priceBySize: { ...p.priceBySize, [sz]: e.target.value },
   }));
 
-  const onImageSelect = (e) => setForm((p) => ({ ...p, imageFile: e.target.files?.[0] || null }));
+  const onImageSelect = (e) =>
+  setForm((p) => ({ ...p, imageFile: e.target.files?.[0] || null }));
+
+setExistingImage(null); 
 
   /* ---------- ingredientes (arma tu pizza) ---------- */
   const addIngredient = () => {
