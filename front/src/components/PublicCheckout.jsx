@@ -868,7 +868,7 @@ function CouponInfoModal({ open, onClose, data }) {
             setTriedNext(false);
           }}
         >
-          🧍‍♂️ Recoger en tienda
+          Recoger en tienda
         </button>
 
         <button
@@ -880,7 +880,7 @@ function CouponInfoModal({ open, onClose, data }) {
             setTriedNext(false);
           }}
         >
-          🏍️ Enviar a domicilio
+          Enviar a domicilio
         </button>
       </div>
     </div>
