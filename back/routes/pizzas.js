@@ -48,11 +48,24 @@ module.exports = function (prisma) {
   /* POST /api/pizzas */
   router.post("/", upload.single("image"), async (req, res) => {
     try {
-      const { name, category, sizes, priceBySize, cookingMethod, ingredients } =
-        req.body;
+      const { name, category, sizes, priceBySize, cookingMethod, ingredients } = req.body;
 
       if (!name || !category) {
         return res.status(400).json({ error: "Name and category required" });
+      }
+
+      // 🛡️ SAFE PARSE
+      let parsedSizes = [];
+      let parsedPrices = {};
+      let parsedIngredients = [];
+
+      try {
+        parsedSizes = sizes ? JSON.parse(sizes) : [];
+        parsedPrices = priceBySize ? JSON.parse(priceBySize) : {};
+        parsedIngredients = ingredients ? JSON.parse(ingredients) : [];
+      } catch (e) {
+        console.error("JSON parse error:", req.body);
+        return res.status(400).json({ error: "Invalid JSON payload" });
       }
 
       let image = null;
@@ -67,8 +80,7 @@ module.exports = function (prisma) {
         imagePublicId = uploadRes.public_id;
       }
 
-      const ingArr = JSON.parse(ingredients || "[]");
-      const ingredientRelations = ingArr
+      const ingredientRelations = parsedIngredients
         .filter((x) => Number(x?.id))
         .map((x) => ({
           ingredient: { connect: { id: Number(x.id) } },
@@ -79,8 +91,8 @@ module.exports = function (prisma) {
         data: {
           name: name.trim(),
           category,
-          selectSize: JSON.parse(sizes || "[]"),
-          priceBySize: JSON.parse(priceBySize || "{}"),
+          selectSize: parsedSizes,
+          priceBySize: parsedPrices,
           cookingMethod: cookingMethod || null,
           image,
           imagePublicId,
@@ -93,7 +105,7 @@ module.exports = function (prisma) {
 
       res.json(pizza);
     } catch (err) {
-      console.error(err);
+      console.error("POST /pizzas error:", err);
       res.status(400).json({ error: err.message });
     }
   });
@@ -102,19 +114,28 @@ module.exports = function (prisma) {
   router.put("/:id", upload.single("image"), async (req, res) => {
     try {
       const id = Number(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid id" });
 
       const existing = await prisma.menuPizza.findUnique({ where: { id } });
       if (!existing) return res.status(404).json({ error: "Pizza not found" });
 
-      const parsedSizes = JSON.parse(req.body.sizes || "[]");
-      const parsedPrices = JSON.parse(req.body.priceBySize || "{}");
-      const parsedIngredients = JSON.parse(req.body.ingredients || "[]");
+      let parsedSizes = [];
+      let parsedPrices = {};
+      let parsedIngredients = [];
+
+      try {
+        parsedSizes = req.body.sizes ? JSON.parse(req.body.sizes) : [];
+        parsedPrices = req.body.priceBySize ? JSON.parse(req.body.priceBySize) : {};
+        parsedIngredients = req.body.ingredients ? JSON.parse(req.body.ingredients) : [];
+      } catch (e) {
+        console.error("JSON parse error:", req.body);
+        return res.status(400).json({ error: "Invalid JSON payload" });
+      }
 
       let image = existing.image;
       let imagePublicId = existing.imagePublicId;
 
       if (req.file) {
-        // 🔥 borrar imagen vieja
         if (existing.imagePublicId) {
           await cloudinary.uploader.destroy(existing.imagePublicId);
         }
@@ -161,7 +182,7 @@ module.exports = function (prisma) {
 
       res.json({ ok: true, id });
     } catch (err) {
-      console.error(err);
+      console.error("PUT /pizzas error:", err);
       res.status(400).json({ error: err.message });
     }
   });
@@ -179,7 +200,7 @@ module.exports = function (prisma) {
       await prisma.menuPizza.delete({ where: { id } });
       res.json({ ok: true });
     } catch (err) {
-      console.error(err);
+      console.error("DELETE /pizzas error:", err);
       res.status(400).json({ error: err.message });
     }
   });
