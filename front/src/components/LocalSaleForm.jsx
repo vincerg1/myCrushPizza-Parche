@@ -115,16 +115,8 @@ const ingredientsForSize = (item, size = "") => {
   const list = parseMaybeJSON(raw, []);
   if (!Array.isArray(list)) return [];
 
-  const hasQtyForSize = (row) => {
-    const qRaw = row?.qtyBySize ?? row?.qty_by_size ?? row?.qtySize ?? {};
-    const q = parseMaybeJSON(qRaw, {});
-    if (size && q && q[size] != null) return num(q[size]) > 0;
-    return Object.values(q || {}).some((v) => num(v) > 0);
-  };
-
   return list
-    .filter(hasQtyForSize)
-    .map((r) => capWords(r?.name || "")) // ojo: si backend no manda name, quedará vacío
+    .map((r) => capWords(r?.name || ""))
     .filter(Boolean);
 };
 const seededPick = (seed, arr) => {
@@ -150,14 +142,22 @@ const CRUSH_CLOSERS = [
   "Te enamora sin avisar.",
 ];
 
-const buildAutoDescription = (item, size = "") => {
-  const ings = ingredientsForSize(item, size);
-  const lineA = ings.length ? `${joinWithY(ings)}.` : "Ingredientes seleccionados a mano.";
+const buildAutoDescription = (item) => {
+  const ings = Array.isArray(item?.ingredients)
+    ? item.ingredients.map((i) => i.name).filter(Boolean)
+    : [];
+
+  const lineA = ings.length
+    ? `${joinWithY(ings)}.`
+    : "Ingredientes seleccionados a mano.";
+
   const title = seededPick(item?.pizzaId, CRUSH_TITLES);
   const hook = seededPick(item?.pizzaId + 7, CRUSH_HOOKS);
   const close = seededPick(item?.pizzaId + 13, CRUSH_CLOSERS);
+
   return { lineA, title, hook, close };
 };
+
 function getPizzaBadge(it) {
   const seed = Number(it.pizzaId) || 1;
 
@@ -577,31 +577,36 @@ const modalReady = !!current && !!sel.size;
                 {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
               </div>
 
-              <div className="lsf-pm__desc">
-                {(() => {
-                  const size = sel.size || current.selectSize?.[0] || "M";
-                  const ingredients = ingredientsForSize(current, size);
+       <div className="lsf-pm__desc">
+          {(() => {
+            const ingredients =
+              Array.isArray(current.ingredients) && current.ingredients.length
+                ? current.ingredients.map((i) => i.name)
+                : [];
 
-                  return (
-                    <div className="lsf-muted">
-                      <div><b>Tu crush sin filtro</b></div>
+            return (
+          <div className="lsf-muted">
+            <div><b>Tu crush sin filtro</b></div>
 
-                      {ingredients.length > 0 ? (
-                        <div>
-                          {ingredients.join(", ")}.
-                        </div>
-                      ) : (
-                        <div>Ingredientes seleccionados a mano.</div>
-                      )}
-
-                      {/* ⚠️ Aviso alérgenos */}
-                      <div className="lsf-allergen">
-                        Puede contener alérgenos. Consulta con nuestro personal si tienes alguna alergia.
-                      </div>
-                    </div>
-                  );
-                })()}
+            {ingredients.length > 0 ? (
+              <div>
+                Elaborada con {ingredients.join(", ")}.
               </div>
+            ) : (
+              <div>
+                Ingredientes seleccionados a mano.
+              </div>
+            )}
+
+            {/* ⚠️ Aviso alérgenos */}
+            <div className="lsf-allergen">
+              ⚠️ Puede contener alérgenos. Consulta con nuestro personal si tienes alguna alergia.
+            </div>
+          </div>
+            );
+          })()}
+        </div>
+
 
 
               {/* QTY */}
