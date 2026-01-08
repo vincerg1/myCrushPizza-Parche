@@ -123,7 +123,8 @@ model MenuPizza {
   selectSize    Json
   priceBySize   Json
   cookingMethod String?
-  image         String?
+  image         String?        // secure_url
+  imagePublicId String?        // 👈 CLAVE para Cloudinary
   status        ProductStatus         @default(ACTIVE)
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
