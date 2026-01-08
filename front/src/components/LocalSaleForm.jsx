@@ -270,10 +270,21 @@ export default function LocalSaleForm({
     if (!cat || !catExists) setCat(categories[0]);
   }, [categories, cat]);
 
-  const itemsAvail = useMemo(() => {
-    if (!cat) return [];
-    return menu.filter((m) => !isExtraItem(m) && normalize(m.category) === normalize(cat));
-  }, [menu, cat]);
+const itemsAvail = useMemo(() => {
+  if (!cat) return [];
+
+  // 1) filtra por categoría (sin extras)
+  const filtered = menu.filter(
+    (m) => !isExtraItem(m) && normalize(m.category) === normalize(cat)
+  );
+
+  // 2) ordena por precio (mayor → menor)
+  return [...filtered].sort((a, b) => {
+    const pa = priceForSize(a.priceBySize, a.selectSize?.[0] || "M");
+    const pb = priceForSize(b.priceBySize, b.selectSize?.[0] || "M");
+    return pb - pa;
+  });
+}, [menu, cat]);
 
   const extrasAvail = useMemo(() => menu.filter((m) => isExtraItem(m)), [menu]);
 
