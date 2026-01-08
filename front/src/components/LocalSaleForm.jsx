@@ -94,13 +94,20 @@ const coerceRow = (row) => ({
   isExtra: row.isExtra,
 });
 
-const capWords = (s = "") =>
-  String(s)
+const capWords = (s = "") => {
+  const lowerWords = ["de", "del", "y", "con", "al"];
+
+  return String(s)
     .trim()
+    .toLowerCase()
     .replace(/\s+/g, " ")
     .split(" ")
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .map((w, i) => {
+      if (i !== 0 && lowerWords.includes(w)) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    })
     .join(" ");
+};
 
 const displayCategory = (c) => capWords(String(c || ""));
 const joinWithY = (arr = []) => {
@@ -564,161 +571,181 @@ const modalReady = !!current && !!sel.size;
 
 
       {/* PRODUCT MODAL (centrado) */}
-      <Modal
-        open={productModalOpen}
-        title={current?.name || "Producto"}
-        onClose={() => setProductModalOpen(false)}
-        className="lsf-modal--center"
-      >
-        {!current ? null : (
-          <>
-            <div className="lsf-pm">
-              <div className="lsf-pm__hero">
-                {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
-              </div>
+<Modal
+  open={productModalOpen}
+  title={current?.name || "Producto"}
+  onClose={() => setProductModalOpen(false)}
+  className="lsf-modal--center"
+>
+  {!current ? null : (
+    <>
+      <div className="lsf-pm">
+        <div className="lsf-pm__hero">
+          {current.image ? (
+            <img src={current.image} alt={current.name} />
+          ) : (
+            <div className="lsf-pm__ph">🍕</div>
+          )}
+        </div>
 
-       <div className="lsf-pm__desc">
+        {/* DESCRIPCIÓN */}
+        <div className="lsf-pm__desc">
           {(() => {
             const ingredients =
               Array.isArray(current.ingredients) && current.ingredients.length
-                ? current.ingredients.map((i) => i.name)
+                ? current.ingredients.map((i) => capWords(i.name))
                 : [];
 
+            const closer = seededPick(
+              current.pizzaId + 13,
+              CRUSH_CLOSERS
+            );
+
             return (
-          <div className="lsf-muted">
-            <div><b>Tu crush sin filtro</b></div>
+              <>
+                <div className="lsf-muted">
+                  <div><b>Tu crush sin filtro</b></div>
 
-            {ingredients.length > 0 ? (
-              <div>
-                Elaborada con {ingredients.join(", ")}.
-              </div>
-            ) : (
-              <div>
-                Ingredientes seleccionados a mano.
-              </div>
-            )}
+                  {ingredients.length > 0 ? (
+                    <div>
+                      {joinWithY(ingredients)}.{" "}
+                      <span className="lsf-closer-inline">{closer}</span>
+                    </div>
+                  ) : (
+                    <div>Ingredientes seleccionados a mano.</div>
+                  )}
+                </div>
 
-            {/* ⚠️ Aviso alérgenos */}
-            <div className="lsf-allergen">
-              ⚠️ Puede contener alérgenos. Consulta con nuestro personal si tienes alguna alergia.
-            </div>
-          </div>
+                {/* ⚠️ ALÉRGENOS */}
+                <div className="lsf-allergen">
+                  ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal
+                  si tienes alguna alergia.
+                </div>
+              </>
             );
           })()}
         </div>
 
+        {/* QTY */}
+        <div className="lsf-pm__row">
+          <div className="lsf-pm__label">Qty</div>
+          <div className="lsf-qty">
+            <button
+              type="button"
+              className="lsf-qty__btn"
+              onClick={decQty}
+              disabled={sel.qty <= 1}
+            >
+              –
+            </button>
+            <div className="lsf-qty__val">{sel.qty}</div>
+            <button
+              type="button"
+              className="lsf-qty__btn"
+              onClick={incQty}
+              disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
+            >
+              +
+            </button>
+          </div>
+        </div>
 
-
-              {/* QTY */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Qty</div>
-                <div className="lsf-qty">
-                  <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
-                    –
-                  </button>
-                  <div className="lsf-qty__val">{sel.qty}</div>
-                  <button
-                    type="button"
-                    className="lsf-qty__btn"
-                    onClick={incQty}
-                    disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              {/* SIZES */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Size</div>
-                <div className="lsf-sizes">
-                  {(current.selectSize || []).map((sz) => {
-                    const a = sel.size === sz;
-                    const p = priceForSize(current.priceBySize, sz);
-                    return (
-                      <button
-                        key={sz}
-                        type="button"
-                        className={`lsf-chip ${a ? "is-active" : ""}`}
-                        onClick={() => pickSize(sz)}
-                      >
-                        <span className="lsf-chip__sz">{sz}</span>
-                        <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* EXTRAS */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Extras</div>
-                {extrasAvail.length === 0 ? (
-                  <div className="lsf-muted">No hay extras.</div>
-                ) : (
-                <div className="lsf-extraslist">
-                  {[...extrasAvail]
-                    .sort((a, b) => {
-                      const pa = priceForSize(
-                        a.priceBySize,
-                        sel.size || current.selectSize?.[0] || "M"
-                      );
-                      const pb = priceForSize(
-                        b.priceBySize,
-                        sel.size || current.selectSize?.[0] || "M"
-                      );
-                      return pb - pa; // de más caro a más barato
-                    })
-                    .map((ex) => {
-                      const checked = !!sel.extras[ex.pizzaId];
-                      const p = priceForSize(
-                        ex.priceBySize,
-                        sel.size || current.selectSize?.[0] || "M"
-                      );
-
-                      return (
-                        <label key={ex.pizzaId} className="lsf-extrasitem">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleExtra(ex.pizzaId)}
-                          />
-                          <span className="lsf-extrasitem__name">{ex.name}</span>
-                          <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
-                        </label>
-                      );
-                    })}
-                </div>
-
-                )}
-              </div>
-
-              {/* ACTIONS */}
-              <div className="lsf-pm__actions">
+        {/* SIZES */}
+        <div className="lsf-pm__row">
+          <div className="lsf-pm__label">Size</div>
+          <div className="lsf-sizes">
+            {(current.selectSize || []).map((sz) => {
+              const a = sel.size === sz;
+              const p = priceForSize(current.priceBySize, sz);
+              return (
                 <button
+                  key={sz}
                   type="button"
-                  className="lsf-btn lsf-btn--ghost"
-                  onClick={() => setProductModalOpen(false)}
+                  className={`lsf-chip ${a ? "is-active" : ""}`}
+                  onClick={() => pickSize(sz)}
                 >
-                  Continue
+                  <span className="lsf-chip__sz">{sz}</span>
+                  <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
                 </button>
+              );
+            })}
+          </div>
+        </div>
 
-              <button
-                type="button"
-                className="lsf-btn lsf-btn--primary"
-                disabled={!modalReady}
-                onClick={() => {
-                  addLine();
-                  setProductModalOpen(false);
-                }}
-              >
-                {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
-              </button>
-              </div>
+        {/* EXTRAS */}
+        <div className="lsf-pm__row">
+          <div className="lsf-pm__label">Extras</div>
+
+          {extrasAvail.length === 0 ? (
+            <div className="lsf-muted">No hay extras.</div>
+          ) : (
+            <div className="lsf-extraslist">
+              {[...extrasAvail]
+                .sort((a, b) => {
+                  const pa = priceForSize(
+                    a.priceBySize,
+                    sel.size || current.selectSize?.[0] || "M"
+                  );
+                  const pb = priceForSize(
+                    b.priceBySize,
+                    sel.size || current.selectSize?.[0] || "M"
+                  );
+                  return pb - pa;
+                })
+                .map((ex) => {
+                  const checked = !!sel.extras[ex.pizzaId];
+                  const p = priceForSize(
+                    ex.priceBySize,
+                    sel.size || current.selectSize?.[0] || "M"
+                  );
+
+                  return (
+                    <label key={ex.pizzaId} className="lsf-extrasitem">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleExtra(ex.pizzaId)}
+                      />
+                      <span className="lsf-extrasitem__name">{ex.name}</span>
+                      <span className="lsf-extrasitem__price">
+                        +€{p.toFixed(2)}
+                      </span>
+                    </label>
+                  );
+                })}
             </div>
-          </>
-        )}
-      </Modal>
+          )}
+        </div>
+
+        {/* ACTIONS */}
+        <div className="lsf-pm__actions">
+          <button
+            type="button"
+            className="lsf-btn lsf-btn--ghost"
+            onClick={() => setProductModalOpen(false)}
+          >
+            Continue
+          </button>
+
+          <button
+            type="button"
+            className="lsf-btn lsf-btn--primary"
+            disabled={!modalReady}
+            onClick={() => {
+              addLine();
+              setProductModalOpen(false);
+            }}
+          >
+            {modalReady
+              ? `Add to cart · €${modalTotal.toFixed(2)}`
+              : "Selec Size"}
+          </button>
+        </div>
+      </div>
+    </>
+  )}
+</Modal>
+
 
       {/* CART MODAL */}
       <Modal open={cartOpen} title={`Carrito • €${total.toFixed(2)}`} onClose={() => setCartOpen(false)} className="lsf-modal--center">

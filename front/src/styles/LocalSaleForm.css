@@ -364,6 +364,13 @@
 
 .lsf-muted {
   opacity: 0.75;
+    margin-top: 6px;          /* separa del título */
+  font-style: italic;       /* tono descriptivo */
+  color: #444;
+  line-height: 1.4;
+}
+.lsf-muted > div:first-child {
+  margin-bottom: 2px;
 }
 
 /* Extras list */
@@ -583,6 +590,7 @@
   margin-right: 6px;
 }
 .lsf-allergen {
+    opacity: 0.75;
   margin-top: 6px;
   font-size: 0.75rem;
   color: #888;
@@ -613,6 +621,21 @@
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.lsf-allergen {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #fff6d8;          /* amarillo suave */
+  border-left: 4px solid #f5b400;
+  border-radius: 6px;
+
+  font-size: 12px;
+  line-height: 1.35;
+  color: #6b5500;
+}
+
+.lsf-allergen b {
+  font-weight: 600;
 }
 
 /* ───── Add button más marcado + pulso cuando listo ───── */
