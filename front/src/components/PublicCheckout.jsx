@@ -258,7 +258,7 @@ const onPlaceChanged = useCallback(async () => {
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
   const COUPON_GROUPS = [3, 4, 4];
-
+const [ingredientQuery, setIngredientQuery] = useState("");
   const [showCouponInfo, setShowCouponInfo] = useState(false);
 
   useEffect(() => {
@@ -751,107 +751,105 @@ const checkCoupon = useCallback(async () => {
   }
 
   // ===== Modal de cupón con contador destacado =====
-function CouponInfoModal({ open, onClose, data }) {
-  const [countdown, setCountdown] = useState("");
-  const [secondsLeft, setSecondsLeft] = useState(null);
+  function CouponInfoModal({ open, onClose, data }) {
+    const [countdown, setCountdown] = useState("");
+    const [secondsLeft, setSecondsLeft] = useState(null);
 
-  useEffect(() => {
-    if (!open || !data?.expiresAt) return;
-    let t = null;
-    const tick = () => {
-      const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
-      const sLeft = Math.floor(leftMs / 1000);
-      setSecondsLeft(sLeft);
+    useEffect(() => {
+      if (!open || !data?.expiresAt) return;
+      let t = null;
+      const tick = () => {
+        const leftMs = Math.max(0, new Date(data.expiresAt).getTime() - Date.now());
+        const sLeft = Math.floor(leftMs / 1000);
+        setSecondsLeft(sLeft);
 
-      const h = Math.floor(sLeft / 3600);
-      const m = Math.floor((sLeft % 3600) / 60);
-      const s = sLeft % 60;
-      setCountdown(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-      );
-    };
-    tick();
-    t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [open, data?.expiresAt]);
+        const h = Math.floor(sLeft / 3600);
+        const m = Math.floor((sLeft % 3600) / 60);
+        const s = sLeft % 60;
+        setCountdown(
+          `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+        );
+      };
+      tick();
+      t = setInterval(tick, 1000);
+      return () => clearInterval(t);
+    }, [open, data?.expiresAt]);
 
-  if (!open || !data) return null;
+    if (!open || !data) return null;
 
-  const severity =
-    secondsLeft == null ? "ok" :
-    secondsLeft <= 15 * 60 ? "critical" :
-    secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
+    const severity =
+      secondsLeft == null ? "ok" :
+      secondsLeft <= 15 * 60 ? "critical" :
+      secondsLeft <= 2 * 60 * 60 ? "warning" : "ok";
 
-  const variant =
-    secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
+    const variant =
+      secondsLeft != null && secondsLeft > 6 * 60 * 60 ? "compact" : "normal";
 
-  const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
+    const expiresDate = data.expiresAt ? new Date(data.expiresAt) : null;
 
-  // Texto de beneficio según el tipo del cupón
-  const benefitText =
-    data.kind === "AMOUNT"
-      ? `Descuento fijo (−€${Number(data.amount || 0).toFixed(2)})`
-      : `Descuento ${Number(data.percent || 0)}%${
-          data.maxAmount != null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""
-        }`;
+    // Texto de beneficio según el tipo del cupón
+    const benefitText =
+      data.kind === "AMOUNT"
+        ? `Descuento fijo (−€${Number(data.amount || 0).toFixed(2)})`
+        : `Descuento ${Number(data.percent || 0)}%${
+            data.maxAmount != null ? ` (tope €${Number(data.maxAmount).toFixed(2)})` : ""
+          }`;
 
-  return (
-    <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
-      <div className="pc-content">
-        <p style={{ marginBottom: 6 }}>
-          <b>Cupón:</b> <code>{data.code}</code>
-        </p>
+    return (
+      <BaseModal open={open} title="Condiciones de la oferta" onClose={onClose} width={560} hideFooter>
+        <div className="pc-content">
+          <p style={{ marginBottom: 6 }}>
+            <b>Cupón:</b> <code>{data.code}</code>
+          </p>
 
-        <p style={{ marginTop: 0 }}>
-          <b>Beneficio:</b> {benefitText}
-        </p>
+          <p style={{ marginTop: 0 }}>
+            <b>Beneficio:</b> {benefitText}
+          </p>
 
-        {expiresDate && (
-          <>
-            <p style={{ marginBottom: 10 }}>
-              <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
-            </p>
-            <div
-              className={`pc-timer pc-timer--${variant} pc-timer--${severity}`}
-              role="status"
-              aria-live="polite"
+          {expiresDate && (
+            <>
+              <p style={{ marginBottom: 10 }}>
+                <b>Caduca:</b> {expiresDate.toLocaleString("es-ES")}
+              </p>
+              <div
+                className={`pc-timer pc-timer--${variant} pc-timer--${severity}`}
+                role="status"
+                aria-live="polite"
+              >
+                <div className="pc-timer__label">Quedan</div>
+                <div className="pc-timer__value">{countdown || "--:--:--"}</div>
+              </div>
+            </>
+          )}
+
+          <h4>Condiciones</h4>
+          <ul>
+            <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
+            <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
+            <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
+            <li>El cupón se marca como usado al confirmar el pago.</li>
+          </ul>
+
+          <div className="pc-actions" style={{ marginTop: 12 }}>
+            <button className="pc-btn" onClick={onClose}>Entendido</button>
+            <button
+              className="pc-btn pc-btn-ghost push"
+              onClick={() => {
+                // estas setters existen en el componente padre
+                setCoupon(null);
+                setCouponOk(false);
+                setCouponCode("");
+                setCouponMsg("");
+                onClose();
+              }}
             >
-              <div className="pc-timer__label">Quedan</div>
-              <div className="pc-timer__value">{countdown || "--:--:--"}</div>
-            </div>
-          </>
-        )}
-
-        <h4>Condiciones</h4>
-        <ul>
-          <li>Válido por <b>1 uso</b> y <b>no acumulable</b> con otros cupones.</li>
-          <li>Se aplica sobre <b>productos</b> (no sobre gastos de envío).</li>
-          <li>Vigencia: <b>24&nbsp;h desde que lo obtuviste</b> (mini-juego).</li>
-          <li>El cupón se marca como usado al confirmar el pago.</li>
-        </ul>
-
-        <div className="pc-actions" style={{ marginTop: 12 }}>
-          <button className="pc-btn" onClick={onClose}>Entendido</button>
-          <button
-            className="pc-btn pc-btn-ghost push"
-            onClick={() => {
-              // estas setters existen en el componente padre
-              setCoupon(null);
-              setCouponOk(false);
-              setCouponCode("");
-              setCouponMsg("");
-              onClose();
-            }}
-          >
-            Quitar cupón
-          </button>
+              Quitar cupón
+            </button>
+          </div>
         </div>
-      </div>
-    </BaseModal>
-  );
-}
-
-
+      </BaseModal>
+    );
+  }
   // Paso 0: escoger modo
   const chooseMode = (
     <div className="pc-card pc-card--hero">
@@ -885,7 +883,6 @@ function CouponInfoModal({ open, onClose, data }) {
       </div>
     </div>
   );
-
   const deliveryLocateView = (
     <div className="pc-card">
       <div className="pc-actions" style={{ marginBottom: 8 }}>
@@ -1012,7 +1009,6 @@ function CouponInfoModal({ open, onClose, data }) {
       )}
     </div>
   );
-
   const pickupLocateView = (
     <div className="pc-card">
       <div className="pc-actions" style={{ marginBottom: 8 }}>
@@ -1135,38 +1131,63 @@ function CouponInfoModal({ open, onClose, data }) {
       )}
     </div>
   );
-
   // Paso 2: carrito
-  const orderView = (
-    <div className="pc-card">
-      <div className="pc-actions" style={{ marginBottom: 8 }}>
-        <button className="pc-btn pc-btn-ghost push" onClick={() => setStep("locate")} aria-label="Volver a seleccionar tienda/dirección">
-          ← volver
-        </button>
-      </div>
+// ✅ orderView (PublicCheckout.jsx) — reemplaza SOLO este bloque
 
-      <LocalSaleForm
-        forcedStoreId={mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId) || undefined}
-        compact
-        customer={customer}
-        onConfirmCart={(data) => {
-          const sid = mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId);
-          const sel = sid ? getStoreById(sid) : null;
-          const addr = sid ? storeAddrById[sid] : undefined;
-
-          setPending({
-            ...data,
-            customer,
-            storeId: sid ?? data.storeId,
-            storeName: sel?.storeName || sel?.name || "",
-            storeAddress: addr,
-          });
-          setStep("review");
+const orderView = (
+  <div className="pc-card">
+    {/* BUSCADOR + VOLVER (arriba, alineado) */}
+    <div className="pc-actions" style={{ marginBottom: 8, display: "flex", gap: 10, alignItems: "center" }}>
+      <input
+        className="pc-input"
+        placeholder="🔍 Buscar ingrediente…"
+        value={ingredientQuery}
+        onChange={(e) => setIngredientQuery(e.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+        style={{
+          flex: 1,
+          textTransform: "none", // importante: NO mayúsculas
         }}
-        onDone={() => {}}
       />
+
+      <button
+        className="pc-btn pc-btn-ghost"
+        onClick={() => {
+          setIngredientQuery(""); // limpia búsqueda al volver
+          setStep("locate");
+        }}
+        aria-label="Volver a seleccionar tienda/dirección"
+      >
+        ← volver
+      </button>
     </div>
-  );
+
+    <LocalSaleForm
+      forcedStoreId={mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId) || undefined}
+      compact
+      customer={customer}
+      ingredientQuery={ingredientQuery}          // ✅ pasa el buscador al grid
+      onClearIngredientQuery={() => setIngredientQuery("")} // ✅ opcional, por si quieres limpiar desde dentro
+      onConfirmCart={(data) => {
+        const sid = mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId);
+        const sel = sid ? getStoreById(sid) : null;
+        const addr = sid ? storeAddrById[sid] : undefined;
+
+        setPending({
+          ...data,
+          customer,
+          storeId: sid ?? data.storeId,
+          storeName: sel?.storeName || sel?.name || "",
+          storeAddress: addr,
+        });
+        setStep("review");
+      }}
+      onDone={() => {}}
+    />
+  </div>
+);
+
 
   const parseJsonMaybe = (v) => {
     if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
@@ -1185,7 +1206,6 @@ function CouponInfoModal({ open, onClose, data }) {
     label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
     amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
   });
-
   const buildItemsForApi = (lines = []) =>
     (Array.isArray(lines) ? lines : [])
       .map((x) => {
@@ -1220,7 +1240,6 @@ const toArrayLocal = (v) => {
   if (typeof p === "object") return Object.values(p).length ? Object.values(p) : [p];
   return [p];
 };
-
 const lineTotalWithExtras = (it) => {
   const qty = safeNumber(it?.qty ?? it?.quantity ?? 1) || 1;
   const unitBase = safeNumber(it?.price ?? it?.unitPrice ?? it?.unit_price);
@@ -1262,7 +1281,7 @@ const computeProductsSubtotal = (items = []) =>
   const reviewNetProducts = Math.max(0, productsSubtotal - discountTotal);
   const reviewTotal = reviewNetProducts + deliveryFeeTotal;
 // === COUPON REASONS UI (helpers de mensajes) ===
-// === COUPON REASONS UI (helpers de mensajes) ===
+
 const mmToHHMM = (m) => {
   if (m == null) return null;
   const h = String(Math.floor(m / 60)).padStart(2,'0');

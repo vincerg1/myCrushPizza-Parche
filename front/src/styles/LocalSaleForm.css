@@ -532,7 +532,6 @@
   transition: transform .45s;
 }
 .lsf-flip.is-flipped .lsf-flip__inner { transform: rotateY(180deg); }
-
 .lsf-flip__front, .lsf-flip__back {
   position: absolute; inset: 0;
   backface-visibility: hidden;
@@ -543,7 +542,6 @@
   text-align: center;
   max-width: 240px;
 }
-
 .lsf-flip__front { display: grid; gap: 8px; }
 .lsf-flip__back {
   transform: rotateY(180deg);
@@ -596,7 +594,6 @@
   color: #888;
   line-height: 1.2;
 }
-
 .lsf-desc__ings {
   font-weight: 900;
   font-size: 12px;
@@ -613,7 +610,32 @@
   font-size: 11px;
   opacity: 0.85;
 }
-
+.lsf-searchRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  padding:10px 12px;
+}
+.lsf-searchInput{
+  flex:1;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.12);
+  outline:none;
+  font-size:14px;
+}
+.lsf-searchInput:focus{
+  border-color: rgba(0,0,0,.25);
+}
+.lsf-backBtn{
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+  cursor:pointer;
+  font-weight:600;
+  white-space:nowrap;
+}
 .lsf-desc__close{
   font-weight: 800;
   opacity: .8;
@@ -628,15 +650,66 @@
   background: #fff6d8;          /* amarillo suave */
   border-left: 4px solid #f5b400;
   border-radius: 6px;
-
   font-size: 12px;
   line-height: 1.35;
   color: #6b5500;
 }
-
 .lsf-allergen b {
   font-weight: 600;
 }
+.lsf-flip__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: linear-gradient(
+    160deg,
+    rgba(252, 236, 250, 0.95),
+    rgba(255,240,245,0.9)
+  );
+  border: 2px solid hsla(338, 95%, 50%, 0.934);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 2px rgba(249, 115, 164, 0.12),
+    0 12px 30px rgba(43, 35, 38, 0.25);
+}
+.lsf-flip-desc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  text-align: center;
+}
+.lsf-flip-title {
+  display: inline-block;
+  padding: 4px 10px;
+  margin: 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: #f92672;
+}
+.lsf-flip-line {
+  max-width: 90%;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #111;
+  text-align: center;
+}
+.lsf-flip-closer {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f92672;
+}
+
+
 
 /* ───── Add button más marcado + pulso cuando listo ───── */
 .lsf-btn--primary {

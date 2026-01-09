@@ -1,11 +1,3 @@
-// LocalSaleForm.jsx (versión completa basada en tu estado actual)
-// - Tabs SIN "extras" (extras solo en Product Modal)
-// - Botón "+" en card abre modal centrado
-// - Al añadir al carrito: el "+" del card pasa a "✔️" si ese producto ya está en carrito
-// - Modal: imagen + descripción + qty + sizes + checklist de extras + precio dinámico
-// - SIN “primer extra gratis” (extras suman normal)
-// - Mantiene Modal de carrito accesible desde el botón 🛒 del header
-
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
 import api from "../setupAxios";
@@ -14,7 +6,14 @@ import "../styles/LocalSaleForm.css";
 
 const normalize = (c) => String(c || "").trim().toLowerCase();
 
-/* Toast vía portal */
+// ✅ normaliza texto para buscar (minúsculas + sin tildes)
+const normText = (s = "") =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+
 function Toast({ msg, onClose }) {
   if (!msg) return null;
   return ReactDOM.createPortal(
@@ -26,7 +25,6 @@ function Toast({ msg, onClose }) {
   );
 }
 
-/* Modal simple (portal) */
 function Modal({ open, title, onClose, children, className = "" }) {
   if (!open) return null;
   return ReactDOM.createPortal(
@@ -39,7 +37,12 @@ function Modal({ open, title, onClose, children, className = "" }) {
       <div className="lsf-modal__panel" onMouseDown={(e) => e.stopPropagation()}>
         <div className="lsf-modal__head">
           <div className="lsf-modal__title">{title}</div>
-          <button type="button" className="lsf-iconbtn" onClick={onClose} aria-label="Cerrar">
+          <button
+            type="button"
+            className="lsf-iconbtn"
+            onClick={onClose}
+            aria-label="Cerrar"
+          >
             ✕
           </button>
         </div>
@@ -79,6 +82,7 @@ const priceForSize = (priceBySize = {}, size = "M") => {
   }
   return 0;
 };
+
 const coerceRow = (row) => ({
   pizzaId: row.pizzaId ?? row.id,
   name: row.name,
@@ -96,7 +100,6 @@ const coerceRow = (row) => ({
 
 const capWords = (s = "") => {
   const lowerWords = ["de", "del", "y", "con", "al"];
-
   return String(s)
     .trim()
     .toLowerCase()
@@ -110,6 +113,7 @@ const capWords = (s = "") => {
 };
 
 const displayCategory = (c) => capWords(String(c || ""));
+
 const joinWithY = (arr = []) => {
   const clean = arr.filter(Boolean);
   if (clean.length === 0) return "";
@@ -117,29 +121,12 @@ const joinWithY = (arr = []) => {
   if (clean.length === 2) return `${clean[0]} y ${clean[1]}`;
   return `${clean.slice(0, -1).join(", ")} y ${clean[clean.length - 1]}`;
 };
-const ingredientsForSize = (item, size = "") => {
-  const raw = item?.ingredients;
-  const list = parseMaybeJSON(raw, []);
-  if (!Array.isArray(list)) return [];
 
-  return list
-    .map((r) => capWords(r?.name || ""))
-    .filter(Boolean);
-};
 const seededPick = (seed, arr) => {
   if (!arr.length) return "";
   const n = Math.abs(Number(seed) || 1);
   return arr[n % arr.length];
 };
-
-const CRUSH_TITLES = [
-  "Tu crush más salvaje",
-  "Tu crush irresistible",
-  "Tu crush sin filtro",
-  "Tu crush de verdad",
-  "Tu crush más hot",
-];
-const CRUSH_HOOKS = ["Un flechazo.", "Exquisita.", "Atrevida.", "Brutal.", "Wow."];
 const CRUSH_CLOSERS = [
   "First taste, first love.",
   "Sabor que no se olvida.",
@@ -149,65 +136,47 @@ const CRUSH_CLOSERS = [
   "Te enamora sin avisar.",
 ];
 
-const buildAutoDescription = (item) => {
+const buildPizzaLine = (item) => {
   const ings = Array.isArray(item?.ingredients)
-    ? item.ingredients.map((i) => i.name).filter(Boolean)
+    ? item.ingredients.map((i) => capWords(i?.name)).filter(Boolean)
     : [];
 
-  const lineA = ings.length
+  const line = ings.length
     ? `${joinWithY(ings)}.`
     : "Ingredientes seleccionados a mano.";
 
-  const title = seededPick(item?.pizzaId, CRUSH_TITLES);
-  const hook = seededPick(item?.pizzaId + 7, CRUSH_HOOKS);
-  const close = seededPick(item?.pizzaId + 13, CRUSH_CLOSERS);
+  const closer = seededPick((Number(item?.pizzaId) || 1) + 13, CRUSH_CLOSERS);
 
-  return { lineA, title, hook, close };
+  return { line, closer };
 };
 
 function getPizzaBadge(it) {
   const seed = Number(it.pizzaId) || 1;
 
   const BADGES = [
-    {
-      icon: "⭐",
-      metric: "Top ventas",
-      closer: "La piden y repiten",
-    },
-    {
-      icon: "🔥",
-      metric: "La más pedida",
-      closer: "En pedidos desde apertura",
-    },
-    {
-      icon: "❤️",
-      metric: "Favorita de clientes",
-      closer: "9 de cada 10 repiten",
-    },
-    {
-      icon: "⚡",
-      metric: "Trending hoy",
-      closer: "Popular en tu zona",
-    },
+    { icon: "⭐", metric: "Top ventas", closer: "La piden y repiten" },
+    { icon: "🔥", metric: "La más pedida", closer: "En pedidos desde apertura" },
+    { icon: "❤️", metric: "Favorita de clientes", closer: "9 de cada 10 repiten" },
+    { icon: "⚡", metric: "Trending hoy", closer: "Popular en tu zona" },
   ];
 
   const badge = BADGES[seed % BADGES.length];
+  const CRUSH_HOOKS = ["Un flechazo.", "Exquisita.", "Atrevida.", "Brutal.", "Wow."];
 
   return {
-    hook: seededPick(seed + 7, CRUSH_HOOKS), // 👈 solo UNO
+    hook: seededPick(seed + 7, CRUSH_HOOKS),
     icon: badge.icon,
     metric: badge.metric,
     closer: badge.closer,
   };
 }
 
-
-
-
 export default function LocalSaleForm({
   forcedStoreId = null,
   compact = false,
   customer = null,
+  ingredientQuery = "",          // ✅ viene de PublicCheckout
+  onClearIngredientQuery = () => {}, // (opcional)
   onDone = () => {},
   onConfirmCart = null,
 }) {
@@ -225,6 +194,8 @@ export default function LocalSaleForm({
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
+
+
 
   const MAX_QTY_SELECT = 12;
 
@@ -260,7 +231,7 @@ export default function LocalSaleForm({
     const set = new Map();
     for (const m of menu) {
       if (!m?.category) continue;
-      if (isExtraItem(m)) continue; // ✅ extras NO en tabs
+      if (isExtraItem(m)) continue;
       const key = normalize(m.category);
       if (!key) continue;
       if (!set.has(key)) set.set(key, m.category);
@@ -277,21 +248,40 @@ export default function LocalSaleForm({
     if (!cat || !catExists) setCat(categories[0]);
   }, [categories, cat]);
 
-const itemsAvail = useMemo(() => {
-  if (!cat) return [];
+  // ✅ Items disponibles: categoría -> buscador -> orden precio
+  const itemsAvail = useMemo(() => {
+    if (!cat) return [];
 
-  // 1) filtra por categoría (sin extras)
-  const filtered = menu.filter(
-    (m) => !isExtraItem(m) && normalize(m.category) === normalize(cat)
-  );
+    const q = normText(ingredientQuery);
 
-  // 2) ordena por precio (mayor → menor)
-  return [...filtered].sort((a, b) => {
-    const pa = priceForSize(a.priceBySize, a.selectSize?.[0] || "M");
-    const pb = priceForSize(b.priceBySize, b.selectSize?.[0] || "M");
-    return pb - pa;
-  });
-}, [menu, cat]);
+    // 1) filtra por categoría (sin extras)
+    let filtered = menu.filter(
+      (m) => !isExtraItem(m) && normalize(m.category) === normalize(cat)
+    );
+
+    // 2) buscador (solo dentro de la categoría)
+    if (q) {
+      filtered = filtered.filter((m) => {
+        const ingNames = Array.isArray(m.ingredients)
+          ? m.ingredients.map((x) => normText(x?.name)).filter(Boolean)
+          : [];
+
+        const matchIngredient = ingNames.some((n) => n.includes(q));
+
+        // ✅ opcional: también permite buscar por nombre de pizza (muy útil)
+        const matchPizzaName = normText(m.name).includes(q);
+
+        return matchIngredient || matchPizzaName;
+      });
+    }
+
+    // 3) ordena por precio (mayor → menor)
+    return [...filtered].sort((a, b) => {
+      const pa = priceForSize(a.priceBySize, a.selectSize?.[0] || "M");
+      const pb = priceForSize(b.priceBySize, b.selectSize?.[0] || "M");
+      return pb - pa;
+    });
+  }, [menu, cat, ingredientQuery]);
 
   const extrasAvail = useMemo(() => menu.filter((m) => isExtraItem(m)), [menu]);
 
@@ -324,11 +314,6 @@ const itemsAvail = useMemo(() => {
   /* handlers */
   const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
 
-  const openProductModal = (pizzaId) => {
-    setSel({ pizzaId: String(pizzaId), size: "", qty: 1, extras: {} });
-    setProductModalOpen(true);
-  };
-
   const pickSize = (sz) => setSel((s) => ({ ...s, size: sz }));
   const decQty = () => setSel((s) => ({ ...s, qty: Math.max(1, Number(s.qty || 1) - 1) }));
   const incQty = () => {
@@ -340,7 +325,6 @@ const itemsAvail = useMemo(() => {
 
   const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
 
-  // ✅ NUEVO: extras suman normal (sin gratis)
   const extrasUnitTotal = useMemo(() => {
     const selected = extrasAvail.filter((ex) => !!sel.extras[ex.pizzaId]);
     if (!selected.length) return 0;
@@ -395,14 +379,15 @@ const itemsAvail = useMemo(() => {
 
   const getImg = (it) => it?.image || "";
 
-const modalUnit = baseUnitPrice + extrasUnitTotal;
-const modalTotal = modalUnit * Number(sel.qty || 1);
-const modalReady = !!current && !!sel.size;
+  const modalUnit = baseUnitPrice + extrasUnitTotal;
+  const modalTotal = modalUnit * Number(sel.qty || 1);
+  const modalReady = !!current && !!sel.size;
 
   return (
     <>
       <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
-        {/* Header */}
+      
+      
         <div className="lsf-top">
           <div className="lsf-top__title">{compact ? "Selecciona productos" : "Local sale"}</div>
 
@@ -411,6 +396,9 @@ const modalReady = !!current && !!sel.size;
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
         </div>
+
+      
+    
 
         {/* selector tienda (solo admin y no forced) */}
         {!forcedStoreId && isAdmin && (
@@ -426,7 +414,7 @@ const modalReady = !!current && !!sel.size;
           </div>
         )}
 
-        {/* Tabs categorías (reales, derivadas del menú) */}
+        {/* Tabs categorías */}
         <div className="lsf-tabs" role="tablist" aria-label="Categorías">
           {categories.map((c) => {
             const active = normalize(cat) === normalize(c);
@@ -445,14 +433,13 @@ const modalReady = !!current && !!sel.size;
           })}
         </div>
 
-        {/* Grid productos (flip SOLO info; compra SOLO con "+") */}
+        {/* Grid productos */}
         <div className="lsf-grid" role="list">
           {itemsAvail.map((it) => {
             const img = getImg(it);
             const flipped = flippedId === it.pizzaId;
 
             const basePrice = priceForSize(it.priceBySize, it.selectSize?.[0] || "M");
-
             const alreadyInCart = cart.some((l) => Number(l.pizzaId) === Number(it.pizzaId));
 
             return (
@@ -466,22 +453,28 @@ const modalReady = !!current && !!sel.size;
                   {/* FRONT */}
                   <div className="lsf-flip__front">
                     <div className="lsf-card__image">
-                      {img ? <img src={img} alt={it.name} /> : <div className="lsf-card__img is-placeholder"><span>🍕</span></div>}
+                      {img ? (
+                        <img src={img} alt={it.name} />
+                      ) : (
+                        <div className="lsf-card__img is-placeholder">
+                          <span>🍕</span>
+                        </div>
+                      )}
                     </div>
 
                     <button
                       type="button"
                       className={`lsf-card__addbtn ${alreadyInCart ? "is-added" : ""}`}
-               onClick={(e) => {
-                    e.stopPropagation();
-                    setSel({
-                      pizzaId: String(it.pizzaId),
-                      size: it.selectSize?.length === 1 ? it.selectSize[0] : "",
-                      qty: 1,
-                      extras: {},
-                    });
-                    setProductModalOpen(true);
-                  }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSel({
+                          pizzaId: String(it.pizzaId),
+                          size: it.selectSize?.length === 1 ? it.selectSize[0] : "",
+                          qty: 1,
+                          extras: {},
+                        });
+                        setProductModalOpen(true);
+                      }}
                       aria-label={`Añadir ${it.name}`}
                     >
                       {alreadyInCart ? "✔️" : "+add"}
@@ -494,41 +487,37 @@ const modalReady = !!current && !!sel.size;
                   </div>
 
                   {/* BACK (INFO ONLY) */}
-                <div className="lsf-flip__back">
-                  {(() => {
-                    const badge = getPizzaBadge(it);
-                    return (
-                      <div className="lsf-back__badge">
-                        {/* HOOK */}
-                        <div className="lsf-badge__hook">
-                          {badge.icon} {badge.hook}
-                        </div>
+          <div className="lsf-flip__back">
+  {(() => {
+    const { line, closer } = buildPizzaLine(it);
 
-                        {/* MÉTRICA */}
-                        <div className="lsf-badge__metric">
-                          {badge.metric}
-                        </div>
+    return (
+      <div className="lsf-flip-desc">
+        <div className="lsf-flip-title">Tu crush sin filtro</div>
+        <div className="lsf-flip-line">{line}</div>
+        <div className="lsf-flip-closer">{closer}</div>
+      </div>
+    );
+  })()}
+</div>
 
-                        {/* CLOSER */}
-                        <div className="lsf-badge__closer">
-                          {badge.closer}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
                 </div>
               </div>
             );
           })}
 
-          {!itemsAvail.length && <div className="lsf-empty">No hay items disponibles.</div>}
+          {!itemsAvail.length && (
+            <div className="lsf-empty">
+              {ingredientQuery.trim()
+                ? `No hay resultados para "${ingredientQuery}".`
+                : "No hay items disponibles."}
+            </div>
+          )}
         </div>
       </div>
+
       {cart.length > 0 && (
         <div className="lsf-sticky">
-          
-
           <button
             type="button"
             className="lsf-sticky__btn"
@@ -568,187 +557,152 @@ const modalReady = !!current && !!sel.size;
         </div>
       )}
 
+      {/* PRODUCT MODAL */}
+      <Modal
+        open={productModalOpen}
+        title={current?.name || "Producto"}
+        onClose={() => setProductModalOpen(false)}
+        className="lsf-modal--center"
+      >
+        {!current ? null : (
+          <>
+            <div className="lsf-pm">
+              <div className="lsf-pm__hero">
+                {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
+              </div>
 
+              {/* DESCRIPCIÓN */}
+              <div className="lsf-pm__desc">
+                {(() => {
+                  const ingredients =
+                    Array.isArray(current.ingredients) && current.ingredients.length
+                      ? current.ingredients.map((i) => capWords(i.name))
+                      : [];
 
-      {/* PRODUCT MODAL (centrado) */}
-<Modal
-  open={productModalOpen}
-  title={current?.name || "Producto"}
-  onClose={() => setProductModalOpen(false)}
-  className="lsf-modal--center"
->
-  {!current ? null : (
-    <>
-      <div className="lsf-pm">
-        <div className="lsf-pm__hero">
-          {current.image ? (
-            <img src={current.image} alt={current.name} />
-          ) : (
-            <div className="lsf-pm__ph">🍕</div>
-          )}
-        </div>
-
-        {/* DESCRIPCIÓN */}
-        <div className="lsf-pm__desc">
-          {(() => {
-            const ingredients =
-              Array.isArray(current.ingredients) && current.ingredients.length
-                ? current.ingredients.map((i) => capWords(i.name))
-                : [];
-
-            const closer = seededPick(
-              current.pizzaId + 13,
-              CRUSH_CLOSERS
-            );
-
-            return (
-              <>
-                <div className="lsf-muted">
-                  <div><b>Tu crush sin filtro</b></div>
-
-                  {ingredients.length > 0 ? (
-                    <div>
-                      {joinWithY(ingredients)}.{" "}
-                      <span className="lsf-closer-inline">{closer}</span>
-                    </div>
-                  ) : (
-                    <div>Ingredientes seleccionados a mano.</div>
-                  )}
-                </div>
-
-                {/* ⚠️ ALÉRGENOS */}
-                <div className="lsf-allergen">
-                  ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal
-                  si tienes alguna alergia.
-                </div>
-              </>
-            );
-          })()}
-        </div>
-
-        {/* QTY */}
-        <div className="lsf-pm__row">
-          <div className="lsf-pm__label">Qty</div>
-          <div className="lsf-qty">
-            <button
-              type="button"
-              className="lsf-qty__btn"
-              onClick={decQty}
-              disabled={sel.qty <= 1}
-            >
-              –
-            </button>
-            <div className="lsf-qty__val">{sel.qty}</div>
-            <button
-              type="button"
-              className="lsf-qty__btn"
-              onClick={incQty}
-              disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
-            >
-              +
-            </button>
-          </div>
-        </div>
-
-        {/* SIZES */}
-        <div className="lsf-pm__row">
-          <div className="lsf-pm__label">Size</div>
-          <div className="lsf-sizes">
-            {(current.selectSize || []).map((sz) => {
-              const a = sel.size === sz;
-              const p = priceForSize(current.priceBySize, sz);
-              return (
-                <button
-                  key={sz}
-                  type="button"
-                  className={`lsf-chip ${a ? "is-active" : ""}`}
-                  onClick={() => pickSize(sz)}
-                >
-                  <span className="lsf-chip__sz">{sz}</span>
-                  <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* EXTRAS */}
-        <div className="lsf-pm__row">
-          <div className="lsf-pm__label">Extras</div>
-
-          {extrasAvail.length === 0 ? (
-            <div className="lsf-muted">No hay extras.</div>
-          ) : (
-            <div className="lsf-extraslist">
-              {[...extrasAvail]
-                .sort((a, b) => {
-                  const pa = priceForSize(
-                    a.priceBySize,
-                    sel.size || current.selectSize?.[0] || "M"
-                  );
-                  const pb = priceForSize(
-                    b.priceBySize,
-                    sel.size || current.selectSize?.[0] || "M"
-                  );
-                  return pb - pa;
-                })
-                .map((ex) => {
-                  const checked = !!sel.extras[ex.pizzaId];
-                  const p = priceForSize(
-                    ex.priceBySize,
-                    sel.size || current.selectSize?.[0] || "M"
-                  );
+                  const closer = seededPick(current.pizzaId + 13, CRUSH_CLOSERS);
 
                   return (
-                    <label key={ex.pizzaId} className="lsf-extrasitem">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleExtra(ex.pizzaId)}
-                      />
-                      <span className="lsf-extrasitem__name">{ex.name}</span>
-                      <span className="lsf-extrasitem__price">
-                        +€{p.toFixed(2)}
-                      </span>
-                    </label>
+                    <>
+                      <div className="lsf-muted">
+                        <div><b>Tu crush sin filtro</b></div>
+
+                        {ingredients.length > 0 ? (
+                          <div>
+                            {joinWithY(ingredients)}.{" "}
+                            <span className="lsf-closer-inline">{closer}</span>
+                          </div>
+                        ) : (
+                          <div>Ingredientes seleccionados a mano.</div>
+                        )}
+                      </div>
+
+                      <div className="lsf-allergen">
+                        ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
+                      </div>
+                    </>
                   );
-                })}
+                })()}
+              </div>
+
+              {/* QTY */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Qty</div>
+                <div className="lsf-qty">
+                  <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
+                    –
+                  </button>
+                  <div className="lsf-qty__val">{sel.qty}</div>
+                  <button
+                    type="button"
+                    className="lsf-qty__btn"
+                    onClick={incQty}
+                    disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* SIZES */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Size</div>
+                <div className="lsf-sizes">
+                  {(current.selectSize || []).map((sz) => {
+                    const a = sel.size === sz;
+                    const p = priceForSize(current.priceBySize, sz);
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        className={`lsf-chip ${a ? "is-active" : ""}`}
+                        onClick={() => pickSize(sz)}
+                      >
+                        <span className="lsf-chip__sz">{sz}</span>
+                        <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* EXTRAS */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Extras</div>
+                {extrasAvail.length === 0 ? (
+                  <div className="lsf-muted">No hay extras.</div>
+                ) : (
+                  <div className="lsf-extraslist">
+                    {[...extrasAvail]
+                      .sort((a, b) => {
+                        const pa = priceForSize(a.priceBySize, sel.size || current.selectSize?.[0] || "M");
+                        const pb = priceForSize(b.priceBySize, sel.size || current.selectSize?.[0] || "M");
+                        return pb - pa;
+                      })
+                      .map((ex) => {
+                        const checked = !!sel.extras[ex.pizzaId];
+                        const p = priceForSize(ex.priceBySize, sel.size || current.selectSize?.[0] || "M");
+                        return (
+                          <label key={ex.pizzaId} className="lsf-extrasitem">
+                            <input type="checkbox" checked={checked} onChange={() => toggleExtra(ex.pizzaId)} />
+                            <span className="lsf-extrasitem__name">{ex.name}</span>
+                            <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+              {/* ACTIONS */}
+              <div className="lsf-pm__actions">
+                <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setProductModalOpen(false)}>
+                  Continue
+                </button>
+
+                <button
+                  type="button"
+                  className="lsf-btn lsf-btn--primary"
+                  disabled={!modalReady}
+                  onClick={() => {
+                    addLine();
+                    setProductModalOpen(false);
+                  }}
+                >
+                  {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* ACTIONS */}
-        <div className="lsf-pm__actions">
-          <button
-            type="button"
-            className="lsf-btn lsf-btn--ghost"
-            onClick={() => setProductModalOpen(false)}
-          >
-            Continue
-          </button>
-
-          <button
-            type="button"
-            className="lsf-btn lsf-btn--primary"
-            disabled={!modalReady}
-            onClick={() => {
-              addLine();
-              setProductModalOpen(false);
-            }}
-          >
-            {modalReady
-              ? `Add to cart · €${modalTotal.toFixed(2)}`
-              : "Selec Size"}
-          </button>
-        </div>
-      </div>
-    </>
-  )}
-</Modal>
-
+          </>
+        )}
+      </Modal>
 
       {/* CART MODAL */}
-      <Modal open={cartOpen} title={`Carrito • €${total.toFixed(2)}`} onClose={() => setCartOpen(false)} className="lsf-modal--center">
+      <Modal
+        open={cartOpen}
+        title={`Carrito • €${total.toFixed(2)}`}
+        onClose={() => setCartOpen(false)}
+        className="lsf-modal--center"
+      >
         {cart.length === 0 ? (
           <div className="lsf-muted">Carrito vacío.</div>
         ) : (
@@ -760,7 +714,9 @@ const modalReady = !!current && !!sel.size;
                     <div className="lsf-cartrow__name">
                       {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
                     </div>
-                    {l.extras?.length ? <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div> : null}
+                    {l.extras?.length ? (
+                      <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
+                    ) : null}
                   </div>
                   <div className="lsf-cartrow__right">
                     <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
