@@ -19,51 +19,43 @@ enum CustomerOrigin {
   GLOVO
   QR
 }
-
 enum CustomerSegment {
   S1 // Potencial: 0–1 compras
   S2 // Inactivo: >1 compras y última > 30 días
   S3 // Activo:   última ≤ 30 días
   S4 // CMV:      S3 y ticket medio > ticket medio empresa
 }
-
 enum DeliveryMethod {
   PICKUP
   COURIER
   UBER
   GLOVO
 }
-
 enum OrderStatus {
   PENDING
   AWAITING_PAYMENT
   PAID
   CANCELED
 }
-
 enum Channel {
   WHATSAPP
   PHONE
   WEB
 }
-
 enum CouponKind {
   PERCENT
   AMOUNT
 }
-
 enum CouponVariant {
   FIXED
   RANGE
 }
-
 enum CouponStatus {
   ACTIVE
   USED
   EXPIRED
   DISABLED
 }
-
 enum CouponAcquisition {
   GAME // premio de juego
   CLAIM // reclamo manual / galería
@@ -72,13 +64,11 @@ enum CouponAcquisition {
   DIRECT // entregado ad-hoc
   OTHER
 }
-
 enum CouponLogic {
   RANDOM
   PERCENT
   AMOUNT
 }
-
 enum CouponChannel {
   GAME
   WEB
@@ -88,12 +78,10 @@ enum CouponChannel {
   SMS
   EMAIL
 }
-
 enum WhatsAppDirection {
   IN
   OUT
 }
-
 enum WhatsAppMessageStatus {
   RECEIVED
   SENT
@@ -101,12 +89,10 @@ enum WhatsAppMessageStatus {
   READ
   FAILED
 }
-
 enum IngredientStatus {
   ACTIVE
   INACTIVE
 }
-
 enum ProductStatus {
   ACTIVE
   INACTIVE
