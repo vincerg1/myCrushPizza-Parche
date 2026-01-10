@@ -21,15 +21,39 @@ module.exports = (prisma) => {
   };
 
   /** Normaliza phone para guardar + calcula base9 */
-  function normalizePhoneForSave(inputPhone) {
-    const base9 = esBase9(inputPhone || "");
-    if (!base9) return { ok: false, error: "phone requerido" };
+function normalizePhoneForSave(inputPhone) {
+  const raw = String(inputPhone || "").trim();
 
-    // Intentamos E.164 ES; si falla, guardamos “lo que llegue” pero trimmed
-    const phoneE164 = toE164ES(inputPhone) || String(inputPhone || "").trim();
-
-    return { ok: true, base9, phoneE164 };
+  const base9 = esBase9(raw);
+  if (!base9) {
+    return { ok: false, error: "invalid_phone" };
   }
+
+  // 1️⃣ Intentamos conversión normal a E.164 (ej: 612345678 → +34612345678)
+  let phoneE164 = toE164ES(raw);
+
+  // 2️⃣ Si falla, intentamos detectar 34XXXXXXXXX sin "+"
+  if (!phoneE164) {
+    const digits = raw.replace(/\D/g, "");
+
+    // Ej: "34612345678" → "+34612345678"
+    if (digits.length === 11 && digits.startsWith("34")) {
+      phoneE164 = "+" + digits;
+    }
+  }
+
+  // 3️⃣ Si aún no es válido → rechazamos
+  if (!phoneE164) {
+    return { ok: false, error: "invalid_phone" };
+  }
+
+  return {
+    ok: true,
+    base9,
+    phoneE164
+  };
+}
+
 
   /**
    * Busca por base9 dentro de phone (SIN phoneBase9 en DB).
