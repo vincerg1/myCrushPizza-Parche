@@ -1,5 +1,5 @@
 'use strict';
-
+const { toE164ES } = require('../utils/phone');
 const express = require('express');
 const router  = express.Router();
 
@@ -25,7 +25,10 @@ const logI = (m, x={}) => console.info(`[venta][${ts()}] ${m}`, x);
 const logW = (m, x={}) => console.warn(`[venta][${ts()}] ${m}`, x);
 const logE = (m, e)     => console.error(`[venta][${ts()}] ${m}`, e?.message || e);
 const FRONT_BASE_URL = process.env.FRONT_BASE_URL || 'http://localhost:3000';
-const onlyDigits = s => (s || '').replace(/\D/g, '');
+const normPhone = (raw) => {
+  const p = toE164ES(raw || '');
+  return p && p.startsWith('+') ? p : null;
+};
 const clean = v => (v === undefined || v === '' ? null : v);
 const upper = s => String(s || '').trim().toUpperCase();
 const toPrice = v => {
@@ -47,14 +50,15 @@ function haversineKm(lat1, lon1, lat2, lon2){
   const a=Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(a));
 }
-const normPhone = (s='') => s.replace(/[^\d+]/g, '');
 async function getRestrictionByPhone(db, rawPhone) {
-  const phone = normPhone(rawPhone || '');
-  if (!phone) return { restricted:false };
+const phone = normPhone(rawPhone);
+if (!phone) return { restricted:false, reason:null, code:null };
+
   const c = await db.customer.findUnique({
     where: { phone },
     select: { isRestricted:true, restrictionReason:true, code:true }
   });
+
   return {
     restricted: !!c?.isRestricted,
     reason    : c?.restrictionReason || null,
@@ -355,45 +359,53 @@ router.post('/pedido', async (req, res) => {
       String(type).toUpperCase() === 'DELIVERY' ||
       String(delivery).toUpperCase() === 'COURIER';
 
-    if (customer?.phone?.trim()) {
-      const phone = onlyDigits(customer.phone);
-      const name = (customer.name || '').trim();
+if (customer?.phone?.trim()) {
+  const phone = normPhone(customer.phone);
+  if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
 
-      const createAddress = isDelivery
-        ? (customer.address_1 || 'SIN DIRECCIÓN')
-        : `(PICKUP) ${phone}`;
+  const name = (customer.name || '').trim();
 
-      const c = await prisma.customer.upsert({
-        where: { phone },
-        update: {
-          phone,
-          name,
-          ...(isDelivery && {
-            address_1: customer.address_1 || 'SIN DIRECCIÓN',
-            lat: clean(customer.lat),
-            lng: clean(customer.lng),
-          }),
-          portal: clean(customer.portal),
-          observations: clean(customer.observations),
-        },
-        create: {
-          code: await genCustomerCode(prisma),
-          phone,
-          name,
-          address_1: createAddress,
-          portal: clean(customer.portal),
-          observations: clean(customer.observations),
-          lat: isDelivery ? clean(customer.lat) : null,
-          lng: isDelivery ? clean(customer.lng) : null,
-        },
-      });
-      customerId = c.id;
-      snapshot = {
-        phone: c.phone, name: c.name,
-        address_1: c.address_1, portal: c.portal, observations: c.observations,
-        lat: c.lat, lng: c.lng
-      };
-    }
+  const createAddress = isDelivery
+    ? (customer.address_1 || 'SIN DIRECCIÓN')
+    : `(PICKUP) ${phone}`;
+
+  const c = await prisma.customer.upsert({
+    where: { phone },               // 🔐 clave canónica
+    update: {
+      name,
+      ...(isDelivery && {
+        address_1: customer.address_1 || 'SIN DIRECCIÓN',
+        lat: clean(customer.lat),
+        lng: clean(customer.lng),
+      }),
+      portal: clean(customer.portal),
+      observations: clean(customer.observations),
+    },
+    create: {
+      code: await genCustomerCode(prisma),
+      phone,                        // 🔥 siempre +34...
+      name,
+      address_1: createAddress,
+      portal: clean(customer.portal),
+      observations: clean(customer.observations),
+      lat: isDelivery ? clean(customer.lat) : null,
+      lng: isDelivery ? clean(customer.lng) : null,
+    },
+  });
+
+  customerId = c.id;
+  snapshot = {
+    phone: c.phone,
+    name: c.name,
+    address_1: c.address_1,
+    portal: c.portal,
+    observations: c.observations,
+    lat: c.lat,
+    lng: c.lng
+  };
+}
+
+
 
     // Ítems (solo pizzas base/size/qty/precio)
     const normItems = await normalizeItems(prisma, items);
@@ -989,44 +1001,47 @@ router.post(
                   String(cart.type).toUpperCase() === 'DELIVERY' ||
                   String(cart.delivery).toUpperCase() === 'COURIER';
 
-                if (cart?.customer?.phone?.trim()) {
-                  const phone = onlyDigits(cart.customer.phone);
-                  const name  = (cart.customer.name || '').trim();
+              if (cart?.customer?.phone?.trim()) {
+const phone = normPhone(cart.customer.phone);
+if (!phone) throw new Error('Invalid phone');
 
-                  const createAddress = isDelivery
-                    ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
-                    : `(PICKUP) ${phone}`;
+  const name  = (cart.customer.name || '').trim();
 
-                  const c = await tx.customer.upsert({
-                    where:  { phone },
-                    update: {
-                      phone, name,
-                      ...(isDelivery && {
-                        address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-                        lat: clean(cart.customer.lat),
-                        lng: clean(cart.customer.lng),
-                      }),
-                      portal: clean(cart.customer.portal),
-                      observations: clean(cart.customer.observations),
-                    },
-                    create: {
-                      code: await genCustomerCode(tx),
-                      phone, name,
-                      address_1: createAddress,
-                      portal: clean(cart.customer.portal),
-                      observations: clean(cart.customer.observations),
-                      lat: isDelivery ? clean(cart.customer.lat) : null,
-                      lng: isDelivery ? clean(cart.customer.lng) : null,
-                    },
-                  });
+  const createAddress = isDelivery
+    ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
+    : `(PICKUP) ${phone}`;
 
-                  customerId = c.id;
-                  snapshot = {
-                    phone: c.phone, name: c.name,
-                    address_1: c.address_1, portal: c.portal, observations: c.observations,
-                    lat: c.lat, lng: c.lng
-                  };
-                }
+  const c = await tx.customer.upsert({
+    where:  { phone },
+    update: {
+      phone, name,
+      ...(isDelivery && {
+        address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+        lat: clean(cart.customer.lat),
+        lng: clean(cart.customer.lng),
+      }),
+      portal: clean(cart.customer.portal),
+      observations: clean(cart.customer.observations),
+    },
+    create: {
+      code: await genCustomerCode(tx),
+      phone, name,
+      address_1: createAddress,
+      portal: clean(cart.customer.portal),
+      observations: clean(cart.customer.observations),
+      lat: isDelivery ? clean(cart.customer.lat) : null,
+      lng: isDelivery ? clean(cart.customer.lng) : null,
+    },
+  });
+
+  customerId = c.id;
+  snapshot = {
+    phone: c.phone, name: c.name,
+    address_1: c.address_1, portal: c.portal, observations: c.observations,
+    lat: c.lat, lng: c.lng
+  };
+}
+
 
                 // Extras + cupón (preview)
                 const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
@@ -1101,7 +1116,7 @@ router.post(
                     select: { storeName: true }
                   });
                   paidNotify = {
-                    phone: (snapshot?.phone || cart?.customer?.phone || '').trim(),
+                    phone: snapshot?.phone || null,
                     name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
                     code : sale.code,
                     storeName: store?.storeName || 'myCrushPizza',
@@ -1198,7 +1213,7 @@ router.post(
 
             if (payOk) {
               paidNotify = {
-                phone: (sale.customerData?.phone || '').trim(),
+                phone: normPhone(sale.customerData?.phone) || null,
                 name : (sale.customerData?.name  || '').trim(),
                 code : sale.code,
                 storeName: sale.store?.storeName || 'myCrushPizza',
