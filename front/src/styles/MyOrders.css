@@ -26,7 +26,65 @@
   font-weight: 500;
 }
 
-/* nivel‑1 y nivel‑2 botones */
+/* ---------- APP ONLINE TOGGLE ---------- */
+.app-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 8px 12px 8px 14px;
+
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.app-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+}
+.app-toggle-btn {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #d1d5db;
+  cursor: pointer;
+  position: relative;
+  padding: 0;              /* 🔥 quitamos padding */
+  transition: background .2s ease, border-color .2s ease;
+}
+
+.app-toggle-btn.on {
+  background: #f97316;
+  border-color: #f97316;
+}
+
+.app-toggle-btn.off {
+  background: #d1d5db;
+}
+
+.app-toggle-knob {
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;     /* 🔥 ya no es inline */
+  top: 2px;
+  left: 2px;              /* 🔥 OFF = pegado al borde */
+  transition: transform .2s ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+
+.app-toggle-btn.on .app-toggle-knob {
+  transform: translateX(20px);   /* 46 - 20 - 2*2 = 20 */
+}
+
+
+/* ---------- nivel-1 y nivel-2 botones ---------- */
 .orders-dashboard > div > button {
   background: #4285f4;
   color: #fff;
@@ -54,7 +112,7 @@
   }
 }
 
-/* ---------- Botones nivel‑1 (Pending / New sale) ---------- */
+/* ---------- Botones nivel-1 (Pending / New sale) ---------- */
 .level1-btn {
   width: 100%;
   display: block;
@@ -73,7 +131,7 @@
   cursor: default;
 }
 
-/* Desktop — a partir de 769 px restauramos inline‑block */
+/* Desktop — a partir de 769 px restauramos inline-block */
 @media (min-width: 769px) {
   .level1-btn {
     width: auto;
@@ -182,15 +240,19 @@
   to { opacity:1; transform:translateY(0); }
 }
 
-
-/* En móvil: mostrarlo */
+/* En móvil */
 @media (max-width: 768px){
   .dash-head .logout-btn{
-    display: inline-flex;          /* visible en responsive */
+    display: inline-flex;
     align-items: center;
   }
-  /* opcional: ahorrar espacio ocultando la etiqueta del switch */
+
   .dash-head .pc-note{ display: none; }
+
+  /* compactar el toggle en móvil */
+  .app-toggle-label {
+    display: none;
+  }
 
   .dp-modal {
     width: 95%;
@@ -210,13 +272,13 @@
   }
 
   .dp-btn {
-    width: 100%;        /* full width in mobile */
+    width: 100%;
     margin-top: 10px;
     font-size: 14px;
     padding: 10px;
   }
 
   .dp-btn + .dp-btn {
-    margin-top: 6px;    /* reduce spacing between stacked buttons */
+    margin-top: 6px;
   }
 }

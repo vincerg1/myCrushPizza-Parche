@@ -166,34 +166,24 @@ function Dashboard() {
 
   return (
     <div className="orders-dashboard">
+      
       <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12 }}>
-        {/* <span>Logged as {isAdmin ? "Admin" : auth.storeName}</span>
-        <button type="button" style={logoutBtn} onClick={logout}>Logout</button> */}
+      <h2>MyOrdersPanel</h2>
 
-        {isAdmin && (
-          <div style={{ marginLeft:"auto" }}>
-            <span style={{ marginRight:6 }}>App online</span>
-            <button
-              type="button"
-              onClick={toggleGlobal}
-              aria-pressed={appAccepting}
-              style={{
-                background: appAccepting ? "#16a34a" : "#9ca3af",
-                width:54, height:28, borderRadius:999,
-                cursor:"pointer", border:"none"
-              }}
-            >
-              <span
-                style={{
-                  display:"block", width:22, height:22, background:"#fff",
-                  borderRadius:"50%", margin:3,
-                  transform: appAccepting ? "translateX(26px)" : "translateX(0px)",
-                  transition:"transform .2s"
-                }}
-              />
-            </button>
-          </div>
-        )}
+{isAdmin && (
+  <div className="app-toggle">
+    <span className="app-toggle-label">App online</span>
+
+    <button
+      type="button"
+      onClick={toggleGlobal}
+      aria-pressed={appAccepting}
+      className={`app-toggle-btn ${appAccepting ? "on" : "off"}`}
+    >
+      <span className="app-toggle-knob" />
+    </button>
+  </div>
+)}
       </header>
 
       {err && <div className="pc-alert" style={{ margin:"8px 0" }}>{err}</div>}

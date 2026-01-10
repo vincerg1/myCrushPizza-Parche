@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-
+import "../styles/MyOffersPanel.css";
 // En prod (dominio mycrushpizza.com) usa el backend de Railway.
 // En local deja vacío y funciona con el proxy a :8080.
 const API_BASE =
@@ -114,100 +114,132 @@ ${data.sample?.length ? `muestra: ${data.sample.join(", ")}` : ""}`);
     }
   };
 
-  return (
-    <div style={{ maxWidth: 760 }}>
-      <h2>Enviar promo por SMS</h2>
+return (
+  <div className="my-offers-panel">
+    <h2>Enviar promo por SMS</h2>
 
-      {/* Mensaje */}
-      <label className="block">
-        Mensaje:
-        <textarea
-          value={msg}
-          onChange={e => setMsg(e.target.value)}
-          rows={6}
-          style={{ width: "100%", marginTop: 8 }}
-          placeholder="Escribe el texto que recibirán tus clientes…"
-        />
-      </label>
+    {/* Mensaje */}
+    <label className="block">
+      Mensaje:
+      <textarea
+        value={msg}
+        onChange={e => setMsg(e.target.value)}
+        rows={6}
+        placeholder="Escribe el texto que recibirán tus clientes…"
+      />
+    </label>
 
-      {/* Modo de audiencia */}
-      <div style={{ margin: "14px 0" }}>
-        <b>Audiencia</b>
-        <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
-          <label><input type="radio" name="aud" checked={mode==="all"} onChange={() => setMode("all")} /> Todos</label>
-          <label><input type="radio" name="aud" checked={mode==="segment"} onChange={() => setMode("segment")} /> Por segmento</label>
-          <label><input type="radio" name="aud" checked={mode==="single"} onChange={() => setMode("single")} /> Individual</label>
-        </div>
+    {/* Modo de audiencia */}
+    <div className="audience-box">
+      <b>Audiencia</b>
+      <div style={{ display: "flex", gap: 16, marginTop: 6, flexWrap: "wrap" }}>
+        <label>
+          <input
+            type="radio"
+            name="aud"
+            checked={mode === "all"}
+            onChange={() => setMode("all")}
+          />{" "}
+          Todos
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="aud"
+            checked={mode === "segment"}
+            onChange={() => setMode("segment")}
+          />{" "}
+          Por segmento
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="aud"
+            checked={mode === "single"}
+            onChange={() => setMode("single")}
+          />{" "}
+          Individual
+        </label>
       </div>
+    </div>
 
-      {/* Segmentos */}
-      {mode === "segment" && (
-        <div style={{ margin: "8px 0" }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {SEGMENTS.map(s => (
-              <label key={s}>
-                <input type="checkbox" checked={selSegs.includes(s)} onChange={() => toggleSeg(s)} /> {s}
-              </label>
-            ))}
-          </div>
-          <small className="muted">Se enviará solo a clientes de los segmentos seleccionados (excluye restringidos).</small>
+    {/* Segmentos */}
+    {mode === "segment" && (
+      <div style={{ margin: "8px 0" }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          {SEGMENTS.map(s => (
+            <label key={s} className="segment-pill">
+              <input
+                type="checkbox"
+                checked={selSegs.includes(s)}
+                onChange={() => toggleSeg(s)}
+              />
+              {s}
+            </label>
+          ))}
         </div>
-      )}
+        <small className="muted">
+          Se enviará solo a clientes de los segmentos seleccionados (excluye restringidos).
+        </small>
+      </div>
+    )}
 
-      {/* Teléfonos individuales */}
-      {mode === "single" && (
-        <div style={{ margin: "8px 0" }}>
-          <label className="block">
-            Teléfonos (separados por coma, espacio o salto de línea):
-            <textarea
-              rows={3}
-              value={phones}
-              onChange={e => setPhones(e.target.value)}
-              style={{ width: "100%", marginTop: 6 }}
-              placeholder="Ej: 603172193, 612345678  +34600111222"
-            />
-          </label>
-          <small className="muted">El backend deduplica y normaliza a E.164.</small>
-        </div>
-      )}
-
-      {/* Controles de envío */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, maxWidth: 520, margin: "12px 0" }}>
+    {/* Teléfonos individuales */}
+    {mode === "single" && (
+      <div style={{ margin: "8px 0" }}>
         <label className="block">
+          Teléfonos (separados por coma, espacio o salto de línea):
+          <textarea
+            rows={3}
+            value={phones}
+            onChange={e => setPhones(e.target.value)}
+            placeholder="Ej: 603172193, 612345678  +34600111222"
+          />
+        </label>
+        <small className="muted">El backend deduplica y normaliza a E.164.</small>
+      </div>
+    )}
+
+    {/* Controles de envío */}
+    <div className="controls-grid">
+      <label className="block">
+        <span>
           <input
             type="checkbox"
             checked={testMode}
             onChange={e => setTestMode(e.target.checked)}
-          />
-          &nbsp;Modo prueba
-        </label>
+          />{" "}
+          Modo prueba
+        </span>
+      </label>
 
-
-
-        <label className="block">
-          Batch size:
-          <input
-            type="number"
-            value={batchSize}
-            onChange={e => setBatchSize(e.target.value)}
-            style={{ width: "100%", marginTop: 6 }}
-            min={10}
-            max={500}
-          />
-        </label>
-      </div>
-
-      {/* Preview global (referencial) */}
-      <div style={{ margin: "8px 0 14px" }}>
-        <small className="muted">
-          Clientes con teléfono: <b>{preview.total}</b><br/>
-          Muestra: {preview.sample.join(", ")}
-        </small>
-      </div>
-
-      <button disabled={loading} onClick={sendBulk}>
-        {loading ? "Enviando..." : `Enviar SMS ${testMode ? "(prueba)" : ""}`}
-      </button>
+      <label className="block">
+        Batch size:
+        <input
+          type="number"
+          value={batchSize}
+          onChange={e => setBatchSize(e.target.value)}
+          min={10}
+          max={500}
+        />
+      </label>
     </div>
-  );
+
+    {/* Preview global */}
+    <div style={{ margin: "8px 0 14px" }}>
+      <small className="muted">
+        Clientes con teléfono: <b>{preview.total}</b>
+        <br />
+        Muestra: {preview.sample.join(", ")}
+      </small>
+    </div>
+
+    <button disabled={loading} onClick={sendBulk}>
+      {loading ? "Enviando..." : `Enviar SMS ${testMode ? "(prueba)" : ""}`}
+    </button>
+  </div>
+);
+
 }

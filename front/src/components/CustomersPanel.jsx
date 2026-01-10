@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-
+import "../styles/CustomersPanel.css";
 /** ===== Config base de API ===== */
 const guessDevBase = () => {
   const { protocol, hostname, port } = window.location;
@@ -303,19 +303,27 @@ export default function CustomersPanel() {
   return (
     <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
-      <header style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Customers</h2>
-        <button onClick={startCreate} className="btn">+ Add customer</button>
-        <button onClick={onResegment} className="btn btn-ghost">Actualizar segmentos</button>
-        <div style={{ marginLeft: "auto" }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(normalizePhone(e.target.value))}
-            placeholder="Search by phone…"
-            style={{ padding: "8px 10px", minWidth: 280 }}
-          />
-        </div>
-      </header>
+<header className="customers-header">
+  <div className="customers-header-left">
+    <h2>Customers</h2>
+    <button onClick={onResegment} className="btn btn-ghost">
+      Actualizar segmentos
+    </button>
+  </div>
+
+  <div className="customers-header-right">
+    <input
+      value={query}
+      onChange={(e) => setQuery(normalizePhone(e.target.value))}
+      placeholder="Search by phone…"
+      className="customers-search"
+    />
+    <button onClick={startCreate} className="btn-primary">
+      + Add customer
+    </button>
+  </div>
+</header>
+
 
       {/* Stats card */}
       <section style={{
@@ -375,7 +383,9 @@ export default function CustomersPanel() {
           }}>
             <div style={{fontVariantNumeric:"tabular-nums"}}>{c.code}</div>
             <div title={c.observations || ""}>
-              <div style={{ fontWeight:600 }}>{c.name || "—"}</div>
+              <div style={{ fontWeight:600 }}>
+                {(c.name || "—").toUpperCase()}
+              </div>
               {c.observations ? <div className="small" style={{ opacity:.7 }}>{c.observations}</div> : null}
             </div>
             <div>{displayESPhone(c.phone) || "—"}</div>
