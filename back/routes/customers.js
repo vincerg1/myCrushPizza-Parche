@@ -29,23 +29,8 @@ function normalizePhoneForSave(inputPhone) {
     return { ok: false, error: "invalid_phone" };
   }
 
-  // 1️⃣ Intentamos conversión normal a E.164 (ej: 612345678 → +34612345678)
-  let phoneE164 = toE164ES(raw);
-
-  // 2️⃣ Si falla, intentamos detectar 34XXXXXXXXX sin "+"
-  if (!phoneE164) {
-    const digits = raw.replace(/\D/g, "");
-
-    // Ej: "34612345678" → "+34612345678"
-    if (digits.length === 11 && digits.startsWith("34")) {
-      phoneE164 = "+" + digits;
-    }
-  }
-
-  // 3️⃣ Si aún no es válido → rechazamos
-  if (!phoneE164) {
-    return { ok: false, error: "invalid_phone" };
-  }
+  // 🔒 Canonicalización total: SIEMPRE construimos desde base9
+  const phoneE164 = `+34${base9}`;
 
   return {
     ok: true,
@@ -53,6 +38,7 @@ function normalizePhoneForSave(inputPhone) {
     phoneE164
   };
 }
+
 
 
   /**
