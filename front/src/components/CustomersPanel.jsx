@@ -301,7 +301,7 @@ export default function CustomersPanel() {
 }
 
   return (
-    <div className="customers-panel" style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div className="customers-panel">
       {/* Header */}
 <header className="customers-header">
   <div className="customers-header-left">

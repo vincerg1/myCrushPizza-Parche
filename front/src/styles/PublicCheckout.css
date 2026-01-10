@@ -9,7 +9,7 @@
   --danger:#e74c3c;
 
   --pc-card-pad: 16px;
-  --pc-radius: 18px;
+  --pc-radius: 20px;
   --pc-card-max: 560px;      /* ancho máximo uniforme para todos los .pc-card */
 
   /* control del tamaño del logo del hero */
@@ -57,7 +57,7 @@
   justify-content:center;
   gap:.5rem;
   font-weight:700;
-  border-radius:12px;
+  border-radius:20px;
   border:0;
   padding:12px 14px;
   cursor:pointer;
@@ -72,6 +72,7 @@
   background:var(--brand-blue);
   color:var(--text-on-blue);
   font-size: 14px;
+border-radius: 20px;
 }
 .pc-btn-ghost{
   background:#fff;
@@ -119,7 +120,7 @@
   margin:0;
   padding:11px 12px;
   border:1px solid var(--border);
-  border-radius:12px;
+  border-radius:20px;
   outline:none;
   font-size:15px;
   color:var(--ink);
@@ -150,7 +151,7 @@
   width:100%;
   height:260px;
   margin:12px 0;
-  border-radius:12px;
+   border-radius:20px;
   overflow:hidden;
   border:1px solid var(--border);
 }
@@ -173,7 +174,7 @@
   color:#b3123a;
   border:1px solid #ffc2d0;
   padding:10px 12px;
-  border-radius:12px;
+   border-radius:20px;
   font-weight:600;
 }
 .pc-badge{
@@ -298,7 +299,7 @@
   width:100%;
   max-width:100%;
   margin:12px auto 0;
-  border-radius:12px;
+  border-radius:20px;
   white-space:normal;   /* si el texto es largo, que rompa */
 }
 
@@ -400,7 +401,7 @@
 .ReactModal__Content{
   max-width:var(--pc-card-max) !important;
   margin:0 12px !important;
-  border-radius:14px !important;
+  border-radius:20px !important;
 }
 @media (max-width:480px){
   .ReactModal__Content{ margin:0 10px !important; }
@@ -490,7 +491,7 @@
   margin: 6px auto 0;            /* centrado dentro de la tarjeta */
   box-sizing: border-box;        /* que padding no rompa el ancho calculado */
   text-align: center;
-  border-radius: 14px;
+  border-radius:20px;
   padding: 8px 12px;
 }
 
@@ -543,7 +544,7 @@
   content: "";
   position: absolute;
   inset: -4px;                 /* halo un pelín fuera del botón */
-  border-radius: 14px;         /* que siga las esquinas del botón */
+  border-radius:20px;        /* que siga las esquinas del botón */
   box-shadow: 0 0 0 0 rgba(249,38,114,.40);
   animation: pc-attn-ring 1.8s ease-in-out infinite;
   z-index: -1;
@@ -582,7 +583,7 @@
 }
 .pc-modal{
   background:#fff; color:#111;
-  border-radius:16px;
+  border-radius:20px;
   box-shadow:0 10px 30px rgba(0,0,0,.25);
   max-height:90vh; width:100%;
   overflow:hidden;
@@ -730,7 +731,7 @@
     margin: 0 0 12px 0;
     padding: 8px 10px;
     border: 1px solid rgba(0,0,0,.08);
-    border-radius: 10px;
+    border-radius:20px;
     background: rgba(255,255,255,.9);
   }
   .pc-modal__body .pc-table td{
@@ -747,7 +748,7 @@
 /* Base */
 .pc-timer{
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:6px; color:#fff; border-radius:16px; padding:14px 18px; margin:8px auto 14px;
+  gap:6px; color:#fff; border-radius:20px; padding:14px 18px; margin:8px auto 14px;
   width:min(440px, 92%); text-align:center; box-shadow:0 10px 24px rgba(0,0,0,.14);
 }
 .pc-timer__label{
@@ -759,7 +760,7 @@
 }
 
 /* Tamaño/espacio por variante */
-.pc-timer--compact{ padding:10px 14px; width:min(360px, 92%); border-radius:12px; }
+.pc-timer--compact{ padding:10px 14px; width:min(360px, 92%); border-radius:20px; }
 .pc-timer--compact .pc-timer__value{ font-size: clamp(22px, 6.5vw, 32px); }
 
 /* Colores por urgencia */

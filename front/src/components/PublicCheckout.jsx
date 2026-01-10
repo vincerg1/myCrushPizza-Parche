@@ -739,7 +739,7 @@ const checkCoupon = useCallback(async () => {
           <div className="pc-actions" style={{ marginTop: 12 }}>
             <a
               className="pc-btn pc-btn-primary push"
-              href={`https://wa.me/34694301433?text=${waText}`}
+              href={`https://wa.me/34694308757?text=${waText}`}
               target="_blank" rel="noopener noreferrer"
             >
               Contactar soporte

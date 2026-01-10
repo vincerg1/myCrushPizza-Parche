@@ -275,7 +275,7 @@ export default function OffersOverview({ onNavigate = () => {} }) {
 
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto", display: "grid", gap: 16 }}>
+    <div style={{ display: "grid", gap: 16 }}>
       <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Offers · Overview</h2>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
