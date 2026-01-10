@@ -198,7 +198,7 @@ function Dashboard() {
         </button>
         <button
           className="level1-btn"
-          style={{ marginLeft:8, background:"#2563eb", color:"#fff" }}
+          style={{ marginLeft:8, background:"#f1bb19", color:"#fff" }}
           onClick={()=>setShowDirectPay(true)}
         >
           Direct Pay

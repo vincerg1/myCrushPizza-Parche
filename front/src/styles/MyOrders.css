@@ -59,8 +59,8 @@
 }
 
 .app-toggle-btn.on {
-  background: #f97316;
-  border-color: #f97316;
+  background: #f1bb19;
+  border-color: #f1bb19;
 }
 
 .app-toggle-btn.off {
@@ -86,7 +86,7 @@
 
 /* ---------- nivel-1 y nivel-2 botones ---------- */
 .orders-dashboard > div > button {
-  background: #4285f4;
+  background: #f1bb19;
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -98,10 +98,7 @@
   margin-bottom: 8px;   /* espacio homogéneo */
 }
 
-.orders-dashboard > div > button[disabled] {
-  opacity: .5;
-  cursor: default;
-}
+
 
 /* En pantallas grandes puedes reducir el ancho si lo deseas */
 @media (min-width: 769px) {
@@ -116,7 +113,7 @@
 .level1-btn {
   width: 100%;
   display: block;
-  background: #4285f4;
+  background: #f1bb19;
   color: #fff;
   border: none;
   border-radius: 12px;
