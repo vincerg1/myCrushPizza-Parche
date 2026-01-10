@@ -38,9 +38,6 @@ function normalizePhoneForSave(inputPhone) {
     phoneE164
   };
 }
-
-
-
   /**
    * Busca por base9 dentro de phone (SIN phoneBase9 en DB).
    * Devuelve un select amplio porque lo reutilizamos en /restriction y en phone_exists.

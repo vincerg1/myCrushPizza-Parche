@@ -919,6 +919,18 @@ router.get('/redemptions', async (req, res) => {
 router.post('/direct-claim', async (req, res) => {
   let stage = 'init';
 
+  // 🇪🇸 Normalizador canónico España → +34XXXXXXXXX
+  function normalizeES(v) {
+    if (!v) return null;
+    let raw = String(v).trim().replace(/[^\d+]/g, '');
+
+    if (raw.startsWith('0034')) raw = '+34' + raw.slice(4);
+    if (raw.startsWith('34') && raw.length === 11) raw = '+34' + raw.slice(2);
+    if (/^[679]\d{8}$/.test(raw)) raw = '+34' + raw;
+
+    return /^\+34\d{9}$/.test(raw) ? raw : null;
+  }
+
   try {
     console.log('[VENTAS] /api/coupons/direct-claim HIT', req.body);
 
@@ -931,11 +943,11 @@ router.post('/direct-claim', async (req, res) => {
       campaign = null
     } = req.body || {};
 
-    // ✅ normaliza teléfono (solo dígitos) para evitar duplicados por formato
-    const phoneRaw = String(phone || '').replace(/\D/g, '').trim();
+    // 🔥 CANONICALIZACIÓN ÚNICA
+    const phoneE164 = normalizeES(phone);
 
-    if (!phoneRaw) {
-      return res.status(400).json({ ok: false, error: 'missing_phone' });
+    if (!phoneE164) {
+      return res.status(400).json({ ok: false, error: 'invalid_phone' });
     }
     if (!type || !key) {
       return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
@@ -961,16 +973,15 @@ router.post('/direct-claim', async (req, res) => {
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
 
-    // ---------- 1) Buscar / crear cliente (helper) ----------
+    // ---------- 1) Buscar / crear cliente ----------
     stage = 'customer_lookup';
     const customer = await findOrCreateCustomerByPhone(prisma, {
-      phone: phoneRaw,
+      phone: phoneE164,     // 🔒 SIEMPRE +34...
       name: name || null,
-      origin: 'QR', // ✅ todo lo que entra por este portal es QR
+      origin: 'QR',
     });
 
-    // ---------- 2) Comprobar cupón activo del cliente ----------
-    // ⚠️ Interno: NO revelar nada al cliente. Si ya tiene cupón activo, lo reenviamos y devolvemos ok:true.
+    // ---------- 2) Cupón activo ----------
     stage = 'check_active_coupon';
     const activeCoupon = await prisma.coupon.findFirst({
       where: {
@@ -981,70 +992,39 @@ router.post('/direct-claim', async (req, res) => {
       orderBy: { id: 'asc' }
     });
 
-    console.log(
-      '[VENTAS][direct-claim] activeCoupon result:',
-      activeCoupon && {
-        id: activeCoupon.id,
-        code: activeCoupon.code,
-        expiresAt: activeCoupon.expiresAt,
-        usageLimit: activeCoupon.usageLimit,
-        usedCount: activeCoupon.usedCount
-      }
-    );
-
     if (activeCoupon) {
-      stage = 'resend_existing_coupon';
-
       const code = activeCoupon.code;
       const title = titleForCouponRow(activeCoupon);
       const whenTxt = fmtExpiry(activeCoupon.expiresAt || expiresAt);
 
       const notify = { user: { tried: false }, admin: { tried: false } };
 
-      // Reenviar SMS al usuario (si tenemos teléfono)
+      // SMS usuario
       notify.user.tried = true;
-      const userMsg =
-        `🎁 Tu cupón para MyCrushPizza: ${code}\n` +
-        `Valor: ${title}\n` +
-        `Canjéalo en ${siteUrl} (cupón válido hasta ${whenTxt}).`;
       try {
-        const resp = await sendSMS(phoneRaw, userMsg);
+        const resp = await sendSMS(phoneE164, 
+          `🎁 Tu cupón para MyCrushPizza: ${code}\nValor: ${title}\nCanjéalo en ${siteUrl} (hasta ${whenTxt}).`
+        );
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
-        console.error('[coupons.direct-claim] user SMS error (reused):', err);
         notify.user.ok = false;
         notify.user.error = err.message;
       }
 
-      // Aviso admin opcional
+      // SMS admin
       if (adminPhone) {
         notify.admin.tried = true;
-        const adminMsg =
-          `ALERTA MCP 🎯 Reenvío cupón (ya activo)\n` +
-          `Code: ${code} (${title})\n` +
-          `Tel cliente: ${phoneRaw}\n` +
-          `Vence: ${whenTxt}.`;
         try {
-          const resp = await sendSMS(adminPhone, adminMsg);
+          await sendSMS(adminPhone,
+            `ALERTA MCP 🎯 Reenvío cupón\nCode: ${code} (${title})\nTel: ${phoneE164}\nVence: ${whenTxt}`
+          );
           notify.admin.ok = true;
-          notify.admin.sid = resp.sid;
         } catch (err) {
-          console.error('[coupons.direct-claim] admin SMS error (reused):', err);
           notify.admin.ok = false;
           notify.admin.error = err.message;
         }
       }
-
-      // ✅ Respuesta “normal” para el cliente (no sabe que era duplicado)
-      const kind = activeCoupon.kind;
-      const variant = activeCoupon.variant;
-      const percent =
-        kind === 'PERCENT' && activeCoupon.percent != null ? Number(activeCoupon.percent) : null;
-      const amount =
-        kind === 'AMOUNT' && activeCoupon.amount != null ? Number(activeCoupon.amount) : null;
-      const maxAmount =
-        activeCoupon.maxAmount != null ? Number(activeCoupon.maxAmount) : null;
 
       return res.json({
         ok: true,
@@ -1054,93 +1034,40 @@ router.post('/direct-claim', async (req, res) => {
         title,
         expiresAt: activeCoupon.expiresAt || expiresAt,
         customerId: customer.id,
-        kind,
-        variant,
-        percent,
-        amount,
-        maxAmount,
+        kind: activeCoupon.kind,
+        variant: activeCoupon.variant,
+        percent: activeCoupon.percent ? Number(activeCoupon.percent) : null,
+        amount: activeCoupon.amount ? Number(activeCoupon.amount) : null,
+        maxAmount: activeCoupon.maxAmount ? Number(activeCoupon.maxAmount) : null,
         notify,
         reused: true
       });
     }
 
-    // ---------- 3) Buscar cupón disponible en el pool ----------
+    // ---------- 3) Buscar cupón del pool ----------
     stage = 'find_pool_coupon';
-
-    const poolWhere = {
-      status: 'ACTIVE',
-      ...whereTypeKey,
-
-      // 🔒 Nunca asignar cupones del pool de juegos al claim normal
-      AND: [
-        { OR: [{ acquisition: null }, { acquisition: { not: 'GAME' } }] },
-        { OR: [{ channel: null }, { channel: { not: 'GAME' } }] },
-        { gameId: null }
-      ],
-
-      OR: [
-        {
-          assignedToId: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
-        },
-        {
-          assignedToId: { not: null },
-          expiresAt: { lte: now }
-        }
-      ]
-    };
-
-    // Debug: muestra primeros 5 que cumplirían la condición
-    const samplePool = await prisma.coupon.findMany({
-      where: poolWhere,
-      select: {
-        id: true,
-        code: true,
-        kind: true,
-        variant: true,
-        percent: true,
-        amount: true,
-        maxAmount: true,
-        usageLimit: true,
-        usedCount: true,
-        expiresAt: true,
-        assignedToId: true
-      },
-      take: 5
-    });
-    console.log('[VENTAS][direct-claim] samplePool (primeros 5):', samplePool);
-
     const poolCoupon = await prisma.coupon.findFirst({
-      where: poolWhere,
+      where: {
+        status: 'ACTIVE',
+        ...whereTypeKey,
+        AND: [
+          { OR: [{ acquisition: null }, { acquisition: { not: 'GAME' } }] },
+          { OR: [{ channel: null }, { channel: { not: 'GAME' } }] },
+          { gameId: null }
+        ],
+        OR: [
+          { assignedToId: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+          { assignedToId: { not: null }, expiresAt: { lte: now } }
+        ]
+      },
       orderBy: { id: 'asc' }
     });
 
-    console.log(
-      '[VENTAS][direct-claim] poolCoupon elegido:',
-      poolCoupon && {
-        id: poolCoupon.id,
-        code: poolCoupon.code,
-        kind: poolCoupon.kind,
-        variant: poolCoupon.variant,
-        percent: poolCoupon.percent,
-        amount: poolCoupon.amount,
-        maxAmount: poolCoupon.maxAmount,
-        usageLimit: poolCoupon.usageLimit,
-        usedCount: poolCoupon.usedCount,
-        expiresAt: poolCoupon.expiresAt,
-        assignedToId: poolCoupon.assignedToId
-      }
-    );
-
     if (!poolCoupon) {
-      return res.status(409).json({
-        ok: false,
-        error: 'out_of_stock',
-        meta: { type, key, whereTypeKey }
-      });
+      return res.status(409).json({ ok: false, error: 'out_of_stock' });
     }
 
-    // ---------- 4) Asignar cupón ----------
+    // ---------- 4) Asignar ----------
     stage = 'assign_coupon';
     await prisma.coupon.update({
       where: { id: poolCoupon.id },
@@ -1153,70 +1080,25 @@ router.post('/direct-claim', async (req, res) => {
       }
     });
 
-    const finalCoupon = await prisma.coupon.findUnique({
-      where: { id: poolCoupon.id }
-    });
-
-    const kind = finalCoupon.kind;
-    const variant = finalCoupon.variant;
-    const percent =
-      kind === 'PERCENT' && finalCoupon.percent != null ? Number(finalCoupon.percent) : null;
-    const amount =
-      kind === 'AMOUNT' && finalCoupon.amount != null ? Number(finalCoupon.amount) : null;
-    const maxAmount =
-      finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
-
-    console.log('[VENTAS][direct-claim] finalCoupon after update:', {
-      id: finalCoupon.id,
-      code: finalCoupon.code,
-      assignedToId: finalCoupon.assignedToId,
-      expiresAt: finalCoupon.expiresAt,
-      kind,
-      variant,
-      percent,
-      amount,
-      maxAmount
-    });
+    const finalCoupon = await prisma.coupon.findUnique({ where: { id: poolCoupon.id } });
 
     const code = finalCoupon.code;
     const title = titleForCouponRow(finalCoupon);
     const whenTxt = fmtExpiry(finalCoupon.expiresAt || expiresAt);
 
-    // ---------- 5) Enviar SMS ----------
-    stage = 'send_sms';
+    // ---------- 5) SMS ----------
     const notify = { user: { tried: false }, admin: { tried: false } };
 
     notify.user.tried = true;
-    const userMsg =
-      `🎁 Tu cupón para MyCrushPizza: ${code}\n` +
-      `Valor: ${title}\n` +
-      `Canjéalo en ${siteUrl} (cupón válido hasta ${whenTxt}).`;
-    try {
-      const resp = await sendSMS(phoneRaw, userMsg);
-      notify.user.ok = true;
-      notify.user.sid = resp.sid;
-    } catch (err) {
-      console.error('[coupons.direct-claim] user SMS error:', err);
-      notify.user.ok = false;
-      notify.user.error = err.message;
-    }
+    await sendSMS(phoneE164,
+      `🎁 Tu cupón para MyCrushPizza: ${code}\nValor: ${title}\nCanjéalo en ${siteUrl} (hasta ${whenTxt}).`
+    );
 
     if (adminPhone) {
       notify.admin.tried = true;
-      const adminMsg =
-        `ALERTA MCP 🎯 Cupón directo emitido\n` +
-        `Code: ${code} (${title})\n` +
-        `Tel cliente: ${phoneRaw}\n` +
-        `Vence: ${whenTxt}.`;
-      try {
-        const resp = await sendSMS(adminPhone, adminMsg);
-        notify.admin.ok = true;
-        notify.admin.sid = resp.sid;
-      } catch (err) {
-        console.error('[coupons.direct-claim] admin SMS error:', err);
-        notify.admin.ok = false;
-        notify.admin.error = err.message;
-      }
+      await sendSMS(adminPhone,
+        `ALERTA MCP 🎯 Cupón emitido\nCode: ${code} (${title})\nTel: ${phoneE164}\nVence: ${whenTxt}`
+      );
     }
 
     return res.json({
@@ -1227,22 +1109,18 @@ router.post('/direct-claim', async (req, res) => {
       title,
       expiresAt: finalCoupon.expiresAt || expiresAt,
       customerId: customer.id,
-      kind,
-      variant,
-      percent,
-      amount,
-      maxAmount,
+      kind: finalCoupon.kind,
+      variant: finalCoupon.variant,
+      percent: finalCoupon.percent ? Number(finalCoupon.percent) : null,
+      amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
+      maxAmount: finalCoupon.maxAmount ? Number(finalCoupon.maxAmount) : null,
       notify,
       reused: false
     });
+
   } catch (e) {
     console.error('[coupons.direct-claim] FATAL error at stage', stage, e);
-    return res.status(500).json({
-      ok: false,
-      error: 'server',
-      stage,
-      meta: { message: e.message }
-    });
+    return res.status(500).json({ ok: false, error: 'server', stage, meta: { message: e.message } });
   }
 });
 router.get('/gallery', async (_req, res) => {
@@ -1584,49 +1462,49 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       campaign: req.body.campaign || null
     });
 
-    // ---------- 0) Resolver customerId a partir del teléfono (si hace falta) ----------
+    // ---------- 0) Resolver customerId a partir del teléfono (CANÓNICO) ----------
     stage = 'resolve_customer';
-let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
 
-// ✅ normaliza teléfono a solo dígitos
-const contactRaw = normPhone(req.body.contact || '');
+    let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
 
-// ✅ NUEVO: nombre (trim) para evitar null
-const nameRaw = String(req.body.name || '').trim() || null;
+    // 🔒 NORMALIZACIÓN REAL → +34XXXXXXXXX o null
+    const contactRaw = normalizeES(req.body.contact);
 
-console.log('[games.issue] customer input', {
-  contact: contactRaw || null,
-  name: nameRaw,
-  customerId: req.body.customerId || null,
-  portal: `GAME_${gameId}`,
-});
+    // Nombre
+    const nameRaw = String(req.body.name || '').trim() || null;
 
-if (!effectiveCustomerId && contactRaw) {
-  try {
-    const customer = await findOrCreateCustomerByPhone(prisma, {
-      phone: contactRaw,
-      name: nameRaw,            // ✅ AQUÍ VA EL CAMBIO
-      origin: 'QR',             // ✅ enum válido
-      portal: `GAME_${gameId}`, // ✅ tag del juego
+    console.log('[games.issue] customer input', {
+      contact: contactRaw || null,
+      name: nameRaw,
+      customerId: req.body.customerId || null,
+      portal: `GAME_${gameId}`,
     });
-    effectiveCustomerId = customer.id;
-  } catch (err) {
-    console.error('[games.issue] findOrCreateCustomerByPhone error', err);
-    // si falla, seguimos sin customerId, pero NO rompemos la emisión
-  }
-}
+
+    // Si no viene customerId pero sí teléfono válido → resolver por teléfono canónico
+    if (!effectiveCustomerId && contactRaw) {
+      try {
+        const customer = await findOrCreateCustomerByPhone(prisma, {
+          phone: contactRaw,          // 👈 SIEMPRE +34XXXXXXXXX
+          name: nameRaw,
+          origin: 'QR',
+          portal: `GAME_${gameId}`,
+        });
+        effectiveCustomerId = customer.id;
+      } catch (err) {
+        console.error('[games.issue] findOrCreateCustomerByPhone error', err);
+        // NO rompemos la emisión si falla
+      }
+    }
 
     // ---------- 1) Buscar cupón válido del pool del juego ----------
     stage = 'find_pool_coupon';
 
-    // Traemos un lote y filtramos por reglas (window/days/stock/activeFrom/expiresAt)
     const candidates = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
-        assignedToId: null, // SOLO pool
-        // fecha “rápida” (lo fino se filtra abajo)
+        assignedToId: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { id: 'asc' },
@@ -1658,7 +1536,7 @@ if (!effectiveCustomerId && contactRaw) {
       return res.status(409).json({ ok: false, error: 'out_of_stock' });
     }
 
-    // ---------- 2) Actualizar cupón (expiración + asignación + channel) ----------
+    // ---------- 2) Actualizar cupón ----------
     stage = 'update_coupon';
 
     await prisma.coupon.update({
@@ -1667,7 +1545,6 @@ if (!effectiveCustomerId && contactRaw) {
         expiresAt,
         assignedToId: effectiveCustomerId ?? null,
         channel: 'GAME',
-        // mantenemos acquisition = 'GAME'
         campaign: req.body.campaign ?? row.campaign ?? null
       }
     });
@@ -1684,7 +1561,7 @@ if (!effectiveCustomerId && contactRaw) {
     const code = finalCoupon.code;
     const effectiveExpiresAt = finalCoupon.expiresAt || expiresAt;
 
-    // ---------- 4) Notificación opcional ----------
+    // ---------- 4) Notificación ----------
     stage = 'send_sms';
 
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
@@ -1699,7 +1576,7 @@ if (!effectiveCustomerId && contactRaw) {
         `Úsalo en ${siteUrl}\n` +
         `Vence ${whenTxt}.`;
       try {
-        const resp = await sendSMS(contactRaw, userMsg);
+        const resp = await sendSMS(contactRaw, userMsg); // 👈 ahora SIEMPRE +34...
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
@@ -1724,7 +1601,7 @@ if (!effectiveCustomerId && contactRaw) {
       }
     }
 
-    // ---------- 5) Respuesta homogénea ----------
+    // ---------- 5) Respuesta ----------
     const legacyKind =
       finalCoupon.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
 
