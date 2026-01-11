@@ -1135,58 +1135,69 @@ const checkCoupon = useCallback(async () => {
 // ✅ orderView (PublicCheckout.jsx) — reemplaza SOLO este bloque
 
 const orderView = (
-  <div className="pc-card">
-    {/* BUSCADOR + VOLVER (arriba, alineado) */}
-    <div className="pc-actions" style={{ marginBottom: 8, display: "flex", gap: 10, alignItems: "center" }}>
-      <input
-        className="pc-input"
-        placeholder="🔍 Buscar ingrediente…"
-        value={ingredientQuery}
-        onChange={(e) => setIngredientQuery(e.target.value)}
-        autoComplete="off"
-        spellCheck={false}
-        style={{
-          flex: 1,
-          textTransform: "none", // importante: NO mayúsculas
+  <div className="pc-fullscreen">
+    <div className="lsf-mobile">
+
+      {/* 🔍 ORDER BAR (antes era pc-card--orderbar) */}
+      <div className="lsf-searchRow">
+        <input
+          className="pc-input"
+          placeholder="🔍 Buscar ingrediente…"
+          value={ingredientQuery}
+          onChange={(e) => setIngredientQuery(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          style={{ flex: 1 }}
+        />
+
+        <button
+          className="pc-btn pc-btn-ghost"
+          onClick={() => {
+            setIngredientQuery("");
+            setStep("locate");
+          }}
+        >
+          ← volver
+        </button>
+      </div>
+
+      {/* 🧠 LOCAL SALE FORM */}
+      <LocalSaleForm
+        forcedStoreId={
+          mode === "deliveryLocate"
+            ? Number(nearest?.storeId)
+            : Number(selectedStoreId) || undefined
+        }
+        compact
+        customer={customer}
+        ingredientQuery={ingredientQuery}
+        onClearIngredientQuery={() => setIngredientQuery("")}
+        onConfirmCart={(data) => {
+          const sid =
+            mode === "deliveryLocate"
+              ? Number(nearest?.storeId)
+              : Number(selectedStoreId);
+
+          const sel = sid ? getStoreById(sid) : null;
+          const addr = sid ? storeAddrById[sid] : undefined;
+
+          setPending({
+            ...data,
+            customer,
+            storeId: sid ?? data.storeId,
+            storeName: sel?.storeName || sel?.name || "",
+            storeAddress: addr,
+          });
+          setStep("review");
         }}
+        onDone={() => {}}
       />
 
-      <button
-        className="pc-btn pc-btn-ghost"
-        onClick={() => {
-          setIngredientQuery(""); // limpia búsqueda al volver
-          setStep("locate");
-        }}
-        aria-label="Volver a seleccionar tienda/dirección"
-      >
-        ← volver
-      </button>
     </div>
-
-    <LocalSaleForm
-      forcedStoreId={mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId) || undefined}
-      compact
-      customer={customer}
-      ingredientQuery={ingredientQuery}          // ✅ pasa el buscador al grid
-      onClearIngredientQuery={() => setIngredientQuery("")} // ✅ opcional, por si quieres limpiar desde dentro
-      onConfirmCart={(data) => {
-        const sid = mode === "deliveryLocate" ? Number(nearest?.storeId) : Number(selectedStoreId);
-        const sel = sid ? getStoreById(sid) : null;
-        const addr = sid ? storeAddrById[sid] : undefined;
-
-        setPending({
-          ...data,
-          customer,
-          storeId: sid ?? data.storeId,
-          storeName: sel?.storeName || sel?.name || "",
-          storeAddress: addr,
-        });
-        setStep("review");
-      }}
-      onDone={() => {}}
-    />
   </div>
 );
+
+
 
 
   const parseJsonMaybe = (v) => {

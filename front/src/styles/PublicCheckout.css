@@ -281,8 +281,37 @@ border-radius: 20px;
 }
 
 /* ====== CONFIRMAR CARRITO: robustez de layout ====== */
-.pc-card{ box-sizing:border-box; max-width:100%; }
+/* ====== LocalSaleForm fullscreen sandbox ====== */
+.pc-fullscreen{
+  width:100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  padding:0;              /* ⬅️ fuera padding */
+  background:transparent;
+}
 
+/* evita que el buscador herede estilos de card */
+.pc-card--orderbar {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+
+/* El footer del checkout NO debe aparecer en TPV */
+.pc-card:has(.lsf-wrapper) + .footer,
+.pc-card:has(.lsf-wrapper) ~ .footer {
+  display: none;
+}
+.pc-card {
+  display: block;
+  width: 100%;
+  background: var(--card-bg);
+  border-radius: var(--pc-radius);
+  padding: var(--pc-card-pad);
+  margin: 14px auto;
+  overflow: hidden;
+}
 .pc-card form,
 .pc-card .pc-form,
 .pc-card .content{

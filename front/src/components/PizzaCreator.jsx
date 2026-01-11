@@ -374,11 +374,18 @@ const onImageSelect = (e) => {
 
   const selectedSizes = form.sizes;
 
+const sortedInventory = useMemo(() => {
+  return [...inventory].sort((a, b) =>
+    a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+  );
+}, [inventory]);
+
+
   /* ====================================================== */
   return (
     <>
       <div className="pc-layout">
-      <h2 className="pc-title">
+      <h2 className="pc-title-creator">
       {editingPizzaId ? "Editando producto" : "Crear producto"}
      </h2>
 
@@ -446,14 +453,14 @@ const onImageSelect = (e) => {
               <fieldset className="ingredients-fieldset">
                 {form.ingredients.map((row, i) => (
                   <div key={i} className="ing-row">
-                    <select value={row.id} onChange={(e) => onIngredientSelect(i, e.target.value)}>
-                      <option value="">– ingrediente –</option>
-                      {inventory.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
+                  <select value={row.id} onChange={(e) => onIngredientSelect(i, e.target.value)}>
+                    <option value="">– ingrediente –</option>
+                    {sortedInventory.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
 
                     {selectedSizes.map((sz) => (
                       <div key={`${i}-${sz}`} className="ing-col">
@@ -481,7 +488,7 @@ const onImageSelect = (e) => {
 
             {/* IMAGEN */}
             <section className="pc-section">
-              <h3 className="pc-subtitle">Imagen</h3>
+              <h3 className="pc-subtitle"></h3>
                 {existingImage && !form.imageFile && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>Imagen actual</div>
@@ -492,7 +499,17 @@ const onImageSelect = (e) => {
                     />
                   </div>
                 )}
-              <input type="file" accept="image/*" onChange={onImageSelect} />
+              <label className="pc-file-upload">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onImageSelect}
+                    hidden
+                  />
+                  <span className="pc-file-btn">
+                    {form.imageFile || existingImage ? "Cambiar imagen" : "Agrega la imagen del producto"}
+                  </span>
+                </label>
 
               {form.imageFile && (
                 <div style={{ marginTop: 8, opacity: 0.8, fontWeight: 700 }}>

@@ -31,11 +31,11 @@
 }
 
 /* título */
-.pc-title{
+.pc-title-creator{
   grid-column: 1 / -1;
-  
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 900;
+    color: #ff6933;
 }
 
 /* cajas */
@@ -150,7 +150,8 @@
 
 .ing-row button{
   border: 1px solid #e7e7e7;
-  background: #fc8080;
+  background: #ff6933;
+  color:#e7e7e7;
   border-radius: 10px;
   padding: 6px 10px;
   font-weight: 900;
@@ -181,8 +182,29 @@
 .pc-actionsRow{
   display: grid;
   gap: 12px;
-  align-items: start;
+  align-items: center;
 }
+.pc-file-upload {
+    display: flex;
+  justify-content: center;   /* 👈 centra horizontal */
+  width: 100%;
+}
+
+.pc-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 18px;
+  background: #fff7f2;
+  color: black;
+  font-weight: 800;
+  border-radius: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+
+
 
 @media (min-width: 980px){
   .pc-actionsRow{

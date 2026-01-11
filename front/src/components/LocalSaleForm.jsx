@@ -6,7 +6,6 @@ import "../styles/LocalSaleForm.css";
 
 const normalize = (c) => String(c || "").trim().toLowerCase();
 
-// ✅ normaliza texto para buscar (minúsculas + sin tildes)
 const normText = (s = "") =>
   String(s || "")
     .toLowerCase()
@@ -61,14 +60,12 @@ const parseMaybeJSON = (v, fallback) => {
     return fallback;
   }
 };
-
 const num = (x) => {
   if (x == null || x === "") return 0;
   const s = typeof x === "string" ? x.replace(",", ".") : x;
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 };
-
 const priceForSize = (priceBySize = {}, size = "M") => {
   const pref = num(priceBySize?.[size]);
   if (pref > 0) return pref;
@@ -82,7 +79,6 @@ const priceForSize = (priceBySize = {}, size = "M") => {
   }
   return 0;
 };
-
 const coerceRow = (row) => ({
   pizzaId: row.pizzaId ?? row.id,
   name: row.name,
@@ -97,7 +93,6 @@ const coerceRow = (row) => ({
   type: row.type,
   isExtra: row.isExtra,
 });
-
 const capWords = (s = "") => {
   const lowerWords = ["de", "del", "y", "con", "al"];
   return String(s)
@@ -111,9 +106,7 @@ const capWords = (s = "") => {
     })
     .join(" ");
 };
-
 const displayCategory = (c) => capWords(String(c || ""));
-
 const joinWithY = (arr = []) => {
   const clean = arr.filter(Boolean);
   if (clean.length === 0) return "";
@@ -121,7 +114,6 @@ const joinWithY = (arr = []) => {
   if (clean.length === 2) return `${clean[0]} y ${clean[1]}`;
   return `${clean.slice(0, -1).join(", ")} y ${clean[clean.length - 1]}`;
 };
-
 const seededPick = (seed, arr) => {
   if (!arr.length) return "";
   const n = Math.abs(Number(seed) || 1);
@@ -135,7 +127,6 @@ const CRUSH_CLOSERS = [
   "Crush confirmado en 10 segundos.",
   "Te enamora sin avisar.",
 ];
-
 const buildPizzaLine = (item) => {
   const ings = Array.isArray(item?.ingredients)
     ? item.ingredients.map((i) => capWords(i?.name)).filter(Boolean)
@@ -149,7 +140,6 @@ const buildPizzaLine = (item) => {
 
   return { line, closer };
 };
-
 function getPizzaBadge(it) {
   const seed = Number(it.pizzaId) || 1;
 
