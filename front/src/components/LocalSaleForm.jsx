@@ -184,9 +184,13 @@ export default function LocalSaleForm({
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
+  const [categoriesDb, setCategoriesDb] = useState([]);
 
-
-
+useEffect(() => {
+  api.get("/api/categories")
+    .then(r => setCategoriesDb(Array.isArray(r.data) ? r.data : []))
+    .catch(console.error);
+}, []);
   const MAX_QTY_SELECT = 12;
 
   /* effects */
@@ -218,16 +222,21 @@ export default function LocalSaleForm({
   };
 
   const categories = useMemo(() => {
-    const set = new Map();
-    for (const m of menu) {
-      if (!m?.category) continue;
-      if (isExtraItem(m)) continue;
-      const key = normalize(m.category);
-      if (!key) continue;
-      if (!set.has(key)) set.set(key, m.category);
-    }
-    return Array.from(set.values()).sort((a, b) => String(a).localeCompare(String(b), "es"));
-  }, [menu]);
+  if (!categoriesDb.length) return [];
+
+  // categorías que realmente tienen productos en el menú
+  const menuCats = new Set(
+    menu
+      .filter(m => m?.category && !isExtraItem(m))
+      .map(m => normalize(m.category))
+  );
+
+  // respetar el orden del backoffice
+  return categoriesDb
+    .filter(c => menuCats.has(normalize(c.name)))
+    .map(c => c.name);
+}, [categoriesDb, menu]);
+
 
   useEffect(() => {
     if (!categories.length) {

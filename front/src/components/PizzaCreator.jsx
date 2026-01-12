@@ -24,16 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 /* ---------------------- constantes ---------------------- */
 const sizeList = ["S", "M", "L", "XL", "XXL", "ST"];
 
-const categoryOptions = [
-  "Pizza Básica",
-  "Pizza Frita",
-  "Pizza Especial",
-  "Pizza Dulce",
-  "Extras",
-  "Bebidas",
-  "Complementos",
-  "Postres",
-];
+
 
 /* ---------------------- Modal simple ---------------------- */
 function Modal({ open, title, onClose, children }) {
@@ -112,6 +103,12 @@ function Modal({ open, title, onClose, children }) {
 
 /* ======================================================== */
 export default function PizzaCreator() {
+  const [categories, setCategories] = useState([]);
+  useEffect(() => {
+  api.get("/api/categories")
+    .then(r => setCategories(r.data || []))
+    .catch(console.error);
+}, []);
   const [pizzaOrderByCat, setPizzaOrderByCat] = useState({});
   function SortablePizza({ id, children, dragHandleProps }) {
   const {
@@ -175,9 +172,54 @@ export default function PizzaCreator() {
   }, [fetchPizzas]);
 
   /* ---------- Category cards + modal ---------- */
+
+
   const [openCat, setOpenCat] = useState(null);
   const [editingPizzaId, setEditingPizzaId] = useState(null);
   const [existingImage, setExistingImage] = useState(null);
+const [categoryOrder, setCategoryOrder] = useState([]);
+
+useEffect(() => {
+  if (!categories.length) return;
+  setCategoryOrder(categories.map(c => c.id));
+}, [categories]);
+
+const persistCategoryOrder = async (order) => {
+  setCategoryOrder(order);
+  await api.patch("/api/categories/order", { orderedIds: order });
+};
+
+const onCategoryDragEnd = (event) => {
+  const { active, over } = event;
+  if (!over || active.id === over.id) return;
+
+  const oldIndex = categoryOrder.indexOf(active.id);
+  const newIndex = categoryOrder.indexOf(over.id);
+
+  const next = arrayMove(categoryOrder, oldIndex, newIndex);
+  persistCategoryOrder(next);
+};
+
+function SortableCategory({ id, children }) {
+  const {
+    setNodeRef,
+    transform,
+    transition,
+    attributes,
+    listeners,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      {children(listeners)}
+    </div>
+  );
+}
 
   const loadPizzaForEdit = (pizza) => {
   setEditingPizzaId(pizza.id);
@@ -201,7 +243,7 @@ export default function PizzaCreator() {
 };
 
   const pizzasByCategory = useMemo(() => {
-    const map = Object.fromEntries(categoryOptions.map((c) => [c, []]));
+    const map = Object.fromEntries(categories.map(c => [c.name, []]));
     for (const p of pizzas) {
       const c = p?.category || "";
       if (!map[c]) map[c] = [];
@@ -405,9 +447,9 @@ const sortedInventory = useMemo(() => {
                 Categoría
                 <select name="category" value={form.category} onChange={onChange} required>
                   <option value="">– elegir –</option>
-                  {categoryOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>
@@ -553,21 +595,52 @@ const sortedInventory = useMemo(() => {
         </form>
 
         {/* ─────────── RIGHT: CATEGORÍAS ─────────── */}
-        <aside className="pc-right">
-          <div className="pc-right__title">Categorías</div>
+  <aside className="pc-right">
+  <div className="pc-right__title">Categorías</div>
 
-          <div className="pc-catsGrid">
-            {categoryOptions.map((c) => {
-              const count = (pizzasByCategory[c] || []).length;
-              return (
-                <button key={c} type="button" className="pc-catCard" onClick={() => setOpenCat(c)}>
-                  <div className="pc-catCard__name">{c}</div>
-                  <div className="pc-catCard__count">{count} productos</div>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+  <DndContext
+    collisionDetection={closestCenter}
+    onDragEnd={onCategoryDragEnd}
+  >
+    <SortableContext
+      items={categoryOrder}
+      strategy={verticalListSortingStrategy}
+    >
+      <div className="pc-catsGrid">
+        {categoryOrder.map((id) => {
+          const c = categories.find(x => x.id === id);
+          if (!c) return null;
+
+          const name = c.name;
+          const count = (pizzasByCategory[name] || []).length;
+
+          return (
+<SortableCategory key={c.id} id={c.id}>
+  {(listeners) => (
+    <button
+      onClick={() => setOpenCat(name)}
+      className="pc-catCard"
+      type="button"
+    >
+      <div className="pc-catTop">
+        <span {...listeners} className="pc-catDrag">≡</span>
+        <span className="pc-catName">{name}</span>
+      </div>
+
+      <div className="pc-catCount">
+        {count} productos
+      </div>
+    </button>
+  )}
+</SortableCategory>
+
+          );
+        })}
+      </div>
+    </SortableContext>
+  </DndContext>
+</aside>
+
       </div>
 
       {/* ─────────── MODAL POR CATEGORÍA ─────────── */}

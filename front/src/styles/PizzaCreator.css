@@ -249,23 +249,49 @@
   gap: 10px;
 }
 
-.pc-catCard{
-  border: 1px solid #e7e7e7;
+.pc-catCard {
+  width: 100%;
   background: #fff;
-  border-radius: 14px;
-  padding: 12px;
-  cursor: pointer;
+  border: 1px solid #e6e6e6;
+  border-radius: 16px;
+  padding: 12px 14px;
   text-align: left;
-  transition: transform .08s ease, box-shadow .08s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: box-shadow .15s ease, transform .15s ease;
 }
 
-.pc-catCard:hover{
+.pc-catCard:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,.08);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
 }
 
-.pc-catCard__name{ font-weight: 900; }
-.pc-catCard__count{ opacity: .75; font-weight: 800; }
+.pc-catTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pc-catDrag {
+  cursor: grab;
+  font-size: 18px;
+  opacity: .4;
+  user-select: none;
+}
+
+.pc-catName {
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.pc-catCount {
+  font-size: 13px;
+  font-weight: 700;
+  opacity: .65;
+}
+
 
 /* MOBILE: el aside baja debajo */
 @media (max-width: 979px){
