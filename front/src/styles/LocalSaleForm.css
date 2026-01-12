@@ -134,8 +134,7 @@
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 
 /* Estado activo */
@@ -159,20 +158,42 @@
 
 /* Textos */
 .lsf-card__name {
+  display: inline-block;
+  white-space: nowrap;
   font-weight: 800;
   font-size: 0.8rem;
   text-transform: uppercase;
-  line-height: 1.15;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.2;
+  padding-right: 24px; /* espacio al final antes de repetir */
+  animation: lsf-ticker 20s linear infinite;
+}
+@keyframes lsf-ticker {
+  0%   { transform: translateX(50%); }
+  100% { transform: translateX(-100%); }
+}
+.lsf-card__name span{
+  display: inline-block;
+  padding-right: 24px;        /* espacio antes de repetir */
+  animation: lsf-marquee 6s linear infinite;
+  will-change: transform;
+}
+
+@keyframes lsf-marquee{
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
 }
 
 .lsf-card__price {
   font-size: 0.8rem;
   font-weight: 900;
   white-space: nowrap;
+  flex-shrink: 0;
+}
+.lsf-card__ticker {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 
 .lsf-card__sub {

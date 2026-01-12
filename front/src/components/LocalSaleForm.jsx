@@ -469,10 +469,12 @@ export default function LocalSaleForm({
                       {alreadyInCart ? "✔️" : "+add"}
                     </button>
 
-                    <div className="lsf-card__overlay">
-                      <div className="lsf-card__name">{it.name}</div>
-                      <div className="lsf-card__price">€{basePrice.toFixed(2)}</div>
-                    </div>
+                  <div className="lsf-card__overlay">
+                  <div className="lsf-card__ticker">
+                    <div className="lsf-card__name">{it.name}</div>
+                  </div>
+                  <div className="lsf-card__price">€{basePrice.toFixed(2)}</div>
+                </div>
                   </div>
 
                   {/* BACK (INFO ONLY) */}
