@@ -3,7 +3,40 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  // 1) Asegurar un juego
+
+  // ─────────────────────────────────────────────
+  // 0) CATEGORÍAS DE PIZZAS (orden visual del menú)
+  // ─────────────────────────────────────────────
+  const CATEGORIES = [
+    "Pizza Básica",
+    "Pizza Frita",
+    "Pizza Especial",
+    "Pizza Dulce",
+    "Extras",
+    "Bebidas",
+    "Complementos",
+    "Postres",
+  ];
+
+  for (let i = 0; i < CATEGORIES.length; i++) {
+    const name = CATEGORIES[i];
+
+    await prisma.category.upsert({
+      where: { name },
+      update: { position: i },
+      create: {
+        name,
+        position: i,
+      },
+    });
+  }
+
+  console.log("✔ Categorías sincronizadas");
+
+
+  // ─────────────────────────────────────────────
+  // 1) GAME
+  // ─────────────────────────────────────────────
   const game = await prisma.game.upsert({
     where: { code: 'DAILY_NUMBER' },
     update: {},
@@ -16,7 +49,9 @@ async function main() {
 
   console.log('Game id:', game.id);
 
-  // 2) Si no hay cupones de pool para este juego, crea algunos de ejemplo
+  // ─────────────────────────────────────────────
+  // 2) CUPONES
+  // ─────────────────────────────────────────────
   const existing = await prisma.coupon.count({
     where: { acquisition: 'GAME', channel: 'GAME', gameId: game.id }
   });
@@ -30,7 +65,7 @@ async function main() {
       return `MCP-GM${block(2)}-${block(4)}`;
     };
 
-    // 10 cupones de importe fijo 5€
+    // 10 cupones 5€
     for (let i=0;i<10;i++){
       rows.push({
         code: mkCode(),
@@ -45,7 +80,7 @@ async function main() {
       });
     }
 
-    // 10 cupones 10% (con tope 8€)
+    // 10 cupones 10%
     for (let i=0;i<10;i++){
       rows.push({
         code: mkCode(),
@@ -68,9 +103,11 @@ async function main() {
   }
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-}).finally(async () => {
-  await prisma.$disconnect();
-});
+main()
+  .catch(e => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

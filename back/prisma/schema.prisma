@@ -396,3 +396,11 @@ model WhatsAppMessage {
   @@index([conversationId, createdAt])
   @@index([from])
 }
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
