@@ -280,8 +280,7 @@ border-radius: 20px;
   .pc-title-pulse{ animation:none; }
 }
 
-/* ====== CONFIRMAR CARRITO: robustez de layout ====== */
-/* ====== LocalSaleForm fullscreen sandbox ====== */
+
 .pc-fullscreen{
   width:100vw;
   margin-left: calc(50% - 50vw);
