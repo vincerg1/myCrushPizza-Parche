@@ -303,7 +303,6 @@ export default function LocalSaleForm({
 
   /* handlers */
   const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
-
   const pickSize = (sz) => setSel((s) => ({ ...s, size: sz }));
   const decQty = () => setSel((s) => ({ ...s, qty: Math.max(1, Number(s.qty || 1) - 1) }));
   const incQty = () => {

@@ -1136,66 +1136,65 @@ const checkCoupon = useCallback(async () => {
 
 const orderView = (
   <div className="pc-fullscreen">
-    <div className="lsf-mobile">
 
-      {/* 🔍 ORDER BAR (antes era pc-card--orderbar) */}
-      <div className="lsf-searchRow">
-        <input
-          className="pc-input"
-          placeholder="🔍 Buscar ingrediente…"
-          value={ingredientQuery}
-          onChange={(e) => setIngredientQuery(e.target.value)}
-          autoComplete="off"
-          spellCheck={false}
-          style={{ flex: 1 }}
-        />
-
-        <button
-          className="pc-btn pc-btn-ghost"
-          onClick={() => {
-            setIngredientQuery("");
-            setStep("locate");
-          }}
-        >
-          ← volver
-        </button>
-      </div>
-
-      {/* 🧠 LOCAL SALE FORM */}
-      <LocalSaleForm
-        forcedStoreId={
-          mode === "deliveryLocate"
-            ? Number(nearest?.storeId)
-            : Number(selectedStoreId) || undefined
-        }
-        compact
-        customer={customer}
-        ingredientQuery={ingredientQuery}
-        onClearIngredientQuery={() => setIngredientQuery("")}
-        onConfirmCart={(data) => {
-          const sid =
-            mode === "deliveryLocate"
-              ? Number(nearest?.storeId)
-              : Number(selectedStoreId);
-
-          const sel = sid ? getStoreById(sid) : null;
-          const addr = sid ? storeAddrById[sid] : undefined;
-
-          setPending({
-            ...data,
-            customer,
-            storeId: sid ?? data.storeId,
-            storeName: sel?.storeName || sel?.name || "",
-            storeAddress: addr,
-          });
-          setStep("review");
-        }}
-        onDone={() => {}}
+    {/* 🔍 ORDER BAR */}
+    <div className="lsf-searchRow">
+      <input
+        className="pc-input"
+        placeholder="🔍 Buscar ingrediente…"
+        value={ingredientQuery}
+        onChange={(e) => setIngredientQuery(e.target.value)}
+        autoComplete="off"
+        spellCheck={false}
+        style={{ flex: 1 }}
       />
 
+      <button
+        className="pc-btn pc-btn-ghost"
+        onClick={() => {
+          setIngredientQuery("");
+          setStep("locate");
+        }}
+      >
+        ← volver
+      </button>
     </div>
+
+    {/* 🧠 LOCAL SALE FORM */}
+    <LocalSaleForm
+      forcedStoreId={
+        mode === "deliveryLocate"
+          ? Number(nearest?.storeId)
+          : Number(selectedStoreId) || undefined
+      }
+      compact
+      customer={customer}
+      ingredientQuery={ingredientQuery}
+      onClearIngredientQuery={() => setIngredientQuery("")}
+      onConfirmCart={(data) => {
+        const sid =
+          mode === "deliveryLocate"
+            ? Number(nearest?.storeId)
+            : Number(selectedStoreId);
+
+        const sel = sid ? getStoreById(sid) : null;
+        const addr = sid ? storeAddrById[sid] : undefined;
+
+        setPending({
+          ...data,
+          customer,
+          storeId: sid ?? data.storeId,
+          storeName: sel?.storeName || sel?.name || "",
+          storeAddress: addr,
+        });
+        setStep("review");
+      }}
+      onDone={() => {}}
+    />
+
   </div>
 );
+
 
 
 
