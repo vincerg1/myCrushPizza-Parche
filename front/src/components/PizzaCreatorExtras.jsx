@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from "react";
+import "../styles/PizzaCreatorExtras.css";
 
 export default function PizzaCreatorExtras() {
   const [categories, setCategories] = useState([]);
   const [ingredients, setIngredients] = useState([]);
   const [extras, setExtras] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [selectedIngredient, setSelectedIngredient] = useState("");
-  const [selectedCategories, setSelectedCategories] = useState([]);
 
-  // cargar datos base
+  const [modal, setModal] = useState(null); // null | "create" | "edit" | "delete"
+  const [editingExtra, setEditingExtra] = useState(null);
+
+  const [selectedIngredient, setSelectedIngredient] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState([]); 
+  // [{ id, price }]
+
   useEffect(() => {
     loadAll();
   }, []);
@@ -28,18 +32,38 @@ export default function PizzaCreatorExtras() {
   const openCreate = () => {
     setSelectedIngredient("");
     setSelectedCategories([]);
-    setShowModal(true);
+    setEditingExtra(null);
+    setModal("create");
   };
 
   const openEdit = (extra) => {
     setSelectedIngredient(extra.ingredientId);
-    setSelectedCategories(extra.categories.map(c => c.id));
-    setShowModal(true);
+    setSelectedCategories(
+      extra.categories.map(c => ({
+        id: c.id,
+        price: c.price || 0,
+      }))
+    );
+    setEditingExtra(extra);
+    setModal("edit");
+  };
+
+  const openDelete = (extra) => {
+    setEditingExtra(extra);
+    setModal("delete");
   };
 
   const toggleCategory = (id) => {
-    setSelectedCategories((prev) =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    setSelectedCategories(prev => {
+      const exists = prev.find(c => c.id === id);
+      if (exists) return prev.filter(c => c.id !== id);
+      return [...prev, { id, price: 0 }];
+    });
+  };
+
+  const setCategoryPrice = (id, price) => {
+    setSelectedCategories(prev =>
+      prev.map(c => (c.id === id ? { ...c, price } : c))
     );
   };
 
@@ -51,26 +75,27 @@ export default function PizzaCreatorExtras() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ingredientId: selectedIngredient,
-        categoryIds: selectedCategories,
+        links: selectedCategories.map(c => ({
+          categoryId: c.id,
+          price: Number(c.price),
+        })),
       }),
     });
 
-    setShowModal(false);
+    setModal(null);
     loadAll();
   };
 
-  const remove = async (ingredientId) => {
-    if (!window.confirm("Eliminar este extra?")) return;
-
-    await fetch(`/api/ingredient-extras/${ingredientId}`, {
+  const confirmDelete = async () => {
+    await fetch(`/api/ingredient-extras/${editingExtra.ingredientId}`, {
       method: "DELETE",
     });
-
+    setModal(null);
     loadAll();
   };
 
   return (
-    <div>
+    <div className="extras-page">
       <div className="extras-header">
         <h2>Extras</h2>
         <button onClick={openCreate}>+ Añadir extra</button>
@@ -85,23 +110,23 @@ export default function PizzaCreatorExtras() {
             <div>
               <strong>{e.ingredientName}</strong>
               <div className="extra-cats">
-                {e.categories.map(c => c.name).join(", ")}
+                {e.categories.map(c => `${c.name} (€${Number(c.price).toFixed(2)})`).join(", ")}
               </div>
             </div>
 
             <div>
               <button onClick={() => openEdit(e)}>Editar</button>
-              <button onClick={() => remove(e.ingredientId)}>Eliminar</button>
+              <button onClick={() => openDelete(e)}>Eliminar</button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* MODAL */}
-      {showModal && (
+      {/* CREATE / EDIT MODAL */}
+      {(modal === "create" || modal === "edit") && (
         <div className="extras-modal-backdrop">
           <div className="extras-modal">
-            <h3>Extra</h3>
+            <h3>{modal === "create" ? "Añadir extra" : "Editar extra"}</h3>
 
             <div className="field">
               <label>Ingrediente</label>
@@ -121,22 +146,58 @@ export default function PizzaCreatorExtras() {
             <div className="field">
               <label>Categorías</label>
               <div className="checkbox-list">
-                {categories.map(c => (
-                  <label key={c.id}>
-                    <input
-                      type="checkbox"
-                      checked={selectedCategories.includes(c.id)}
-                      onChange={() => toggleCategory(c.id)}
-                    />
-                    {c.name}
-                  </label>
-                ))}
+                {categories.map(c => {
+                  const selected = selectedCategories.find(x => x.id === c.id);
+
+                  return (
+                    <div key={c.id} className="extra-cat-row">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={!!selected}
+                          onChange={() => toggleCategory(c.id)}
+                        />
+                        {c.name}
+                      </label>
+
+                      {selected && (
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="€"
+                          value={selected.price}
+                          onChange={(e) =>
+                            setCategoryPrice(c.id, e.target.value)
+                          }
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             <div className="modal-actions">
-              <button onClick={() => setShowModal(false)}>Cancelar</button>
+              <button onClick={() => setModal(null)}>Cancelar</button>
               <button onClick={save}>Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {modal === "delete" && (
+        <div className="extras-modal-backdrop">
+          <div className="extras-modal">
+            <h3>Eliminar</h3>
+            <p>
+              ¿Seguro que deseas eliminar{" "}
+              <strong>{editingExtra?.ingredientName}</strong> como extra?
+            </p>
+
+            <div className="modal-actions">
+              <button onClick={() => setModal(null)}>Cancelar</button>
+              <button onClick={confirmDelete}>Eliminar</button>
             </div>
           </div>
         </div>

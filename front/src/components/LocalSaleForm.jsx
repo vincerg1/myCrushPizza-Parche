@@ -185,6 +185,9 @@ export default function LocalSaleForm({
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
   const [categoriesDb, setCategoriesDb] = useState([]);
+const   [extrasAvail, setExtrasAvail] = useState([]);
+
+
 
 useEffect(() => {
   api.get("/api/categories")
@@ -282,9 +285,29 @@ useEffect(() => {
     });
   }, [menu, cat, ingredientQuery]);
 
-  const extrasAvail = useMemo(() => menu.filter((m) => isExtraItem(m)), [menu]);
+
 
   const current = menu.find((m) => m.pizzaId === Number(sel.pizzaId));
+  const currentCategoryId = useMemo(() => {
+    if (!current || !categoriesDb.length) return null;
+
+    const found = categoriesDb.find(
+      c => normalize(c.name) === normalize(current.category)
+    );
+
+    return found?.id || null;
+  }, [current, categoriesDb]);
+  useEffect(() => {
+  if (!currentCategoryId) {
+    setExtrasAvail([]);
+    return;
+  }
+
+  api
+    .get(`/api/ingredient-extras?categoryId=${currentCategoryId}`)
+    .then(r => setExtrasAvail(Array.isArray(r.data) ? r.data : []))
+    .catch(() => setExtrasAvail([]));
+}, [currentCategoryId]);
 
   /* Auto-select size si solo hay uno */
   useEffect(() => {
@@ -652,23 +675,23 @@ useEffect(() => {
                   <div className="lsf-muted">No hay extras.</div>
                 ) : (
                   <div className="lsf-extraslist">
-                    {[...extrasAvail]
-                      .sort((a, b) => {
-                        const pa = priceForSize(a.priceBySize, sel.size || current.selectSize?.[0] || "M");
-                        const pb = priceForSize(b.priceBySize, sel.size || current.selectSize?.[0] || "M");
-                        return pb - pa;
-                      })
-                      .map((ex) => {
-                        const checked = !!sel.extras[ex.pizzaId];
-                        const p = priceForSize(ex.priceBySize, sel.size || current.selectSize?.[0] || "M");
-                        return (
-                          <label key={ex.pizzaId} className="lsf-extrasitem">
-                            <input type="checkbox" checked={checked} onChange={() => toggleExtra(ex.pizzaId)} />
-                            <span className="lsf-extrasitem__name">{ex.name}</span>
-                            <span className="lsf-extrasitem__price">+€{p.toFixed(2)}</span>
-                          </label>
-                        );
-                      })}
+                    {extrasAvail.map((ex) => {
+                      const checked = !!sel.extras[ex.ingredientId];
+
+                      return (
+                        <label key={ex.ingredientId} className="lsf-extrasitem">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleExtra(ex.ingredientId)}
+                          />
+                          <span className="lsf-extrasitem__name">{ex.ingredientName}</span>
+                          <span className="lsf-extrasitem__price">
+                            {/* el precio lo conectamos en el próximo paso */}
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
