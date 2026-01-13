@@ -4,10 +4,7 @@ const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
-/**
- * GET /api/ingredient-extras
- * Devuelve los extras agrupados por ingrediente
- */
+
 router.get("/ingredient-extras", async (req, res) => {
   try {
     const { categoryId } = req.query;
@@ -25,9 +22,7 @@ router.get("/ingredient-extras", async (req, res) => {
         ingredient: true,
       },
       orderBy: {
-        ingredient: {
-          name: "asc",
-        },
+        ingredient: { name: "asc" },
       },
     });
 
@@ -43,14 +38,41 @@ router.get("/ingredient-extras", async (req, res) => {
     res.status(500).json({ error: "Failed to load ingredient extras" });
   }
 });
+router.get("/ingredient-extras/all", async (req, res) => {
+  try {
+    const rows = await prisma.ingredientExtra.findMany({
+      where: { status: "ACTIVE" },
+      include: {
+        ingredient: true,
+        category: true,
+      },
+      orderBy: { ingredientId: "asc" },
+    });
 
+    const map = {};
 
+    for (const row of rows) {
+      if (!map[row.ingredientId]) {
+        map[row.ingredientId] = {
+          ingredientId: row.ingredientId,
+          ingredientName: row.ingredient.name,
+          categories: [],
+        };
+      }
 
-/**
- * POST /api/ingredient-extras
- * body: { ingredientId, categoryIds: [] }
- * Sincroniza las categorías donde un ingrediente es extra
- */
+      map[row.ingredientId].categories.push({
+        id: row.category.id,
+        name: row.category.name,
+        price: Number(row.price),
+      });
+    }
+
+    res.json(Object.values(map));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to load ingredient extras" });
+  }
+});
 router.post("/ingredient-extras", async (req, res) => {
   try {
     const { ingredientId, links } = req.body;
@@ -95,12 +117,6 @@ router.post("/ingredient-extras", async (req, res) => {
     res.status(500).json({ error: "Failed to save ingredient extras" });
   }
 });
-
-
-/**
- * DELETE /api/ingredient-extras/:ingredientId
- * Quita un ingrediente como extra en todas las categorías
- */
 router.delete("/ingredient-extras/:ingredientId", async (req, res) => {
   try {
     const ingredientId = Number(req.params.ingredientId);
