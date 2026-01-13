@@ -11,7 +11,13 @@ export default function PizzaCreatorExtras() {
 
   const [selectedIngredient, setSelectedIngredient] = useState("");
   const [selectedCategories, setSelectedCategories] = useState([]); 
-  // [{ id, price }]
+const sortedIngredients = React.useMemo(() => {
+  return [...ingredients].sort((a, b) =>
+    a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+  );
+}, [ingredients]);
+
+
 
   useEffect(() => {
     loadAll();
@@ -21,7 +27,7 @@ export default function PizzaCreatorExtras() {
     const [catRes, ingRes, extraRes] = await Promise.all([
       fetch("/api/categories").then(r => r.json()),
       fetch("/api/ingredients").then(r => r.json()),
-      fetch("/api/ingredient-extras").then(r => r.json()),
+      fetch("/api/ingredient-extras/all").then(r => r.json()),
     ]);
 
     setCategories(catRes);
@@ -135,11 +141,11 @@ export default function PizzaCreatorExtras() {
                 onChange={(e) => setSelectedIngredient(Number(e.target.value))}
               >
                 <option value="">— Selecciona —</option>
-                {ingredients.map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.name}
-                  </option>
-                ))}
+              {sortedIngredients.map(i => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
               </select>
             </div>
 
@@ -150,28 +156,38 @@ export default function PizzaCreatorExtras() {
                   const selected = selectedCategories.find(x => x.id === c.id);
 
                   return (
-                    <div key={c.id} className="extra-cat-row">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={!!selected}
-                          onChange={() => toggleCategory(c.id)}
-                        />
-                        {c.name}
-                      </label>
+              <div
+                key={c.id}
+                className={`extra-cat-row ${selected ? "is-active" : ""}`}
+              >
+                <div className="extra-cat-head">
+                  <label className="extra-cat-left">
+                    <input
+                      type="checkbox"
+                      checked={!!selected}
+                      onChange={() => toggleCategory(c.id)}
+                    />
+                    <span className="extra-cat-name">{c.name}</span>
+                  </label>
 
-                      {selected && (
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="€"
-                          value={selected.price}
-                          onChange={(e) =>
-                            setCategoryPrice(c.id, e.target.value)
-                          }
-                        />
-                      )}
-                    </div>
+                  <div className="extra-cat-preview">
+                    € {Number(selected?.price || 0).toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="extra-cat-editor">
+                  <div className="extra-cat-input">
+                    <span>€</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={selected?.price || ""}
+                      placeholder="0.00"
+                      onChange={(e) => setCategoryPrice(c.id, e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
                   );
                 })}
               </div>

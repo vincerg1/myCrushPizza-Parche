@@ -185,9 +185,16 @@ export default function LocalSaleForm({
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
   const [categoriesDb, setCategoriesDb] = useState([]);
-const   [extrasAvail, setExtrasAvail] = useState([]);
+  const   [extrasAvail, setExtrasAvail] = useState([]);
+const [showAllExtras, setShowAllExtras] = useState(false);
 
 
+const sortedExtras = useMemo(() => {
+  return [...extrasAvail].sort((a, b) => Number(b.price) - Number(a.price));
+}, [extrasAvail]);
+const visibleExtras = useMemo(() => {
+  return showAllExtras ? sortedExtras : sortedExtras.slice(0, 3);
+}, [sortedExtras, showAllExtras]);
 
 useEffect(() => {
   api.get("/api/categories")
@@ -346,11 +353,10 @@ useEffect(() => {
 
   const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
 
-  const extrasUnitTotal = useMemo(() => {
-    const selected = extrasAvail.filter((ex) => !!sel.extras[ex.pizzaId]);
-    if (!selected.length) return 0;
-    return selected.reduce((sum, ex) => sum + priceForSize(ex.priceBySize, sel.size || "M"), 0);
-  }, [sel.extras, sel.size, extrasAvail]);
+const extrasUnitTotal = useMemo(() => {
+  const selected = extrasAvail.filter((ex) => sel.extras[ex.ingredientId]);
+  return selected.reduce((sum, ex) => sum + num(ex.price), 0);
+}, [sel.extras, extrasAvail]);
 
   const addLine = () => {
     if (!current) return;
@@ -366,12 +372,13 @@ useEffect(() => {
     }
 
     const chosenExtras = extrasAvail
-      .filter((x) => sel.extras[x.pizzaId])
+      .filter((ex) => sel.extras[ex.ingredientId])
       .map((ex) => ({
-        id: ex.pizzaId,
+        id: ex.ingredientId,
         name: ex.name,
-        price: priceForSize(ex.priceBySize, sel.size || "M"),
+        price: num(ex.price),
       }));
+
 
     const extrasPerUnit = chosenExtras.reduce((a, b) => a + num(b.price), 0);
     const subtotal = (baseUnitPrice + extrasPerUnit) * sel.qty;
@@ -675,23 +682,36 @@ useEffect(() => {
                   <div className="lsf-muted">No hay extras.</div>
                 ) : (
                   <div className="lsf-extraslist">
-                    {extrasAvail.map((ex) => {
-                      const checked = !!sel.extras[ex.ingredientId];
+                    {visibleExtras.map((ex) => {
+                    const checked = !!sel.extras[ex.ingredientId];
 
-                      return (
-                        <label key={ex.ingredientId} className="lsf-extrasitem">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleExtra(ex.ingredientId)}
-                          />
-                          <span className="lsf-extrasitem__name">{ex.ingredientName}</span>
-                          <span className="lsf-extrasitem__price">
-                            {/* el precio lo conectamos en el próximo paso */}
-                          </span>
-                        </label>
-                      );
-                    })}
+                    return (
+                      <label key={ex.ingredientId} className="lsf-extrasitem">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleExtra(ex.ingredientId)}
+                        />
+
+                        <span className="lsf-extrasitem__name">
+                          {ex.name || ex.ingredientName}
+                        </span>
+
+                        <span className="lsf-extrasitem__price">
+                          +€{Number(ex.price).toFixed(2)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  {sortedExtras.length > 3 && (
+                    <div
+                      className="lsf-extras-more"
+                      onClick={() => setShowAllExtras(v => !v)}
+                    >
+                      {showAllExtras ? "Mostrar menos ▲" : `Mostrar ${sortedExtras.length - 3} más ↓`}
+                    </div>
+                  )}
+
                   </div>
                 )}
               </div>

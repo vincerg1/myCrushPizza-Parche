@@ -165,7 +165,7 @@
   text-transform: uppercase;
   line-height: 1.2;
   padding-right: 24px; /* espacio al final antes de repetir */
-  animation: lsf-ticker 20s linear infinite;
+  animation: lsf-ticker 10s linear infinite;
 }
 @keyframes lsf-ticker {
   0%   { transform: translateX(50%); }
@@ -583,6 +583,24 @@
   border-radius: 16px;
   overflow: hidden;
 }
+.lsf-flip__front,
+.lsf-flip__back {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+}
+.lsf-card__addbtn {
+  transform: translateZ(1px);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.lsf-flip.is-flipped .lsf-flip__front {
+  pointer-events: none;
+  opacity: 0;
+}
+.lsf-flip__front {
+  transition: opacity .25s ease;
+}
 .lsf-back__content {
   text-align: center;
   max-width: 240px;
@@ -760,9 +778,58 @@
   color: #fff;
   border-color: #1a73e8;
 }
+
 .lsf-btn--primary.is-ready { animation: lsfPulse 1.05s infinite; }
 @keyframes lsfPulse {
   0%   { transform: scale(1); }
   50%  { transform: scale(1.035); }
   100% { transform: scale(1); }
+}
+.lsf-extras-more {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ff2e73;
+  cursor: pointer;
+  user-select: none;
+}
+.lsf-extras-more:hover {
+  text-decoration: underline;
+}
+.lsf-pm__actions {
+  position: sticky;
+  bottom: 0;
+  background: #ffffff;
+  padding: 12px;
+  border-top: 1px solid #e7e7e7;
+  z-index: 10;
+}
+
+@media (min-width: 900px) {
+
+  .lsf-modal__panel {
+    width: 560px;
+    max-width: 95vw;
+    max-height: 88vh;
+    border-radius: 22px;
+  }
+
+  .lsf-modal__body {
+    max-height: calc(88vh - 52px);
+    overflow-y: auto;
+  }
+
+  .lsf-pm__hero img {
+    max-height: 260px;
+  }
+
+  .lsf-pm__actions {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    padding: 14px;
+    border-top: 1px solid #eee;
+    z-index: 5;
+  }
+
 }
