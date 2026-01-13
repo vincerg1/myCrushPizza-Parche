@@ -71,6 +71,7 @@ const whatsappWebhookRouter = require('./routes/whatsappWebhook')(prisma);
 const whatsappRouter        = require("./routes/whatsapp")(prisma);
 const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
+const ingredientExtrasRoutes = require("./routes/ingredientExtras");
 
 /* Montaje */
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -93,7 +94,7 @@ app.use('/api/whatsapp',        whatsappWebhookRouter);
 app.use("/api/whatsapp",        whatsappRouter);
 app.use("/api/games",           gamesRouter);
 app.use("/api",                 categoriesRouter);
-
+app.use("/api",                 ingredientExtrasRoutes);
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),

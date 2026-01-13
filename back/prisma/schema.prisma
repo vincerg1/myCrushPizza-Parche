@@ -142,6 +142,7 @@ model Ingredient {
   status     IngredientStatus      @default(ACTIVE)
   createdAt  DateTime              @default(now())
   updatedAt  DateTime              @updatedAt
+  ingredientExtras IngredientExtra[]
 }
 
 model Store {
@@ -176,8 +177,6 @@ model StorePizzaStock {
 
   @@id([storeId, pizzaId])
 }
-
-
 model Customer {
   id                Int             @id @default(autoincrement())
   code              String          @unique
@@ -204,7 +203,6 @@ model Customer {
   redemptions     CouponRedemption[] @relation("CustomerToRedemptions")
   plays           GamePlay[]
 }
-
 model Sale {
   id                      Int            @id @default(autoincrement())
   code                    String         @unique
@@ -239,14 +237,12 @@ model Sale {
 
   @@index([date])
 }
-
 model AppMeta {
   id              Int      @id @default(1)
   acceptingOrders Boolean  @default(true)
   closedMessage   String?  @db.Text
   updatedAt       DateTime @updatedAt
 }
-
 model Coupon {
   id           Int                @id @default(autoincrement())
   code         String             @unique
@@ -287,7 +283,6 @@ model Coupon {
   @@index([gameId])
   @@index([acquisition, gameId])
 }
-
 model CouponRedemption {
   id Int @id @default(autoincrement())
 
@@ -331,7 +326,6 @@ model CouponRedemption {
   @@index([channel])
   @@index([acquisition])
 }
-
 model Game {
   id          Int        @id @default(autoincrement())
   name        String
@@ -346,7 +340,6 @@ model Game {
   coupons     Coupon[]   @relation("GameCoupons")
   plays       GamePlay[]
 }
-
 model GamePlay {
   id        Int       @id @default(autoincrement())
   gameId    Int
@@ -361,7 +354,6 @@ model GamePlay {
   @@index([gameId, createdAt])
   @@index([playerId, createdAt])
 }
-
 model WhatsAppConversation {
   id               Int               @id @default(autoincrement())
   phoneE164        String            @unique @db.VarChar(32)
@@ -378,7 +370,6 @@ model WhatsAppConversation {
   @@index([lastMessageAt])
   @@index([phoneBase9])
 }
-
 model WhatsAppMessage {
   id             Int                   @id @default(autoincrement())
   conversationId Int
@@ -402,5 +393,18 @@ model Category {
   position  Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  ingredientExtras IngredientExtra[]
 }
+model IngredientExtra {
+  id                Int      @id @default(autoincrement())
+  ingredientId      Int
+  categoryId        Int
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  ingredient  Ingredient @relation(fields: [ingredientId], references: [id])
+  category    Category   @relation(fields: [categoryId], references: [id])
+  @@unique([ingredientId, categoryId])
+}
+
 
