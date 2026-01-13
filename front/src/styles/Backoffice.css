@@ -117,7 +117,7 @@
 }
 
 /* ===== Sidebar buttons ===== */
-/* Uses: .sidebar-btn, .is-group, .is-active, .depth-1 */
+
 .sidebar-btn{
   display:block;
   width:calc(100% - 16px);
@@ -135,13 +135,24 @@
 .sidebar-btn:hover{
   background:#f6f7fb;
   border-color:#e7e9f1;
+   transform: translateX(2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,.04);
 }
 
 /* Active (simple, group header, or child) */
 .sidebar-btn.is-active{
-  background:#ffe6ee;
-  border-color:#ffc8d8;
-  box-shadow:0 0 0 2px rgba(255,46,115,.12) inset;
+  position: relative;
+}
+
+.sidebar-btn.is-active::before{
+  content:"";
+  position:absolute;
+  left:-8px;
+  top:8px;
+  bottom:8px;
+  width:4px;
+  background:#ff2e73;
+  border-radius:4px;
 }
 
 /* Group header neutral when not active */
@@ -181,11 +192,23 @@
 /* Group box when open */
 .sidebar-group{ border-radius:12px; }
 .sidebar-group.open{
-  background:#fff5f7;
+  background:linear-gradient(180deg,#fff5f7,#ffffff);
   border:1px solid #fde2e8;
-  border-radius:12px;
-  padding:6px;
+  border-radius:14px;
+  padding:8px 6px;
+  box-shadow: 0 4px 12px rgba(255,46,115,.08);
 }
+
+/* Top-level entries */
+.sidebar-btn:not(.depth-1){
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+.sidebar-btn.depth-1{
+  font-size: 13px;
+  opacity: .85;
+}
+
 
 /* ===== Responsive ===== */
 @media (max-width:860px){
