@@ -396,15 +396,19 @@ model Category {
   ingredientExtras IngredientExtra[]
 }
 model IngredientExtra {
-  id                Int      @id @default(autoincrement())
-  ingredientId      Int
-  categoryId        Int
-  status            String   @default("ACTIVE")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  ingredient  Ingredient @relation(fields: [ingredientId], references: [id])
-  category    Category   @relation(fields: [categoryId], references: [id])
+  id           Int      @id @default(autoincrement())
+  ingredientId Int
+  categoryId   Int
+  price        Float    @default(0)
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+  category   Category   @relation(fields: [categoryId], references: [id])
+
   @@unique([ingredientId, categoryId])
 }
+
 
 

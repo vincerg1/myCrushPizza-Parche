@@ -10,40 +10,41 @@ const prisma = new PrismaClient();
  */
 router.get("/ingredient-extras", async (req, res) => {
   try {
+    const { categoryId } = req.query;
+
+    if (!categoryId) {
+      return res.status(400).json({ error: "categoryId required" });
+    }
+
     const rows = await prisma.ingredientExtra.findMany({
-      where: { status: "ACTIVE" },
+      where: {
+        status: "ACTIVE",
+        categoryId: Number(categoryId),
+      },
       include: {
         ingredient: true,
-        category: true,
       },
       orderBy: {
-        ingredientId: "asc",
+        ingredient: {
+          name: "asc",
+        },
       },
     });
 
-    // Agrupar por ingrediente
-    const map = {};
-    for (const row of rows) {
-      if (!map[row.ingredientId]) {
-        map[row.ingredientId] = {
-          ingredientId: row.ingredientId,
-          ingredientName: row.ingredient.name,
-          categories: [],
-        };
-      }
-
-      map[row.ingredientId].categories.push({
-        id: row.category.id,
-        name: row.category.name,
-      });
-    }
-
-    res.json(Object.values(map));
+    res.json(
+      rows.map(r => ({
+        ingredientId: r.ingredientId,
+        name: r.ingredient.name,
+        price: Number(r.price),
+      }))
+    );
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Failed to load ingredient extras" });
   }
 });
+
+
 
 /**
  * POST /api/ingredient-extras
@@ -52,25 +53,37 @@ router.get("/ingredient-extras", async (req, res) => {
  */
 router.post("/ingredient-extras", async (req, res) => {
   try {
-    const { ingredientId, categoryIds } = req.body;
+    const { ingredientId, links } = req.body;
 
-    if (!ingredientId || !Array.isArray(categoryIds)) {
-      return res.status(400).json({ error: "ingredientId and categoryIds required" });
+    if (!ingredientId || !Array.isArray(links)) {
+      return res.status(400).json({
+        error: "ingredientId and links[] required",
+      });
     }
 
     const ingId = Number(ingredientId);
 
-    // Borrar relaciones anteriores
+    // Validar estructura
+    for (const l of links) {
+      if (!l.categoryId || l.price == null || isNaN(Number(l.price))) {
+        return res.status(400).json({
+          error: "Each link must have categoryId and price",
+        });
+      }
+    }
+
+    // Borrar relaciones anteriores del ingrediente
     await prisma.ingredientExtra.deleteMany({
       where: { ingredientId: ingId },
     });
 
-    // Crear nuevas
-    if (categoryIds.length > 0) {
+    // Insertar nuevas relaciones con precio
+    if (links.length > 0) {
       await prisma.ingredientExtra.createMany({
-        data: categoryIds.map((catId) => ({
+        data: links.map((l) => ({
           ingredientId: ingId,
-          categoryId: Number(catId),
+          categoryId: Number(l.categoryId),
+          price: Number(l.price),
           status: "ACTIVE",
         })),
       });
@@ -82,6 +95,7 @@ router.post("/ingredient-extras", async (req, res) => {
     res.status(500).json({ error: "Failed to save ingredient extras" });
   }
 });
+
 
 /**
  * DELETE /api/ingredient-extras/:ingredientId
