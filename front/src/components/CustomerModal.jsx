@@ -35,25 +35,36 @@ export default function CustomerModal({
   const phoneOk = digits.length >= 7 && digits.length <= 15;
   const isPickup = variant === "pickup";
 
-  const handleSave = () => {
-    if (!form.name.trim()) return setErr("El nombre es obligatorio.");
-    if (!phoneOk) return setErr("El teléfono debe tener 7–15 dígitos.");
-    if (!isPickup && !form.address.trim())
-      return setErr("La dirección es obligatoria para envío.");
+const handleSave = () => {
+  if (!form.name.trim()) 
+    return setErr("El nombre es obligatorio.");
 
-    const payload = {
-      id          : initial.id,
-      name        : form.name.trim(),
-      phone       : form.phone.trim(),
-      observations: form.observations.trim(),
-    };
-    if (!isPickup) {
-      payload.address_1 = form.address.trim();
-      payload.lat = form.lat;
-      payload.lng = form.lng;
-    }
-    onSave(payload);
+  if (!phoneOk) 
+    return setErr("El teléfono debe tener 7–15 dígitos.");
+
+  if (!isPickup && !form.address.trim())
+    return setErr("La dirección es obligatoria para envío.");
+
+  // 🔥 NUEVO: notas obligatorias en envío
+  if (!isPickup && !form.observations.trim())
+    return setErr("Indica piso, timbre o instrucciones para el repartidor.");
+
+  const payload = {
+    id          : initial.id,
+    name        : form.name.trim(),
+    phone       : form.phone.trim(),
+    observations: form.observations.trim(),
   };
+
+  if (!isPickup) {
+    payload.address_1 = form.address.trim();
+    payload.lat = form.lat;
+    payload.lng = form.lng;
+  }
+
+  onSave(payload);
+};
+
 
   const handleDelete = () => {
     if (initial.id && window.confirm("¿Eliminar este cliente?")) {
@@ -91,7 +102,7 @@ export default function CustomerModal({
               onChange={(e) =>
                 setForm((f) => ({ ...f, address: e.target.value.toUpperCase() }))
               }
-              placeholder="Calle, número, piso…"
+              placeholder="Calle, portal, codigo postal"
             />
           </>
         )}
@@ -100,12 +111,18 @@ export default function CustomerModal({
           <small>✔ geopoint {form.lat.toFixed(4)},{form.lng?.toFixed(4)}</small>
         )}
 
-        <label>Notas</label>
+          <label>
+          Notas {!isPickup && <span className="req">*</span>}
+        </label>
         <textarea
           rows={3}
           value={form.observations}
           onChange={update("observations")}
-          placeholder="Instrucciones, timbre, etc."
+          placeholder={
+            isPickup
+              ? "Opcional"
+              : "Piso, puerta, otras observaciones"
+          }
         />
 
         {err && <p className="err">{err}</p>}
