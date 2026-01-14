@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import api from "../setupAxios"; 
 import "../styles/PizzaCreatorExtras.css";
 
 export default function PizzaCreatorExtras() {
@@ -23,17 +24,17 @@ const sortedIngredients = React.useMemo(() => {
     loadAll();
   }, []);
 
-  const loadAll = async () => {
-    const [catRes, ingRes, extraRes] = await Promise.all([
-      fetch("/api/categories").then(r => r.json()),
-      fetch("/api/ingredients").then(r => r.json()),
-      fetch("/api/ingredient-extras/all").then(r => r.json()),
-    ]);
+ const loadAll = async () => {
+  const [catRes, ingRes, extraRes] = await Promise.all([
+    api.get("/api/categories"),
+    api.get("/api/ingredients"),
+    api.get("/api/ingredient-extras/all"),
+  ]);
 
-    setCategories(catRes);
-    setIngredients(ingRes);
-    setExtras(Array.isArray(extraRes) ? extraRes : []);
-  };
+  setCategories(catRes.data);
+  setIngredients(ingRes.data);
+  setExtras(Array.isArray(extraRes.data) ? extraRes.data : []);
+};
 
   const openCreate = () => {
     setSelectedIngredient("");
