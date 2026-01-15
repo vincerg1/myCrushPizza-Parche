@@ -41,6 +41,13 @@ module.exports = (prisma) => {
                       id: true,
                       name: true,
                       status: true,
+                      storeStocks: {
+                        where: { storeId },
+                        select: {
+                          active: true,
+                          stock: true,
+                        },
+                      },
                     },
                   },
                 },
@@ -67,15 +74,16 @@ module.exports = (prisma) => {
             "  🧾 Ingredientes RAW:",
             ingredientsRaw.map((i) => ({
               name: i.ingredient?.name,
-              status: i.ingredient?.status,
+              status: i.ingredient?.storeStocks?.[0]?.active,
               qtyBySize: i.qtyBySize,
             }))
           );
 
           // ✅ SOLO ingredientes activos
-          const activeIngredients = ingredientsRaw.filter(
-            (rel) => rel.ingredient?.status === "ACTIVE"
-          );
+          const activeIngredients = ingredientsRaw.filter((rel) => {
+            const storeStock = rel.ingredient?.storeStocks?.[0];
+            return storeStock?.active === true;
+          });
 
           console.log(
             "  ✅ Ingredientes ACTIVOS:",

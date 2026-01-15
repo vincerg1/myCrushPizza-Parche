@@ -40,33 +40,60 @@ module.exports = function (prisma) {
   });
 
   /* POST /api/ingredients → create new */
-  r.post("/", async (req, res) => {
-    try {
-      const { name, category, stock, unit, costPrice } = req.body;
+r.post("/", async (req, res) => {
+  try {
+    const { name, category, unit, costPrice } = req.body;
 
-      if (!name?.toString().trim()) {
-        return res.status(400).json({ error: "Name is required" });
-      }
-      if (!category?.toString().trim()) {
-        return res.status(400).json({ error: "Category is required" });
-      }
+    if (!name?.toString().trim()) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    if (!category?.toString().trim()) {
+      return res.status(400).json({ error: "Category is required" });
+    }
 
-      const ingredient = await prisma.ingredient.create({
+    const stores = await prisma.store.findMany({
+      where: { active: true },
+      select: { id: true },
+    });
+
+    if (!stores.length) {
+      return res.status(400).json({
+        error: "At least one store must exist before creating ingredients",
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1️⃣ Crear ingrediente global
+      const ingredient = await tx.ingredient.create({
         data: {
           name: toUpperSafe(name),
           category: toUpperSafe(category),
-          stock: parseIntOrZero(stock),
           unit: unit ? String(unit).trim() : null,
           costPrice: parseNumberOrNull(costPrice),
+          stock: 0, // ya no se usa operativamente
         },
       });
 
-      res.json(ingredient);
-    } catch (err) {
-      console.error(err);
-      res.status(400).json({ error: err.meta?.cause || err.message });
-    }
-  });
+      // 2️⃣ Crear filas por tienda
+      await tx.storeIngredientStock.createMany({
+        data: stores.map((s) => ({
+          storeId: s.id,
+          ingredientId: ingredient.id,
+          stock: 0,
+          active: true,
+        })),
+      });
+
+      return ingredient;
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.meta?.cause || err.message });
+  }
+});
+
 
   /**
    * PATCH /api/ingredients/:id → edit fields
