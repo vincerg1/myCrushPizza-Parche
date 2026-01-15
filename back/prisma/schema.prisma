@@ -117,7 +117,6 @@ model MenuPizza {
   ingredients   MenuPizzaIngredient[]
   stocks        StorePizzaStock[]
 }
-
 model MenuPizzaIngredient {
   id           Int  @id @default(autoincrement())
   menuPizzaId  Int
@@ -130,7 +129,6 @@ model MenuPizzaIngredient {
   @@index([ingredientId])
   @@index([menuPizzaId])
 }
-
 model Ingredient {
   id         Int                   @id @default(autoincrement())
   name       String
@@ -143,8 +141,8 @@ model Ingredient {
   createdAt  DateTime              @default(now())
   updatedAt  DateTime              @updatedAt
   ingredientExtras IngredientExtra[]
+  storeStocks StoreIngredientStock[]
 }
-
 model Store {
   id              Int                @id @default(autoincrement())
   storeName       String
@@ -160,11 +158,11 @@ model Store {
   updatedAt       DateTime           @updatedAt
   acceptingOrders Boolean            @default(true)
   stocks          StorePizzaStock[]
+  ingredientStocks StoreIngredientStock[]
   sales           Sale[]
   redemptions     CouponRedemption[] @relation("StoreToRedemptions")
   games           Game[]
 }
-
 model StorePizzaStock {
   storeId   Int
   pizzaId   Int
@@ -403,12 +401,21 @@ model IngredientExtra {
   status       String   @default("ACTIVE")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
   ingredient Ingredient @relation(fields: [ingredientId], references: [id])
   category   Category   @relation(fields: [categoryId], references: [id])
 
   @@unique([ingredientId, categoryId])
 }
 
-
+model StoreIngredientStock {
+  storeId      Int
+  ingredientId Int
+  stock        Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  store       Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  ingredient  Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  @@id([storeId, ingredientId])
+}
 

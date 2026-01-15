@@ -157,6 +157,7 @@ module.exports = (prisma) => {
   });
 
 
-
+const storeIngredients = require("./storeIngredients")(prisma);
+router.use("/:storeId/ingredients", storeIngredients);
   return router;
 };

@@ -73,6 +73,8 @@ const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
 const ingredientExtrasRoutes = require("./routes/ingredientExtras");
 
+
+
 /* Montaje */
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/pizzas',          pizzasRouter);
