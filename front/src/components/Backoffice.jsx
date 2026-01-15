@@ -85,31 +85,37 @@ export default function Backoffice() {
 
   /* ───────────── MENU POR ROL ───────────── */
 
-  const menu = [
-    // ADMIN (negocio)
-    { key: "inventory", label: "Ingredients", show: isAdmin },
-    {
-      key: "pizzaCreator",
-      label: "Pizza Creator",
-      show: isAdmin,
-      children: [{ key: "pizzaCreator/extras", label: "Extras" }],
-    },
-    { key: "storeCreator", label: "Stores", show: isAdmin },
-    { key: "customers", label: "Customers", show: isAdmin },
-    {
-      key: "offers",
-      label: "Ofertas",
-      show: isAdmin,
-      children: [
-        { key: "offers/sms", label: "Enviar SMS" },
-        { key: "offers/create", label: "Crear ofertas" },
-      ],
-    },
+const menu = [
+  // ───── ADMIN (negocio) ─────
+  { key: "inventory", label: "Inventory", show: isAdmin },
 
-    // STORE (tienda)
-    { key: "storeInventory", label: "Inventory", show: !isAdmin },
-    { key: "myOrders", label: "My Orders", show: !isAdmin },
-  ].filter((m) => m.show);
+  {
+    key: "pizzaCreator",
+    label: "Pizza Creator",
+    show: isAdmin,
+    children: [{ key: "pizzaCreator/extras", label: "Extras" }],
+  },
+
+  { key: "storeCreator", label: "Stores", show: isAdmin },
+  { key: "customers", label: "Customers", show: isAdmin },
+
+  {
+    key: "offers",
+    label: "Ofertas",
+    show: isAdmin,
+    children: [
+      { key: "offers/sms", label: "Enviar SMS" },
+      { key: "offers/create", label: "Crear ofertas" },
+    ],
+  },
+
+  // ───── STORE (tienda) ─────
+  { key: "storeInventory", label: "Inventory", show: !isAdmin },
+
+  // ───── COMÚN ─────
+  { key: "myOrders", label: "My Orders", show: true },
+].filter(m => m.show);
+
 
   /* ───────────── PANEL ───────────── */
 
