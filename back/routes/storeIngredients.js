@@ -1,7 +1,7 @@
 const express = require("express");
 
 module.exports = function (prisma) {
-  const r = express.Router();
+  const r = express.Router({ mergeParams: true });
 
   const parseId = (v) => {
     const n = Number(v);
