@@ -17,10 +17,17 @@ function computeProductStatus(menuPizzaIngredients = []) {
 
   for (const row of menuPizzaIngredients) {
     const ing = row.ingredient;
-    if (!ing) continue;
+    const storeStock = ing?.storeStocks?.[0];
 
-    if (ing.status === "INACTIVE") {
-      blockedBy.push({ id: ing.id, name: ing.name });
+    // si no existe registro por tienda → bloquea
+    if (!storeStock) {
+      blockedBy.push({ id: ing.id, name: ing.name, reason: "NO_STORE_RECORD" });
+      continue;
+    }
+
+    // si está desactivado para esta tienda → bloquea
+    if (storeStock.active !== true) {
+      blockedBy.push({ id: ing.id, name: ing.name, reason: "INACTIVE" });
     }
   }
 
@@ -29,6 +36,7 @@ function computeProductStatus(menuPizzaIngredients = []) {
     blockedBy,
   };
 }
+
 
 module.exports = {
   computeProductStatus,
