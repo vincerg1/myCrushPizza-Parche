@@ -10,9 +10,8 @@ module.exports = function (prisma) {
 
   /* 
    * GET /api/stores/:storeId/ingredients
-   * Devuelve catálogo global + estado por tienda
    */
-  r.get("/:storeId/ingredients", async (req, res) => {
+  r.get("/", async (req, res) => {
     try {
       const storeId = parseId(req.params.storeId);
       if (!storeId) {
@@ -55,13 +54,11 @@ module.exports = function (prisma) {
 
   /*
    * PATCH /api/stores/:storeId/ingredients/:ingredientId
-   * Actualiza active y/o stock (gestión operativa)
    */
-  r.patch("/:storeId/ingredients/:ingredientId", async (req, res) => {
+  r.patch("/:ingredientId", async (req, res) => {
     try {
       const storeId = parseId(req.params.storeId);
       const ingredientId = parseId(req.params.ingredientId);
-
       if (!storeId || !ingredientId) {
         return res.status(400).json({ error: "Invalid ids" });
       }
@@ -70,25 +67,16 @@ module.exports = function (prisma) {
       const data = {};
 
       if (active !== undefined) data.active = Boolean(active);
-
       if (stock !== undefined) {
         const n = Number(stock);
-        if (!Number.isFinite(n) || n < 0) {
+        if (!Number.isFinite(n) || n < 0)
           return res.status(400).json({ error: "Invalid stock" });
-        }
         data.stock = Math.trunc(n);
-      }
-
-      if (Object.keys(data).length === 0) {
-        return res.status(400).json({ error: "Nothing to update" });
       }
 
       const updated = await prisma.storeIngredientStock.upsert({
         where: {
-          storeId_ingredientId: {
-            storeId,
-            ingredientId,
-          },
+          storeId_ingredientId: { storeId, ingredientId },
         },
         update: data,
         create: {
@@ -108,9 +96,8 @@ module.exports = function (prisma) {
 
   /*
    * POST /api/stores/:storeId/ingredients/init
-   * Inicializa ingredientes para una tienda (bootstrap / rescate)
    */
-  r.post("/:storeId/ingredients/init", async (req, res) => {
+  r.post("/init", async (req, res) => {
     try {
       const storeId = parseId(req.params.storeId);
       if (!storeId) {
@@ -120,10 +107,6 @@ module.exports = function (prisma) {
       const ingredients = await prisma.ingredient.findMany({
         select: { id: true },
       });
-
-      if (!ingredients.length) {
-        return res.json({ created: 0 });
-      }
 
       const data = ingredients.map((i) => ({
         storeId,
