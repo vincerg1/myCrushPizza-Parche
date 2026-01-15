@@ -14,7 +14,7 @@ export default function StoreInventory() {
   const load = async () => {
     if (!storeId) return;
     setLoading(true);
-    const { data } = await api.get(`/stores/${storeId}/ingredients`);
+    const { data } = await api.get(`/api/stores/${storeId}/ingredients`);
     setRows(data || []);
     setLoading(false);
   };
@@ -26,10 +26,7 @@ export default function StoreInventory() {
   const patch = async (ingredientId, payload) => {
     setSaving(true);
     try {
-      await api.patch(
-        `/stores/${storeId}/ingredients/${ingredientId}`,
-        payload
-      );
+    await api.patch(`/api/stores/${storeId}/ingredients/${ingredientId}`, payload);
       await load();
     } finally {
       setSaving(false);
