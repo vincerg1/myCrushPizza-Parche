@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
-import SidebarButton   from "./SidebarButton";
-import PizzaCreator    from "./PizzaCreator";
+import SidebarButton from "./SidebarButton";
+import PizzaCreator from "./PizzaCreator";
 import PizzaCreatorExtras from "./PizzaCreatorExtras";
-import StoreCreator    from "./StoreCreator";
-import IngredientForm  from "./IngredientForm";
-import MyOrdersGate    from "./MyOrders";
-import MyOffersPanel   from "./MyOffersPanel";
-import { useAuth }     from "./AuthContext";
+import StoreCreator from "./StoreCreator";
+import IngredientForm from "./IngredientForm";
+import MyOrdersGate from "./MyOrders";
+import MyOffersPanel from "./MyOffersPanel";
+import { useAuth } from "./AuthContext";
 import CustomersPanel from "./CustomersPanel";
 import OfferCreatePanel from "./OfferCreatePanel";
-import OffersOverview  from "./OffersOverview";
+import OffersOverview from "./OffersOverview";
+import StoreInventory from "./StoreInventory"; 
 import "../styles/Backoffice.css";
 
 const LS_KEY_SIDEBAR_W = "bo.sidebarW";
@@ -19,19 +20,22 @@ const MAX_W = 420;
 
 export default function Backoffice() {
   const { auth, logout } = useAuth();
-  const role    = auth?.role;
+  const role = auth?.role;
   const isAdmin = role === "admin";
 
-  const [active, setActive] = useState("inventory");
+  const [active, setActive] = useState(null);
   const [open, setOpen] = useState({ offers: false, pizzaCreator: false });
-
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
+
   const dragRef = useRef({ startX: 0, startW: DEFAULT_W, dragging: false });
 
+  /* default panel por rol */
   useEffect(() => {
-    if (role) setActive(isAdmin ? "inventory" : "myOrders");
+    if (!role) return;
+    setActive(isAdmin ? "inventory" : "myOrders");
   }, [role, isAdmin]);
 
+  /* restore sidebar width */
   useEffect(() => {
     const saved = Number(localStorage.getItem(LS_KEY_SIDEBAR_W));
     if (Number.isFinite(saved) && saved >= MIN_W && saved <= MAX_W) {
@@ -39,6 +43,7 @@ export default function Backoffice() {
     }
   }, []);
 
+  /* splitter */
   const onDragStart = (e) => {
     dragRef.current.dragging = true;
     dragRef.current.startX = e.clientX;
@@ -76,44 +81,66 @@ export default function Backoffice() {
     }
   };
 
-  if (!role) return null;
+  if (!role || !active) return null;
+
+  /* ───────────── MENU POR ROL ───────────── */
 
   const menu = [
-    { key:"inventory"    , label:"Inventory"     , show:isAdmin },
+    // ADMIN (negocio)
+    { key: "inventory", label: "Ingredients", show: isAdmin },
     {
       key: "pizzaCreator",
       label: "Pizza Creator",
       show: isAdmin,
-      children: [
-        { key: "pizzaCreator/extras", label: "Extras" },
-      ],
+      children: [{ key: "pizzaCreator/extras", label: "Extras" }],
     },
-    { key:"storeCreator" , label:"Store Creator" , show:isAdmin },
-    { key:"customers"    , label:"Customers"     , show:isAdmin },
+    { key: "storeCreator", label: "Stores", show: isAdmin },
+    { key: "customers", label: "Customers", show: isAdmin },
     {
       key: "offers",
       label: "Ofertas",
       show: isAdmin,
       children: [
-        { key: "offers/sms"   , label: "Enviar SMS"   },
-        { key: "offers/create", label: "Crear ofertas"},
+        { key: "offers/sms", label: "Enviar SMS" },
+        { key: "offers/create", label: "Crear ofertas" },
       ],
     },
-    { key:"myOrders"     , label:"My Orders"     , show:true },
-  ].filter(m => m.show);
+
+    // STORE (tienda)
+    { key: "storeInventory", label: "Inventory", show: !isAdmin },
+    { key: "myOrders", label: "My Orders", show: !isAdmin },
+  ].filter((m) => m.show);
+
+  /* ───────────── PANEL ───────────── */
 
   const panel = (() => {
     switch (active) {
-      case "inventory":             return <IngredientForm />;
-      case "pizzaCreator":          return <PizzaCreator />;
-      case "pizzaCreator/extras":   return <PizzaCreatorExtras />;
-      case "storeCreator":          return <StoreCreator />;
-      case "customers":             return <CustomersPanel />;
-      case "offers":                return <OffersOverview onNavigate={(k)=>setActive(k)} />;
-      case "offers/sms":            return <MyOffersPanel />;
-      case "offers/create":         return <OfferCreatePanel />;
-      case "myOrders":              return <MyOrdersGate />;
-      default:                      return null;
+      // ADMIN
+      case "inventory":
+        return <IngredientForm />;
+      case "pizzaCreator":
+        return <PizzaCreator />;
+      case "pizzaCreator/extras":
+        return <PizzaCreatorExtras />;
+      case "storeCreator":
+        return <StoreCreator />;
+      case "customers":
+        return <CustomersPanel />;
+      case "offers":
+        return <OffersOverview onNavigate={(k) => setActive(k)} />;
+      case "offers/sms":
+        return <MyOffersPanel />;
+      case "offers/create":
+        return <OfferCreatePanel />;
+
+      // STORE
+      case "storeInventory":
+      return <StoreInventory />;
+      case "myOrders":
+        return <MyOrdersGate />;
+
+      default:
+        return null;
     }
   })();
 
@@ -122,10 +149,12 @@ export default function Backoffice() {
       <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
         <div className="sidebar-head">
           <span className="small">{isAdmin ? "Admin" : auth.storeName}</span>
-          <button className="logout-btn" onClick={logout}>Logout</button>
+          <button className="logout-btn" onClick={logout}>
+            Logout
+          </button>
         </div>
 
-        {menu.map(item => {
+        {menu.map((item) => {
           if (!item.children) {
             return (
               <SidebarButton
@@ -137,7 +166,7 @@ export default function Backoffice() {
             );
           }
 
-          const hasActiveChild = item.children.some(ch => active === ch.key);
+          const hasActiveChild = item.children.some((ch) => active === ch.key);
           const isOpen = !!open[item.key];
           const headerActive = active === item.key || hasActiveChild;
 
@@ -149,7 +178,7 @@ export default function Backoffice() {
                 open={isOpen}
                 active={headerActive}
                 onClick={() => {
-                  setOpen(o => {
+                  setOpen((o) => {
                     const next = !o[item.key];
                     if (next) setActive(item.key);
                     return { ...o, [item.key]: next };
@@ -158,7 +187,7 @@ export default function Backoffice() {
               />
               {isOpen && (
                 <div className="sidebar-children">
-                  {item.children.map(child => (
+                  {item.children.map((child) => (
                     <SidebarButton
                       key={child.key}
                       label={child.label}
@@ -166,7 +195,7 @@ export default function Backoffice() {
                       active={active === child.key}
                       onClick={() => {
                         setActive(child.key);
-                        setOpen(o => ({ ...o, [item.key]: true }));
+                        setOpen((o) => ({ ...o, [item.key]: true }));
                       }}
                     />
                   ))}
