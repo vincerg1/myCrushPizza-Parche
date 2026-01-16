@@ -240,18 +240,18 @@ export default function StoreCreator() {
         </section>
 
         {/* MAP */}
-<section className="sc-card sc-mapCard">
-  <div className="sc-cardHead sc-mapHead">
-    <h3 className="sc-cardTitle">Store locations</h3>
+      <section className="sc-card sc-mapCard">
+        <div className="sc-cardHead sc-mapHead">
+          <h3 className="sc-cardTitle">Store locations</h3>
 
-    <button
-      type="button"
-      className="sc-btn ghost"
-      onClick={() => setShowCust(p => !p)}
-    >
-      {showCust ? "Hide customers" : "Show customers"}
-    </button>
-  </div>
+          <button
+            type="button"
+            className="sc-btn ghost"
+            onClick={() => setShowCust(p => !p)}
+          >
+            {showCust ? "Hide customers" : "Show customers"}
+          </button>
+        </div>
 
           <LoadScriptNext googleMapsApiKey={GOOGLE_KEY}>
             <GoogleMap

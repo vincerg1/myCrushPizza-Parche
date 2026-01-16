@@ -13,7 +13,6 @@ export default function PendingTable() {
   const [menu, setMenu] = useState([]);
   const [stores, setStores] = useState([]);
   const [view, setView] = useState(null);
-
   const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(null);
 

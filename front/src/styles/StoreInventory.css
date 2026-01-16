@@ -1,0 +1,182 @@
+/* ───────────── BASE ───────────── */
+
+.storeInv {
+  width: auto;
+  padding: 24px 32px;
+}
+
+.storeInv h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+/* ───────────── LOADING / SAVING ───────────── */
+
+.storeInv-loading,
+.storeInv-saving {
+  text-align: center;
+  padding: 24px;
+  font-weight: 500;
+  color: #666;
+}
+
+/* ───────────── CATEGORY CARD ───────────── */
+
+.storeInv-catCard {
+  background: #f0ececff;
+  border: 1px solid #e7e7e7;
+  border-radius: 14px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+/* ───────────── CATEGORY HEADER ───────────── */
+
+.storeInv-catHead {
+  width: 100%;
+  background: #f0ececff;
+  border: none;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.storeInv-catHead:hover {
+  background: #f2f2f2;
+}
+
+.storeInv-catName {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.storeInv-catCount {
+  font-size: 13px;
+  color: #666;
+}
+
+.storeInv-catInactive {
+  color: #d9534f;
+  font-weight: 600;
+}
+
+/* ───────────── CATEGORY CONTENT ───────────── */
+
+.storeInv-catList {
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ───────────── INGREDIENT ROW ───────────── */
+
+.storeInv-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #eee;
+}
+
+/* ───────────── NAME ───────────── */
+.storeInv-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* ───────────── TOGGLE ───────────── */
+
+.storeInv-toggle {
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  min-width: 80px;
+}
+
+.storeInv-toggle.on {
+  background: #e6f7ec;
+  color: #1e7f4d;
+}
+
+.storeInv-toggle.off {
+  background: #fdeaea;
+  color: #b02a2a;
+}
+
+.storeInv-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
+@media (max-width: 420px) {
+
+  .storeInv {
+    padding: 10px 8px;
+  }
+
+  .storeInv h2 {
+    font-size: 16px;
+    margin-bottom: 12px;
+  }
+
+  .storeInv-catCard {
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+
+  .storeInv-catHead {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  .storeInv-catName {
+    font-size: 13px;
+  }
+
+  .storeInv-catCount {
+    font-size: 11px;
+  }
+
+  /* 🔥 ingrediente en columna (POS friendly) */
+ .storeInv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .storeInv-name {
+    font-size: 13px;
+    font-weight: 700;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .storeInv-toggle {
+    height: 34px;              /* altura fija */
+    line-height: 34px;         /* centra texto vertical */
+    text-align: center;
+    border-radius: 999px;
+    font-size: 12px;
+    padding: 0;                /* 🔥 evita saltos */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+

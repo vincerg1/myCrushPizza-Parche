@@ -231,7 +231,78 @@
   background: #a5b4fc !important;
   cursor: not-allowed;
 }
+/* ───────── STORE POS TOP BAR ───────── */
 
+.store-pos .dash-head {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 12px;
+  border: 1px solid #e5e5e5;
+  margin-bottom: 12px;
+}
+
+/* Buttons Inventory / Orders */
+.store-pos .pos-tab {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.store-pos .pos-tab.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+/* Store toggle container */
+.store-pos .app-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.store-pos .app-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ───────── Pending title ───────── */
+
+.store-pos .pending-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 6px 0 10px;
+}
+
+/* ───────── POS friendly tweaks ───────── */
+
+.store-pos {
+  padding: 10px;
+}
+
+/* Reduce visual noise on POS */
+.store-pos h3,
+.store-pos h4 {
+  margin: 0;
+}
+.pt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* empuja el toggle a la derecha */
+.pt-header .app-toggle {
+  margin-left: auto;
+}
 @keyframes fadeIn {
   from { opacity:0; transform:translateY(-10px); }
   to { opacity:1; transform:translateY(0); }
@@ -245,12 +316,16 @@
   }
 
   .dash-head .pc-note{ display: none; }
-
-  /* compactar el toggle en móvil */
   .app-toggle-label {
-    display: none;
+ display: none;
   }
-
+    .app-toggle {
+    padding: 4px;
+    gap: 0;
+  }
+  .pt-header {
+    padding: 8px 6px;
+  }
   .dp-modal {
     width: 95%;
     max-width: none;

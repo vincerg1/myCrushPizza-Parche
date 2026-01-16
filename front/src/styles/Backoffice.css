@@ -139,6 +139,7 @@
   box-shadow: 0 6px 14px rgba(0,0,0,.04);
 }
 
+
 /* Active (simple, group header, or child) */
 .sidebar-btn.is-active{
   position: relative;
@@ -209,7 +210,59 @@
   opacity: .85;
 }
 
+/* ───────── STORE POS ───────── */
 
+.store-pos-wrapper {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f7f7f7;
+}
+
+.store-pos-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #fff;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.store-pos-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.store-pos-tabs button {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  background: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.store-pos-tabs button.active {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+.store-pos-panel {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+.store-pos-topbar .logout-btn {
+  background: #f1bb19;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
 /* ===== Responsive ===== */
 @media (max-width:860px){
   .sidebar{ min-width:140px; }
@@ -235,6 +288,15 @@
   .panel-inner{
     padding: 18px;
   }
-
+.store-pos-topbar .logout-btn {
+  background: #f1bb19;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
   html, body{ overflow-x:hidden; }
 }

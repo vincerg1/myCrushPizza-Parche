@@ -10,7 +10,9 @@ import { useAuth } from "./AuthContext";
 import CustomersPanel from "./CustomersPanel";
 import OfferCreatePanel from "./OfferCreatePanel";
 import OffersOverview from "./OffersOverview";
-import StoreInventory from "./StoreInventory"; 
+import StoreInventory from "./StoreInventory";
+import MyOrdersStore from "./MyOrdersStore";
+import api from "../setupAxios";
 import "../styles/Backoffice.css";
 
 const LS_KEY_SIDEBAR_W = "bo.sidebarW";
@@ -26,6 +28,10 @@ export default function Backoffice() {
   const [active, setActive] = useState(null);
   const [open, setOpen] = useState({ offers: false, pizzaCreator: false });
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
+
+  // ───── Store status (SOLO STORE) ─────
+  const [storeActive, setStoreActive] = useState(true);
+  const [savingStore, setSavingStore] = useState(false);
 
   const dragRef = useRef({ startX: 0, startW: DEFAULT_W, dragging: false });
 
@@ -43,7 +49,32 @@ export default function Backoffice() {
     }
   }, []);
 
-  /* splitter */
+  /* load store status (solo tienda) */
+  useEffect(() => {
+    if (isAdmin || !auth?.storeId) return;
+
+    api
+      .get(`/api/stores/${auth.storeId}`)
+      .then(r => setStoreActive(!!r.data.active))
+      .catch(() => {});
+  }, [isAdmin, auth?.storeId]);
+
+  /* toggle store (REAL) */
+  const toggleStore = async () => {
+    if (savingStore || !auth?.storeId) return;
+
+    const next = !storeActive;
+    setSavingStore(true);
+
+    try {
+      await api.patch(`/api/stores/${auth.storeId}/active`, { active: next });
+      setStoreActive(next);
+    } finally {
+      setSavingStore(false);
+    }
+  };
+
+  /* splitter (ADMIN) */
   const onDragStart = (e) => {
     dragRef.current.dragging = true;
     dragRef.current.startX = e.clientX;
@@ -70,164 +101,148 @@ export default function Backoffice() {
     localStorage.setItem(LS_KEY_SIDEBAR_W, String(sidebarW));
   };
 
-  const onSplitterKeyDown = (e) => {
-    const step = e.shiftKey ? 20 : 10;
-    if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      setSidebarW((w) => Math.max(MIN_W, w - step));
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      setSidebarW((w) => Math.min(MAX_W, w + step));
-    }
-  };
+  if (!role) return null;
 
-  if (!role || !active) return null;
+  /* ───────────── STORE POS LAYOUT ───────────── */
+  if (!isAdmin) {
+    return (
+      <div className="store-pos-wrapper">
+        {/* TOP BAR */}
+        <header className="store-pos-topbar">
+          <div className="store-pos-tabs">
+           
+          <button className="logout-btn" onClick={logout}>
+            Logout
+          </button>
+            <button
+              className={active === "myOrders" ? "active" : ""}
+              onClick={() => setActive("myOrders")}
+            >
+              Orders
+            </button>
 
-  /* ───────────── MENU POR ROL ───────────── */
+            <button
+              className={active === "storeInventory" ? "active" : ""}
+              onClick={() => setActive("storeInventory")}
+            >
+              Inventory
+            </button>
+          </div>
 
-const menu = [
-  // ───── ADMIN (negocio) ─────
-  { key: "inventory", label: "Inventory", show: isAdmin },
+ 
 
-  {
-    key: "pizzaCreator",
-    label: "Pizza Creator",
-    show: isAdmin,
-    children: [{ key: "pizzaCreator/extras", label: "Extras" }],
-  },
+          <div className="app-toggle">
+            <span className="app-toggle-label">
+              {storeActive ? "Store open" : "Store closed"}
+            </span>
 
-  { key: "storeCreator", label: "Stores", show: isAdmin },
-  { key: "customers", label: "Customers", show: isAdmin },
+            <button
+              type="button"
+              onClick={toggleStore}
+              aria-pressed={storeActive}
+              disabled={savingStore}
+              className={`app-toggle-btn ${storeActive ? "on" : "off"}`}
+            >
+              <span className="app-toggle-knob" />
+            </button>
+          </div>
+        </header>
 
-  {
-    key: "offers",
-    label: "Ofertas",
-    show: isAdmin,
-    children: [
-      { key: "offers/sms", label: "Enviar SMS" },
-      { key: "offers/create", label: "Crear ofertas" },
-    ],
-  },
+        {/* CONTENT */}
+        <main className="store-pos-panel">
+          {active === "myOrders" && <MyOrdersStore />}
+          {active === "storeInventory" && <StoreInventory />}
+        </main>
+      </div>
+    );
+  }
 
-  // ───── STORE (tienda) ─────
-  { key: "storeInventory", label: "Inventory", show: !isAdmin },
+  /* ───────────── ADMIN MENU ───────────── */
 
-  // ───── COMÚN ─────
-  { key: "myOrders", label: "My Orders", show: true },
-].filter(m => m.show);
-
-
-  /* ───────────── PANEL ───────────── */
+  const menu = [
+    { key: "inventory", label: "Inventory", show: true },
+    {
+      key: "pizzaCreator",
+      label: "Pizza Creator",
+      show: true,
+      children: [{ key: "pizzaCreator/extras", label: "Extras" }],
+    },
+    { key: "storeCreator", label: "Stores", show: true },
+    { key: "customers", label: "Customers", show: true },
+    {
+      key: "offers",
+      label: "Ofertas",
+      show: true,
+      children: [
+        { key: "offers/sms", label: "Enviar SMS" },
+        { key: "offers/create", label: "Crear ofertas" },
+      ],
+    },
+    { key: "myOrders", label: "My Orders", show: true },
+  ];
 
   const panel = (() => {
     switch (active) {
-      // ADMIN
-      case "inventory":
-        return <IngredientForm />;
-      case "pizzaCreator":
-        return <PizzaCreator />;
-      case "pizzaCreator/extras":
-        return <PizzaCreatorExtras />;
-      case "storeCreator":
-        return <StoreCreator />;
-      case "customers":
-        return <CustomersPanel />;
-      case "offers":
-        return <OffersOverview onNavigate={(k) => setActive(k)} />;
-      case "offers/sms":
-        return <MyOffersPanel />;
-      case "offers/create":
-        return <OfferCreatePanel />;
-
-      // STORE
-      case "storeInventory":
-      return <StoreInventory />;
-      case "myOrders":
-        return <MyOrdersGate />;
-
-      default:
-        return null;
+      case "inventory": return <IngredientForm />;
+      case "pizzaCreator": return <PizzaCreator />;
+      case "pizzaCreator/extras": return <PizzaCreatorExtras />;
+      case "storeCreator": return <StoreCreator />;
+      case "customers": return <CustomersPanel />;
+      case "offers": return <OffersOverview onNavigate={setActive} />;
+      case "offers/sms": return <MyOffersPanel />;
+      case "offers/create": return <OfferCreatePanel />;
+      case "myOrders": return <MyOrdersGate />;
+      default: return null;
     }
   })();
 
   return (
     <div className="backoffice-wrapper" style={{ "--sidebar-w": `${sidebarW}px` }}>
-      <aside className={`sidebar ${!isAdmin ? "non-admin" : ""}`}>
+      <aside className="sidebar">
         <div className="sidebar-head">
-          <span className="small">{isAdmin ? "Admin" : auth.storeName}</span>
-          <button className="logout-btn" onClick={logout}>
-            Logout
-          </button>
+          <span className="small">Admin</span>
+          <button className="logout-btn" onClick={logout}>Logout</button>
         </div>
 
-        {menu.map((item) => {
-          if (!item.children) {
-            return (
-              <SidebarButton
-                key={item.key}
-                label={item.label}
-                active={active === item.key}
-                onClick={() => setActive(item.key)}
-              />
-            );
-          }
-
-          const hasActiveChild = item.children.some((ch) => active === ch.key);
-          const isOpen = !!open[item.key];
-          const headerActive = active === item.key || hasActiveChild;
-
-          return (
-            <div key={item.key} className={`sidebar-group ${isOpen ? "open" : ""}`}>
+        {menu.map(item =>
+          !item.children ? (
+            <SidebarButton
+              key={item.key}
+              label={item.label}
+              active={active === item.key}
+              onClick={() => setActive(item.key)}
+            />
+          ) : (
+            <div key={item.key}>
               <SidebarButton
                 label={item.label}
                 group
-                open={isOpen}
-                active={headerActive}
-                onClick={() => {
-                  setOpen((o) => {
-                    const next = !o[item.key];
-                    if (next) setActive(item.key);
-                    return { ...o, [item.key]: next };
-                  });
-                }}
+                active={active === item.key}
+                onClick={() => setActive(item.key)}
               />
-              {isOpen && (
-                <div className="sidebar-children">
-                  {item.children.map((child) => (
-                    <SidebarButton
-                      key={child.key}
-                      label={child.label}
-                      depth={1}
-                      active={active === child.key}
-                      onClick={() => {
-                        setActive(child.key);
-                        setOpen((o) => ({ ...o, [item.key]: true }));
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
+              <div className="sidebar-children">
+                {item.children.map(ch => (
+                  <SidebarButton
+                    key={ch.key}
+                    label={ch.label}
+                    depth={1}
+                    active={active === ch.key}
+                    onClick={() => setActive(ch.key)}
+                  />
+                ))}
+              </div>
             </div>
-          );
-        })}
+          )
+        )}
       </aside>
 
       <div
-        className={`splitter${dragRef.current.dragging ? " dragging" : ""}`}
-        role="separator"
-        tabIndex={0}
+        className="splitter"
         onMouseDown={onDragStart}
-        onKeyDown={onSplitterKeyDown}
       />
 
       <main className="panel">
-        <div className="panel-scroll">
-          <div className="panel-inner">{panel}</div>
-          <footer className="bo-footer">
-            <span>voltaPizza • Backoffice</span>
-            <span>v1.0</span>
-          </footer>
-        </div>
+        <div className="panel-inner">{panel}</div>
       </main>
     </div>
   );
