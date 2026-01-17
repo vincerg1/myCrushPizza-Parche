@@ -4,7 +4,7 @@ import "moment/dist/locale/es";
 import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 import api from "../setupAxios";
-
+import { useAuth } from "./AuthContext";
 const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
 
 export default function PendingTable() {
@@ -15,13 +15,12 @@ export default function PendingTable() {
   const [view, setView] = useState(null);
   const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(null);
-
   const audioRef = useRef(null);
   const prevIdsRef = useRef(new Set());
   const [alertOrders, setAlertOrders] = useState([]);
   const [isRinging, setIsRinging] = useState(false);
   const [needSoundUnlock, setNeedSoundUnlock] = useState(false);
-
+  const { auth } = useAuth();
   const [confirmOrderId, setConfirmOrderId] = useState(null);
   const lastFetchAtRef = useRef(null);
 
@@ -275,15 +274,21 @@ export default function PendingTable() {
     <>
       <audio ref={audioRef} src="/telephone-ring-03b.mp3" preload="auto" />
 
-      <div className="pt-header">
-        <h3>Pending orders</h3>
-        {badgeCount && <span className="badge badge-count">{badgeCount}</span>}
-        {badgeNext && <span className="badge">{badgeNext}</span>}
-        {isRinging && (
-          <button className="mute-inline" onClick={() => setAlertOrders([])}>
-            Silenciar
-          </button>
-        )}
+      <div className="pt-headerPT">
+        <div className="pt-store-name">
+          as {auth?.storeName}
+        </div>
+
+        <div className="pt-title-row">
+          <h3>Pending orders</h3>
+          {badgeCount && <span className="badge badge-count">{badgeCount}</span>}
+          {badgeNext && <span className="badge">{badgeNext}</span>}
+          {isRinging && (
+            <button className="mute-inline" onClick={() => setAlertOrders([])}>
+              Silenciar
+            </button>
+          )}
+        </div>
       </div>
 
       {needSoundUnlock && alertOrders.length > 0 && (
@@ -465,7 +470,7 @@ export default function PendingTable() {
           padding:.4rem .6rem; border-radius:8px; cursor:pointer;
           box-shadow:0 2px 10px #0002; user-select:none;
         }
-        .pt-header{display:flex;align-items:center;gap:6px}
+       
         .badge{background:#e53935;color:#fff;border-radius:4px;padding:2px 8px;font-size:.75rem;font-family:monospace;font-weight:600}
         .badge-count{background:#4285f4}
         @media (max-width:768px){
@@ -480,8 +485,8 @@ export default function PendingTable() {
         .orders th,.orders td{border:1px solid #ccc;padding:.35rem;text-align:center}
         .orders th{background:#fafafa}
         .orders button{padding:.25rem .55rem;cursor:pointer}
-        .no-orders{margin:4rem auto 1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem;color:#555;font-family:sans-serif}
-        .no-orders .emoji{font-size:3.5rem;line-height:1}
+        .no-orders{margin:10rem auto 1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem;color:#555;font-family:sans-serif}
+        .no-orders .emoji{font-size:5rem;line-height:1}
         .no-orders .msg{font-weight:600;letter-spacing:.5px;font-style:italic}
         .pt-modal-back{position:fixed;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;z-index:999}
         .pt-modal-card{background:#fff;padding:12px 14px;border-radius:8px;box-shadow:0 6px 18px #0004;max-height:90vh;overflow:auto;position:relative;text-align:left}

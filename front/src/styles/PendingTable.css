@@ -55,14 +55,14 @@
 
 /* ——  Estado vacío  —— */
 @media (max-width: 768px) {
-  .no-orders .emoji { font-size: 4rem; }
-  .no-orders .msg   { font-size: 1.1rem; }
+  .no-orders .emoji { font-size: 4.2rem; }
+  .no-orders .msg   { font-size: 1rem; }
 }
 /* ---------- Tarjetas deslizables en móvil ---------- */
 @media (max-width: 768px) {
+ /* un solo sitio donde cambias el espacio */
 
-  :root { --card-gap: 12px; }     /* un solo sitio donde cambias el espacio */
-
+  :root { --card-gap: 12px; }    
   /* Carril horizontal */
   .orders-scroll {
      display:flex; gap:12px; overflow-x:auto;
@@ -117,6 +117,36 @@
   /* Oculta la tabla clásica en móvil */
   table.orders { display: none; }
 }
+
+.pt-headerPT{
+  display:flex;
+  flex-direction:column;   /* 👈 salto de línea real */
+  align-items:flex-start;  /* 👈 izquierda */
+  text-align: left !important;
+  gap:2px;
+  margin:14px 0 10px;
+}
+
+.pt-store-name{
+  font-size:12px;
+  font-weight:400;
+  color:#b8b8b8;
+  line-height:.75;
+}
+
+.pt-title-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.pt-title-row h3{
+  margin:0;
+  font-size:18px;
+  font-weight:700;
+}
+
+
 
 /* ---------- Vista desktop ---------- */
 @media (min-width: 769px) {
