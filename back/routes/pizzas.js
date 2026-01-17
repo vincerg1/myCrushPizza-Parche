@@ -3,7 +3,6 @@ const express = require("express");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 const { zeroStockForNewPizza } = require("../utils/stockSync");
-const { recomputeMenuPizzaStatus } = require("../services/recomputeMenuPizzaStatus");
 
 /* ───────── Cloudinary config ───────── */
 cloudinary.config({
@@ -46,116 +45,58 @@ module.exports = function (prisma) {
   });
 
   /* POST /api/pizzas */
- router.post("/", upload.single("image"), async (req, res) => {
-  console.log("➡️ POST /api/pizzas");
-  console.log("BODY keys:", Object.keys(req.body));
-  console.log("FILE:", req.file ? {
-    originalname: req.file.originalname,
-    mimetype: req.file.mimetype,
-    size: req.file.size,
-  } : "NO FILE");
-
-  try {
-    const { name, category, sizes, priceBySize, cookingMethod, ingredients } = req.body;
-
-    if (!name || !category) {
-      console.error("❌ Missing name or category", { name, category });
-      return res.status(400).json({ error: "Name and category required" });
-    }
-
-    /* ───────── SAFE JSON PARSE ───────── */
-    let parsedSizes = [];
-    let parsedPrices = {};
-    let parsedIngredients = [];
-
+  router.post("/", upload.single("image"), async (req, res) => {
     try {
-      parsedSizes = sizes ? JSON.parse(sizes) : [];
-      parsedPrices = priceBySize ? JSON.parse(priceBySize) : {};
-      parsedIngredients = ingredients ? JSON.parse(ingredients) : [];
-    } catch (e) {
-      console.error("❌ JSON parse error", {
-        sizes,
-        priceBySize,
-        ingredients,
-      });
-      return res.status(400).json({ error: "Invalid JSON payload" });
-    }
+      const { name, category, sizes, priceBySize, cookingMethod, ingredients } = req.body;
+      if (!name || !category) {
+        return res.status(400).json({ error: "Name and category required" });
+      }
 
-    console.log("✅ Parsed payload", {
-      parsedSizes,
-      parsedPrices,
-      parsedIngredientsCount: parsedIngredients.length,
-    });
+      const parsedSizes = sizes ? JSON.parse(sizes) : [];
+      const parsedPrices = priceBySize ? JSON.parse(priceBySize) : {};
+      const parsedIngredients = ingredients ? JSON.parse(ingredients) : [];
 
-    /* ───────── CLOUDINARY ───────── */
-    let image = null;
-    let imagePublicId = null;
+      let image = null;
+      let imagePublicId = null;
 
-    if (req.file) {
-      console.log("☁️ Uploading image to Cloudinary...");
-      console.log("Cloudinary ENV:", {
-        cloud: process.env.CLOUDINARY_CLOUD_NAME,
-        key: process.env.CLOUDINARY_API_KEY,
-        secret: !!process.env.CLOUDINARY_API_SECRET,
-      });
-
-      try {
+      if (req.file) {
         const uploadRes = await cloudinary.uploader.upload(
           `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`,
           { folder: "pizzas" }
         );
-
         image = uploadRes.secure_url;
         imagePublicId = uploadRes.public_id;
+      }
 
-        console.log("✅ Cloudinary upload OK", {
+      const ingredientRelations = parsedIngredients
+        .filter((x) => Number(x?.id))
+        .map((x) => ({
+          ingredient: { connect: { id: Number(x.id) } },
+          qtyBySize: x.qtyBySize || {},
+        }));
+
+      const pizza = await prisma.menuPizza.create({
+        data: {
+          name: name.trim(),
+          category,
+          selectSize: parsedSizes,
+          priceBySize: parsedPrices,
+          cookingMethod: cookingMethod || null,
           image,
           imagePublicId,
-        });
-      } catch (cloudErr) {
-        console.error("❌ Cloudinary upload failed", cloudErr);
-        return res.status(400).json({ error: "Image upload failed" });
-      }
+          ingredients: { create: ingredientRelations },
+        },
+      });
+
+      // 🔑 solo inicializa stock por tienda
+      await zeroStockForNewPizza(prisma, pizza.id);
+
+      res.json(pizza);
+    } catch (err) {
+      console.error("POST /pizzas error:", err);
+      res.status(400).json({ error: err.message });
     }
-
-    /* ───────── INGREDIENTS ───────── */
-    const ingredientRelations = parsedIngredients
-      .filter((x) => Number(x?.id))
-      .map((x) => ({
-        ingredient: { connect: { id: Number(x.id) } },
-        qtyBySize: x.qtyBySize || {},
-      }));
-
-    console.log("🧩 Ingredient relations:", ingredientRelations.length);
-
-    /* ───────── PRISMA CREATE ───────── */
-    const pizza = await prisma.menuPizza.create({
-      data: {
-        name: name.trim(),
-        category,
-        selectSize: parsedSizes,
-        priceBySize: parsedPrices,
-        cookingMethod: cookingMethod || null,
-        image,
-        imagePublicId,
-        ingredients: { create: ingredientRelations },
-      },
-    });
-
-    console.log("🍕 Pizza created:", pizza.id);
-
-    await recomputeMenuPizzaStatus(prisma, pizza.id);
-    await zeroStockForNewPizza(prisma, pizza.id);
-
-    console.log("✅ POST /api/pizzas DONE");
-    res.json(pizza);
-
-  } catch (err) {
-    console.error("🔥 POST /api/pizzas FATAL ERROR:", err);
-    res.status(400).json({ error: err.message });
-  }
-});
-
+  });
 
   /* PUT /api/pizzas/:id */
   router.put("/:id", upload.single("image"), async (req, res) => {
@@ -166,18 +107,9 @@ module.exports = function (prisma) {
       const existing = await prisma.menuPizza.findUnique({ where: { id } });
       if (!existing) return res.status(404).json({ error: "Pizza not found" });
 
-      let parsedSizes = [];
-      let parsedPrices = {};
-      let parsedIngredients = [];
-
-      try {
-        parsedSizes = req.body.sizes ? JSON.parse(req.body.sizes) : [];
-        parsedPrices = req.body.priceBySize ? JSON.parse(req.body.priceBySize) : {};
-        parsedIngredients = req.body.ingredients ? JSON.parse(req.body.ingredients) : [];
-      } catch (e) {
-        console.error("JSON parse error:", req.body);
-        return res.status(400).json({ error: "Invalid JSON payload" });
-      }
+      const parsedSizes = req.body.sizes ? JSON.parse(req.body.sizes) : [];
+      const parsedPrices = req.body.priceBySize ? JSON.parse(req.body.priceBySize) : {};
+      const parsedIngredients = req.body.ingredients ? JSON.parse(req.body.ingredients) : [];
 
       let image = existing.image;
       let imagePublicId = existing.imagePublicId;
@@ -187,15 +119,15 @@ module.exports = function (prisma) {
           await cloudinary.uploader.destroy(existing.imagePublicId);
         }
 
-  const uploadRes = await new Promise((resolve, reject) => {
-  cloudinary.uploader.upload_stream(
-    { folder: "pizzas" },
-    (error, result) => {
-      if (error) return reject(error);
-      resolve(result);
-    }
-  ).end(req.file.buffer);
-});
+        const uploadRes = await new Promise((resolve, reject) => {
+          cloudinary.uploader.upload_stream(
+            { folder: "pizzas" },
+            (error, result) => {
+              if (error) return reject(error);
+              resolve(result);
+            }
+          ).end(req.file.buffer);
+        });
 
         image = uploadRes.secure_url;
         imagePublicId = uploadRes.public_id;
@@ -229,8 +161,6 @@ module.exports = function (prisma) {
             })),
         });
       }
-
-      await recomputeMenuPizzaStatus(prisma, id);
 
       res.json({ ok: true, id });
     } catch (err) {

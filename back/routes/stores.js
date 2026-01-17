@@ -100,20 +100,23 @@ module.exports = (prisma) => {
     }
   });
 
-  /* ───────── CREATE ───────── */
-  router.post("/", async (req, res) => {
-    try {
-      const {
-        storeName,
-        address,
-        latitude,
-        longitude,
-        city,
-        zipCode,
-        email,
-        tlf,
-      } = req.body;
-      const store = await prisma.store.create({
+/* ───────── CREATE ───────── */
+router.post("/", async (req, res) => {
+  try {
+    const {
+      storeName,
+      address,
+      latitude,
+      longitude,
+      city,
+      zipCode,
+      email,
+      tlf,
+    } = req.body;
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1️⃣ Crear tienda
+      const store = await tx.store.create({
         data: {
           storeName,
           address,
@@ -125,12 +128,36 @@ module.exports = (prisma) => {
           longitude: longitude !== "" ? +longitude : null,
         },
       });
-      await zeroStockForNewStore(prisma, store.id);
-      res.json(store);
-    } catch (err) {
-      res.status(400).json({ error: err.message });
-    }
-  });
+
+      // 2️⃣ Inicializar pizzas (ya lo hacías)
+      await zeroStockForNewStore(tx, store.id);
+
+      // 3️⃣ 🔥 Inicializar ingredientes (LO QUE FALTABA)
+      const ingredients = await tx.ingredient.findMany({
+        select: { id: true },
+      });
+
+      if (ingredients.length) {
+        await tx.storeIngredientStock.createMany({
+          data: ingredients.map((ing) => ({
+            storeId: store.id,
+            ingredientId: ing.id,
+            stock: 0,
+            active: true,
+          })),
+        });
+      }
+
+      return store;
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error("[POST /stores]", err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
   /* ───────── DELETE ───────── */
   router.delete("/:id", async (req, res) => {
