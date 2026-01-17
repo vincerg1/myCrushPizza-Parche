@@ -10,15 +10,11 @@ module.exports = (prisma) => {
       const storeId = Number(req.params.storeId);
       if (!storeId) return res.json([]);
 
-      console.log("➡️ menuDisponible | storeId:", storeId);
-
       const rows = await prisma.storePizzaStock.findMany({
         where: {
           storeId,
           active: true, // StorePizzaStock
-          pizza: {
-            status: "ACTIVE", // MenuPizza
-          },
+          pizza: { status: "ACTIVE" }, // MenuPizza (GLOBAL)
         },
         select: {
           pizzaId: true,
@@ -26,13 +22,11 @@ module.exports = (prisma) => {
           active: true,
           pizza: {
             select: {
-              id: true,
               name: true,
               category: true,
               selectSize: true,
               priceBySize: true,
               image: true,
-              status: true,
               ingredients: {
                 select: {
                   qtyBySize: true,
@@ -40,13 +34,10 @@ module.exports = (prisma) => {
                     select: {
                       id: true,
                       name: true,
-                      status: true,
+                      status: true, // GLOBAL Ingredient
                       storeStocks: {
                         where: { storeId },
-                        select: {
-                          active: true,
-                          stock: true,
-                        },
+                        select: { active: true, stock: true },
                       },
                     },
                   },
@@ -58,93 +49,49 @@ module.exports = (prisma) => {
         orderBy: { pizzaId: "asc" },
       });
 
-      console.log("📦 rows encontrados:", rows.length);
-
       const menu = rows
         .map((r) => {
           if (!r?.pizza) return null;
 
-          console.log("🍕 Procesando pizza:", r.pizza.name);
-
-          const ingredientsRaw = Array.isArray(r.pizza.ingredients)
+          const ingredientsAll = Array.isArray(r.pizza.ingredients)
             ? r.pizza.ingredients
             : [];
 
-          console.log(
-            "  🧾 Ingredientes RAW:",
-            ingredientsRaw.map((i) => ({
-              name: i.ingredient?.name,
-              status: i.ingredient?.storeStocks?.[0]?.active,
-              qtyBySize: i.qtyBySize,
-            }))
-          );
-
-          // ✅ SOLO ingredientes activos
-          const activeIngredients = ingredientsRaw.filter((rel) => {
-            const storeStock = rel.ingredient?.storeStocks?.[0];
-            return storeStock?.active === true;
-          });
-
-          console.log(
-            "  ✅ Ingredientes ACTIVOS:",
-            activeIngredients.map((i) => i.ingredient.name)
-          );
-
-          let recipeStatus;
-          try {
-            recipeStatus = computeProductStatus(activeIngredients);
-          } catch (e) {
-            console.error("❌ computeProductStatus error:", e);
-            return null;
-          }
+          // 🔒 EVALUACIÓN COMPLETA (GLOBAL + TIENDA)
+          const recipeStatus = computeProductStatus(ingredientsAll);
+          if (!recipeStatus.available) return null;
 
           const hasStock = r.stock == null || Number(r.stock) > 0;
+          if (!hasStock) return null;
 
-          const available =
-            r.active === true &&
-            r.pizza.status === "ACTIVE" &&
-            recipeStatus?.available === true &&
-            hasStock;
-
-          console.log(
-            `  📊 status → active:${r.active} recipe:${
-              recipeStatus?.available
-            } stock:${hasStock} ⇒ AVAILABLE:${available}`
-          );
-
-          if (!available) return null;
-
-          const normalizedIngredients = activeIngredients.map((rel) => ({
-            id: rel.ingredient.id,
-            name: rel.ingredient.name,
-            qtyBySize: rel.qtyBySize,
-          }));
-
-          console.log(
-            "  🧩 Ingredientes enviados al FRONT:",
-            normalizedIngredients.map((i) => i.name)
-          );
+          // 👀 SOLO PARA MOSTRAR: ingredientes activos en esta tienda
+          const visibleIngredients = ingredientsAll.filter((rel) => {
+            const ing = rel.ingredient;
+            const storeStock = ing?.storeStocks?.[0];
+            return ing?.status === "ACTIVE" && storeStock?.active === true;
+          });
 
           return {
             pizzaId: r.pizzaId,
-            stock: r.stock ?? null, // null = ilimitado
+            stock: r.stock ?? null,
             name: r.pizza.name,
             category: r.pizza.category,
             selectSize: r.pizza.selectSize ?? [],
             priceBySize: r.pizza.priceBySize ?? {},
             image: r.pizza.image ?? null,
-            ingredients: normalizedIngredients, // 🔑 CLAVE
+            ingredients: visibleIngredients.map((rel) => ({
+              id: rel.ingredient.id,
+              name: rel.ingredient.name,
+              qtyBySize: rel.qtyBySize,
+            })),
             available: true,
           };
         })
         .filter(Boolean);
 
-      console.log("✅ menu final enviado:", menu.length);
-
       res.json(menu);
     } catch (err) {
       console.error("🔥 menuDisponible error:", err);
-      // regla de oro: nunca romper ventas
       res.json([]);
     }
   });

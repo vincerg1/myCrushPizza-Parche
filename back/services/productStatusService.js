@@ -1,12 +1,14 @@
-// services/productStatusService.js
-
 /**
  * Calcula el estado derivado de un producto
- * según el estado de sus ingredientes.
+ * combinando reglas GLOBAL + POR TIENDA
  *
- * REGLA:
- * - Si TODOS los ingredientes están ACTIVE → available = true
- * - Si ALGUNO está INACTIVE → available = false
+ * JERARQUÍA:
+ * 1️⃣ Ingredient.status === INACTIVE  → bloquea GLOBALMENTE
+ * 2️⃣ StoreIngredientStock.active === false → bloquea SOLO esa tienda
+ *
+ * NOTA:
+ * - Esta función YA NO decide por sí sola si la pizza es ACTIVE/INACTIVE global
+ * - SOLO calcula disponibilidad OPERATIVA para una tienda concreta
  */
 function computeProductStatus(menuPizzaIngredients = []) {
   if (!Array.isArray(menuPizzaIngredients) || menuPizzaIngredients.length === 0) {
@@ -19,15 +21,32 @@ function computeProductStatus(menuPizzaIngredients = []) {
     const ing = row.ingredient;
     const storeStock = ing?.storeStocks?.[0];
 
-    // si no existe registro por tienda → bloquea
-    if (!storeStock) {
-      blockedBy.push({ id: ing.id, name: ing.name, reason: "NO_STORE_RECORD" });
+    // 1️⃣ Regla GLOBAL (admin)
+    if (ing?.status !== "ACTIVE") {
+      blockedBy.push({
+        id: ing.id,
+        name: ing.name,
+        reason: "GLOBAL_INACTIVE",
+      });
       continue;
     }
 
-    // si está desactivado para esta tienda → bloquea
+    // 2️⃣ Regla POR TIENDA (operativa)
+    if (!storeStock) {
+      blockedBy.push({
+        id: ing.id,
+        name: ing.name,
+        reason: "NO_STORE_RECORD",
+      });
+      continue;
+    }
+
     if (storeStock.active !== true) {
-      blockedBy.push({ id: ing.id, name: ing.name, reason: "INACTIVE" });
+      blockedBy.push({
+        id: ing.id,
+        name: ing.name,
+        reason: "STORE_INACTIVE",
+      });
     }
   }
 
@@ -36,7 +55,6 @@ function computeProductStatus(menuPizzaIngredients = []) {
     blockedBy,
   };
 }
-
 
 module.exports = {
   computeProductStatus,

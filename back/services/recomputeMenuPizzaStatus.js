@@ -1,8 +1,11 @@
-// services/recomputeMenuPizzaStatus.js
-const { computeProductStatus } = require("./productStatusService");
-
 /**
- * Recalcula y persiste el status de una MenuPizza
+ * Recalcula y persiste el status GLOBAL de una MenuPizza
+ *
+ * REGLA GLOBAL:
+ * - Si TODOS los ingredientes están ACTIVE → MenuPizza.ACTIVE
+ * - Si ALGUNO está INACTIVE → MenuPizza.INACTIVE
+ *
+ * ⚠️ NO considera tiendas
  */
 async function recomputeMenuPizzaStatus(prisma, menuPizzaId) {
   if (!menuPizzaId) return;
@@ -11,15 +14,22 @@ async function recomputeMenuPizzaStatus(prisma, menuPizzaId) {
     where: { id: menuPizzaId },
     include: {
       ingredients: {
-        include: { ingredient: true },
+        include: {
+          ingredient: {
+            select: { status: true },
+          },
+        },
       },
     },
   });
 
   if (!menuPizza) return;
 
-  const { available } = computeProductStatus(menuPizza.ingredients);
-  const newStatus = available ? "ACTIVE" : "INACTIVE";
+  const hasInactiveIngredient = menuPizza.ingredients.some(
+    (rel) => rel.ingredient.status !== "ACTIVE"
+  );
+
+  const newStatus = hasInactiveIngredient ? "INACTIVE" : "ACTIVE";
 
   if (menuPizza.status !== newStatus) {
     await prisma.menuPizza.update({
