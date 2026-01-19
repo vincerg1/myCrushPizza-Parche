@@ -203,8 +203,61 @@ export default function PendingTable() {
     });
     return m;
   }, [stores]);
+  // ---- JSX helper: Items por línea (solo cards POS) ----
+const renderItemsLines = (sale) => {
+  const list = arrFrom(sale?.products);
 
-  // ==== NUEVO: helpers mínimos para leer products y extras (array o string) ====
+  if (!list.length) return <span>-</span>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {list.map((p, i) => {
+        const baseName =
+          (p?.name && String(p.name).trim()) ||
+          (p?.pizzaName && String(p.pizzaName).trim()) ||
+          (p?.pizzaId ? (nameById[p.pizzaId] || `#${p.pizzaId}`) : "Producto");
+
+        const size = p?.size || "";
+        const qty  = Number(p?.qty ?? p?.cantidad ?? 1);
+
+        const extras = Array.from(
+          new Set(arrFrom(p?.extras).map(extraText))
+        );
+
+        return (
+          <span key={i}>
+            {baseName} {size}×{qty}
+            {extras.length > 0 && (
+              <small style={{ display: "block", color: "#666" }}>
+                + {extras.join(", ")}
+              </small>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
+
+  // ---- TOTAL helper (defensivo POS) ----
+const getTotal = (sale) => {
+  const raw =
+    sale?.total ??
+    sale?.totalAmount ??
+    sale?.amount ??
+    sale?.price ??
+    0;
+
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const fmtTotal = (sale) =>
+  getTotal(sale).toLocaleString("es-ES", {
+    style: "currency",
+    currency: "EUR",
+  });
   const parseOnce = (v) => {
     if (typeof v !== "string") return v;
     try { return JSON.parse(v); } catch { return v; }
@@ -216,7 +269,6 @@ export default function PendingTable() {
   };
   const extraText = (e) => (e?.label ?? e?.name ?? e?.code ?? "extra").toString();
 
-  // Muestra: "Marguerita M×1 [+ pesto, barbacoa]"
   const fmtProducts = (sale) => {
     const list = arrFrom(sale?.products);
     return list.map((p) => {
@@ -233,7 +285,6 @@ export default function PendingTable() {
       return extras.length ? `${base} [+ ${extras.join(", ")}]` : base;
     }).join(", ");
   };
-
   const markReady = async (id) => {
     try {
       await api.patch(`/api/sales/${id}/ready`);
@@ -296,14 +347,12 @@ export default function PendingTable() {
           🔇 Pulsa para habilitar sonido
         </div>
       )}
-
       {rows.length === 0 && (
         <div className="no-orders">
           <span className="emoji">🐒</span>
           <span className="msg">Chill For Now ;)</span>
         </div>
       )}
-
       {rows.length > 0 && (
         <table className="orders">
           <thead>
@@ -340,63 +389,100 @@ export default function PendingTable() {
           </tbody>
         </table>
       )}
+     {rows.length > 0 && (
+  <>
+    <div className="pt-dots">
+      {rows.map((_, i) => (
+        <span key={i} className="pt-dot" />
+      ))}
+    </div>
 
-      {rows.length > 0 && (
-        <>
-          <div className="pt-dots">
-            {rows.map((_, i) => (
-              <span key={i} className="pt-dot" />
-            ))}
+    <div
+      ref={scrollRef}
+      className="orders-scroll"
+      onScroll={() => {
+        const el = scrollRef.current;
+        const idx = Math.round(el.scrollLeft / el.clientWidth);
+        el.parentElement
+          .querySelectorAll(".pt-dot")
+          .forEach((d, i) => d.classList.toggle("active", i === idx));
+      }}
+    >
+      {rows.map((s) => (
+        <article className="order-card" key={`card-${s.id}`}>
+          <div className="row">
+            <strong>Code</strong>
+            <span>{s.code}</span>
           </div>
-          <div
-            ref={scrollRef}
-            className="orders-scroll"
-            onScroll={() => {
-              const el = scrollRef.current;
-              const idx = Math.round(el.scrollLeft / el.clientWidth);
-              el.parentElement
-                .querySelectorAll(".pt-dot")
-                .forEach((d, i) => d.classList.toggle("active", i === idx));
+
+          <div className="row">
+            <strong>Date</strong>
+            <span>{moment(s.date).format("DD/MM HH:mm")}</span>
+          </div>
+
+          <div className="row">
+            <strong>Type</strong>
+            <span>{s.type}</span>
+          </div>
+
+          <div className="row">
+            <strong>Store</strong>
+            <span>{storeById[s.storeId] || s.storeName || "-"}</span>
+          </div>
+
+          <div className="row">
+            <strong>Items</strong>
+            <span>{renderItemsLines(s)}</span>
+          </div>
+
+          <div className="row">
+            <strong>Total</strong>
+            <span style={{ fontWeight: 700, color: "#f92672" }}>
+              {fmtTotal(s)}
+            </span>
+          </div>
+
+          {/* ✅ Dirección como row secundaria */}
+          {s.type === "DELIVERY" && s.customerData?.address_1 && (
+            <div className="row">
+              <strong>Adress</strong>
+              <span
+            style={{
+              fontSize: "0.78rem",
+              color: "#fff",
+              lineHeight: 1.25,
+              background: "#f92672",
+              padding: "4px 8px",
+              display: "block",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
-          >
-            {rows.map((s) => (
-              <article className="order-card" key={`card-${s.id}`}>
-                <div className="row">
-                  <strong>Code</strong>
-                  <span>{s.code}</span>
-                </div>
-                <div className="row">
-                  <strong>Date</strong>
-                  <span>{moment(s.date).format("DD/MM HH:mm")}</span>
-                </div>
-                <div className="row">
-                  <strong>Type</strong>
-                  <span>{s.type}</span>
-                </div>
-                <div className="row">
-                  <strong>Store</strong>
-                  <span>{storeById[s.storeId] || s.storeName || "-"}</span>
-                </div>
-                <div className="row">
-                  <strong>Items</strong>
-                  <span>{fmtProducts(s)}</span>
-                </div>
-                <div className="row">
-                  <strong>Client</strong>
-                  <span>{s.customerData?.name ?? "-"}</span>
-                </div>
-                <div className="row">
-                  <strong>Tlf</strong>
-                  <span>{s.customerData?.phone ?? "-"}</span>
-                </div>
-                <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
-                <button onClick={() => setView(s)}>Ver</button>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
 
+                title={s.customerData.address_1}
+              >
+              {s.customerData.address_1}
+              </span>
+            </div>
+          )}
+
+          <div className="row">
+            <strong>Client</strong>
+            <span>{s.customerData?.name ?? "-"}</span>
+          </div>
+
+          <div className="row">
+            <strong>Tlf</strong>
+            <span>{s.customerData?.phone ?? "-"}</span>
+          </div>
+
+          <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
+          <button onClick={() => setView(s)}>Ver</button>
+        </article>
+      ))}
+    </div>
+  </>
+      )}
       {view && (
         <div className="pt-modal-back" onClick={() => setView(null)}>
           <div
@@ -414,8 +500,6 @@ export default function PendingTable() {
           </div>
         </div>
       )}
-
-      {/* ÚNICO modal de confirmación (el duplicado fue eliminado) */}
       {confirmOrderId != null && (
         <div className="pt-modal-back" onClick={handleCancelReady}>
           <div className="pt-modal-card" onClick={(e) => e.stopPropagation()}>
@@ -430,7 +514,6 @@ export default function PendingTable() {
           </div>
         </div>
       )}
-
       {alertOrders.length > 0 && (
         <div className="pt-modal-back">
           <div
@@ -471,8 +554,8 @@ export default function PendingTable() {
           box-shadow:0 2px 10px #0002; user-select:none;
         }
        
-        .badge{background:#e53935;color:#fff;border-radius:4px;padding:2px 8px;font-size:.75rem;font-family:monospace;font-weight:600}
-        .badge-count{background:#4285f4}
+        .badge{background:#f92672;color:#fff;border-radius:4px;padding:2px 8px;font-size:.75rem;font-family:monospace;font-weight:600}
+        .badge-count{background:#f92672}
         @media (max-width:768px){
           table.orders{display:none}
           .orders-scroll{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:8px}

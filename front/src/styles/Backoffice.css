@@ -211,6 +211,45 @@
 }
 
 /* ───────── STORE POS ───────── */
+.menu-btn{
+  background:transparent;
+  border:none;
+  font-size:10px;
+  padding:4px 6px;
+  cursor:pointer;
+}
+
+.pos-menu{
+  position:absolute;
+  top:48px;
+  left:8px;
+  background:#fff;
+  border:1px solid #eee;
+  border-radius:10px;
+  box-shadow:0 6px 18px #0002;
+  display:flex;
+  flex-direction:column;
+  z-index:1000;
+  overflow:hidden;
+}
+
+.pos-menu button{
+  background:none;
+  border:none;
+  padding:10px 14px;
+  text-align:left;
+  cursor:pointer;
+  font-size:.9rem;
+}
+
+.pos-menu button:hover{
+  background:#f9267211;
+}
+
+.pos-menu button:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
 
 .store-pos-wrapper {
   height: 100vh;
@@ -254,7 +293,7 @@
   padding: 12px;
 }
 .store-pos-topbar .logout-btn {
-  background: #f1bb19;
+  background: #f92672;
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -263,6 +302,108 @@
   font-size: 13px;
   white-space: nowrap;
 }
+  .pos-menu {
+    left: 6px;
+    right: 6px;
+    min-width: unset;
+  }
+
+  .pt-modal-card {
+    max-width: 90%;
+  }
+
+  /* ===== Ventas de hoy – Modal PRO ===== */
+
+.sales-today {
+  width: 100%;
+  max-width: 380px;
+  padding: 16px 14px;
+}
+
+.sales-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.sales-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+.sales-date {
+  font-size: 12px;
+  color: #888;
+  text-transform: capitalize;
+}
+
+/* LISTA */
+.sales-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+
+/* TARJETA */
+.sales-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 10px 12px;
+  transition: background 0.2s ease;
+}
+
+.sales-card:hover {
+  background: #fff;
+}
+
+/* IZQUIERDA */
+.sales-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sales-time {
+  font-size: 12px;
+  color: #777;
+}
+
+.sales-code {
+  font-size: 13px;
+  font-weight: 700;
+  color: #222;
+}
+
+/* DERECHA */
+.sales-amount {
+  font-size: 15px;
+  font-weight: 800;
+  color: #f92672;
+  white-space: nowrap;
+}
+
+/* FOOTER */
+.sales-footer {
+  margin-top: 4px;
+}
+
+.sales-footer button {
+  width: 100%;
+  padding: 10px 0;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
 /* ===== Responsive ===== */
 @media (max-width:860px){
   .sidebar{ min-width:140px; }
@@ -289,7 +430,7 @@
     padding: 18px;
   }
 .store-pos-topbar .logout-btn {
-  background: #f1bb19;
+  background: #f92672;
   color: #fff;
   border: none;
   border-radius: 10px;

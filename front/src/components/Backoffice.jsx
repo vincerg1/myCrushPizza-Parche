@@ -14,6 +14,8 @@ import StoreInventory from "./StoreInventory";
 import MyOrdersStore from "./MyOrdersStore";
 import api from "../setupAxios";
 import "../styles/Backoffice.css";
+import moment from "moment";
+import "moment/locale/es";
 
 const LS_KEY_SIDEBAR_W = "bo.sidebarW";
 const DEFAULT_W = 220;
@@ -29,11 +31,28 @@ export default function Backoffice() {
   const [open, setOpen] = useState({ offers: false, pizzaCreator: false });
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
 
-  // ───── Store status (SOLO STORE) ─────
+  // ───── Store status (STORE POS) ─────
   const [storeActive, setStoreActive] = useState(true);
   const [savingStore, setSavingStore] = useState(false);
-
+  const [showMenu, setShowMenu] = useState(false);
+  const [showSalesToday, setShowSalesToday] = useState(false);
+const [salesToday, setSalesToday] = useState([]);
+const [loadingSales, setLoadingSales] = useState(false);
   const dragRef = useRef({ startX: 0, startW: DEFAULT_W, dragging: false });
+
+  useEffect(() => {
+  if (!showSalesToday || !auth?.storeId) return;
+
+  setLoadingSales(true);
+
+  api
+    .get(`/api/sales/today`, {
+      params: { storeId: auth.storeId },
+    })
+    .then(r => setSalesToday(Array.isArray(r.data) ? r.data : []))
+    .catch(() => setSalesToday([]))
+    .finally(() => setLoadingSales(false));
+}, [showSalesToday, auth?.storeId]);
 
   /* default panel por rol */
   useEffect(() => {
@@ -49,23 +68,19 @@ export default function Backoffice() {
     }
   }, []);
 
-  /* load store status (solo tienda) */
+  /* load store status */
   useEffect(() => {
     if (isAdmin || !auth?.storeId) return;
-
     api
       .get(`/api/stores/${auth.storeId}`)
       .then(r => setStoreActive(!!r.data.active))
       .catch(() => {});
   }, [isAdmin, auth?.storeId]);
 
-  /* toggle store (REAL) */
   const toggleStore = async () => {
     if (savingStore || !auth?.storeId) return;
-
     const next = !storeActive;
     setSavingStore(true);
-
     try {
       await api.patch(`/api/stores/${auth.storeId}/active`, { active: next });
       setStoreActive(next);
@@ -88,8 +103,7 @@ export default function Backoffice() {
   const onDragMove = (e) => {
     if (!dragRef.current.dragging) return;
     const dx = e.clientX - dragRef.current.startX;
-    const next = Math.max(MIN_W, Math.min(MAX_W, dragRef.current.startW + dx));
-    setSidebarW(next);
+    setSidebarW(Math.max(MIN_W, Math.min(MAX_W, dragRef.current.startW + dx)));
   };
 
   const onDragEnd = () => {
@@ -103,17 +117,25 @@ export default function Backoffice() {
 
   if (!role) return null;
 
-  /* ───────────── STORE POS LAYOUT ───────────── */
+  /* ───────────── STORE POS ───────────── */
   if (!isAdmin) {
     return (
       <div className="store-pos-wrapper">
         {/* TOP BAR */}
         <header className="store-pos-topbar">
           <div className="store-pos-tabs">
-           
-          <button className="logout-btn" onClick={logout}>
-            Logout
-          </button>
+            <button
+              className="menu-btn"
+              onClick={() => setShowMenu(v => !v)}
+              aria-label="Menu"
+            >
+              ☰
+            </button>
+
+            <button className="logout-btn" onClick={logout}>
+              Logout
+            </button>
+
             <button
               className={active === "myOrders" ? "active" : ""}
               onClick={() => setActive("myOrders")}
@@ -129,13 +151,10 @@ export default function Backoffice() {
             </button>
           </div>
 
- 
-
           <div className="app-toggle">
             <span className="app-toggle-label">
               {storeActive ? "Store open" : "Store closed"}
             </span>
-
             <button
               type="button"
               onClick={toggleStore}
@@ -146,6 +165,27 @@ export default function Backoffice() {
               <span className="app-toggle-knob" />
             </button>
           </div>
+
+          {showMenu && (
+            <div className="pos-menu">
+              <button
+                onClick={() => {
+                  setShowSalesToday(true);
+                  setShowMenu(false);
+                }}
+              >
+                📊 Ventas de hoy
+              </button>
+
+              <button disabled title="Próximamente">
+                💳 Por método de pago
+              </button>
+
+              <button disabled title="Próximamente">
+                🧾 Historial
+              </button>
+            </div>
+          )}
         </header>
 
         {/* CONTENT */}
@@ -153,32 +193,97 @@ export default function Backoffice() {
           {active === "myOrders" && <MyOrdersStore />}
           {active === "storeInventory" && <StoreInventory />}
         </main>
+
+        {/* MODAL – Ventas de hoy */}
+{showSalesToday && (
+  <div className="pt-modal-back" onClick={() => setShowSalesToday(false)}>
+    <div
+      className="pt-modal-card sales-today"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* HEADER */}
+      <div className="sales-header">
+        <h3>📊 Ventas de hoy</h3>
+        <span className="sales-date">
+          {moment().format("dddd, DD MMM")}
+        </span>
+      </div>
+
+      {/* STATES */}
+      {loadingSales && (
+        <div className="sales-empty">
+          Cargando ventas…
+        </div>
+      )}
+
+      {!loadingSales && salesToday.length === 0 && (
+        <div className="sales-empty">
+          No hay ventas hoy
+        </div>
+      )}
+
+      {/* LIST */}
+      {!loadingSales && salesToday.length > 0 && (
+        <div className="sales-list">
+          {salesToday.map((s) => (
+            <div className="sales-card" key={s.id}>
+              <div className="sales-meta">
+                <span className="sales-time">
+                  {moment(s.date).format("HH:mm")}
+                </span>
+                <span className="sales-code">
+                  #{s.code || s.id}
+                </span>
+              </div>
+
+              <div className="sales-amount">
+                {Number(
+                  s.total ?? s.totalAmount ?? 0
+                ).toLocaleString("es-ES", {
+                  style: "currency",
+                  currency: "EUR",
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* FOOTER */}
+      <div className="sales-footer">
+        <button onClick={() => setShowSalesToday(false)}>
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
       </div>
     );
   }
 
-  /* ───────────── ADMIN MENU ───────────── */
+  /* ───────────── ADMIN ───────────── */
 
   const menu = [
-    { key: "inventory", label: "Inventory", show: true },
+    { key: "inventory", label: "Inventory" },
     {
       key: "pizzaCreator",
       label: "Pizza Creator",
-      show: true,
       children: [{ key: "pizzaCreator/extras", label: "Extras" }],
     },
-    { key: "storeCreator", label: "Stores", show: true },
-    { key: "customers", label: "Customers", show: true },
+    { key: "storeCreator", label: "Stores" },
+    { key: "customers", label: "Customers" },
     {
       key: "offers",
       label: "Ofertas",
-      show: true,
       children: [
         { key: "offers/sms", label: "Enviar SMS" },
         { key: "offers/create", label: "Crear ofertas" },
       ],
     },
-    { key: "myOrders", label: "My Orders", show: true },
+    { key: "myOrders", label: "My Orders" },
   ];
 
   const panel = (() => {
@@ -204,52 +309,43 @@ export default function Backoffice() {
           <button className="logout-btn" onClick={logout}>Logout</button>
         </div>
 
-    {menu.map(item =>
-  !item.children ? (
-    <SidebarButton
-      key={item.key}
-      label={item.label}
-      active={active === item.key}
-      onClick={() => setActive(item.key)}
-    />
-  ) : (
-    <div key={item.key}>
-      <SidebarButton
-        label={item.label}
-        group
-        open={!!open[item.key]}                 // ✅ controla expansión
-        active={active === item.key}
-        onClick={() =>
-          setOpen(o => ({
-            ...o,
-            [item.key]: !o[item.key],           // ✅ toggle real
-          }))
-        }
-      />
-
-      {open[item.key] && (                     // ✅ render condicional
-        <div className="sidebar-children">
-          {item.children.map(ch => (
+        {menu.map(item =>
+          !item.children ? (
             <SidebarButton
-              key={ch.key}
-              label={ch.label}
-              depth={1}
-              active={active === ch.key}
-              onClick={() => setActive(ch.key)}
+              key={item.key}
+              label={item.label}
+              active={active === item.key}
+              onClick={() => setActive(item.key)}
             />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-)}
-
+          ) : (
+            <div key={item.key}>
+              <SidebarButton
+                label={item.label}
+                group
+                open={!!open[item.key]}
+                onClick={() =>
+                  setOpen(o => ({ ...o, [item.key]: !o[item.key] }))
+                }
+              />
+              {open[item.key] && (
+                <div className="sidebar-children">
+                  {item.children.map(ch => (
+                    <SidebarButton
+                      key={ch.key}
+                      label={ch.label}
+                      depth={1}
+                      active={active === ch.key}
+                      onClick={() => setActive(ch.key)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        )}
       </aside>
 
-      <div
-        className="splitter"
-        onMouseDown={onDragStart}
-      />
+      <div className="splitter" onMouseDown={onDragStart} />
 
       <main className="panel">
         <div className="panel-inner">{panel}</div>
@@ -257,3 +353,4 @@ export default function Backoffice() {
     </div>
   );
 }
+

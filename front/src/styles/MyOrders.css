@@ -59,8 +59,8 @@
 }
 
 .app-toggle-btn.on {
-  background: #f1bb19;
-  border-color: #f1bb19;
+  background: #f92672;
+  border-color: rgb(226, 84, 236);
 }
 
 .app-toggle-btn.off {

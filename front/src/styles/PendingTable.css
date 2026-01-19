@@ -1,128 +1,248 @@
-.orders { width:100%; border-collapse:collapse; }
-.orders th, .orders td { border:1px solid #ccc; padding:4px; text-align:center; }
-.modal-back{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;}
-.modal-card{background:#fff;padding:16px;border-radius:12px;max-width:90%;max-height:90%;overflow:auto;}
+/* ===============================
+   BASE POS
+================================ */
+:root {
+  --pos-primary: #f92672;
+  --pos-bg: #ffffff;
+  --pos-bg-soft: #fafafa;
+  --pos-border: #e5e5e5;
+  --pos-text: #1a1a1a;
+  --pos-text-soft: #555;
+}
+
+/* ===============================
+   TABLE (DESKTOP LEGACY)
+================================ */
+.orders {
+  width:100%;
+  border-collapse:collapse;
+}
+.orders th,
+.orders td {
+  border:1px solid var(--pos-border);
+  padding:4px;
+  text-align:center;
+  font-size:.85rem;
+}
+.orders th {
+  background:#fafafa;
+  font-weight:600;
+}
+
+/* ===============================
+   MODALS (BASE UNIFICADA)
+================================ */
+.modal-back,
+.pt-modal-back {
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:999;
+}
+
+.modal-card,
+.pt-modal-card {
+  background:var(--pos-bg);
+  padding:18px 16px;
+  border-radius:14px;
+  max-width:90%;
+  max-height:90%;
+  overflow:auto;
+  box-shadow:0 8px 24px #0004;
+  text-align:left;
+}
+
+/* títulos modales */
+.modal-card h3,
+.pt-modal-card h3 {
+  margin:0 0 10px;
+  font-size:17px;
+  font-weight:700;
+  color:var(--pos-text);
+}
+
+/* texto modales */
+.modal-card p,
+.pt-modal-card p {
+  font-size:14px;
+  color:var(--pos-text-soft);
+  margin:6px 0;
+}
+
+/* ===============================
+   BOTONES POS (GLOBAL)
+================================ */
+button {
+  font-family:inherit;
+}
+
+/* contenedor botones modal */
+.pt-buttons {
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  margin-top:14px;
+}
+
+/* primario (UN SOLO BOTÓN FUERTE) */
+.pos-btn-primary,
+.order-card button:first-of-type,
+.pt-buttons button:first-child {
+  background:var(--pos-primary);
+  color:#fff;
+  border:none;
+  border-radius:14px;
+  padding:12px 0;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+  flex:1;
+}
+
+/* secundario */
+.pos-btn-secondary,
+.order-card button:last-of-type,
+.pt-buttons button:last-child {
+  background:#fff;
+  color:var(--pos-primary);
+  border:2px solid var(--pos-primary);
+  border-radius:14px;
+  padding:11px 0;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+  flex:1;
+}
+
+/* hover */
+.pos-btn-primary:hover,
+.order-card button:first-of-type:hover,
+.pt-buttons button:first-child:hover {
+  filter:brightness(.95);
+}
+.pos-btn-secondary:hover,
+.order-card button:last-of-type:hover,
+.pt-buttons button:last-child:hover {
+  background:#fff0f6;
+}
+
+/* ===============================
+   MODAL: NUEVOS PEDIDOS
+================================ */
+.alert-list {
+  list-style:none;
+  padding:0;
+  margin:0 0 10px;
+}
+
+.alert-list li {
+  padding:8px 10px;
+  border:1px solid #eee;
+  border-radius:10px;
+  margin-bottom:8px;
+  font-size:13px;
+  line-height:1.35;
+  background:var(--pos-bg-soft);
+}
+
+.alert-list li b {
+  font-weight:700;
+  color:var(--pos-text);
+}
+
+.alert-list li small {
+  display:block;
+  margin-top:4px;
+  font-size:12px;
+  color:var(--pos-text-soft);
+}
+
+.pt-modal-card .more {
+  font-size:12px;
+  color:#777;
+  text-align:center;
+  margin:6px 0 2px;
+}
+
+/* ===============================
+   BLINK (alerta)
+================================ */
 @keyframes blink {
   50% { opacity: 0; }
 }
-
 .blink {
   animation: blink 1s step-start infinite;
 }
 
-/* ——  Mobile cards  —— */
+/* ===============================
+   MOBILE – TARJETAS POS
+================================ */
 @media (max-width: 768px) {
-  /* Oculta cabecera de la tabla */
-  .orders thead {
-    display: none;
-  }
 
-  /* Cada fila se vuelve una tarjeta */
-  .orders, .orders tr, .orders tbody {
-    display: block;
-    width: 90%;
-  }
+  table.orders { display:none; }
 
-  .orders tr {
-    background: #fafafa;
-    border: 1px solid #ddd;
-    border-radius: 12px;
-    margin-bottom: 12px;
-    padding: 8px 10px;
-  }
-
-  /* Cada celda en línea con etiqueta previa */
-  .orders td {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: .9rem;
-  }
-
-  .orders td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    margin-right: 8px;
-    color: #555;
-  }
-
-  /* Botones llenan ancho */
-  .orders td button {
-    width: 100%;
-    margin-top: 4px;
-  }
-}
-
-/* ——  Estado vacío  —— */
-@media (max-width: 768px) {
-  .no-orders .emoji { font-size: 4.2rem; }
-  .no-orders .msg   { font-size: 1rem; }
-}
-/* ---------- Tarjetas deslizables en móvil ---------- */
-@media (max-width: 768px) {
- /* un solo sitio donde cambias el espacio */
-
-  :root { --card-gap: 12px; }    
-  /* Carril horizontal */
   .orders-scroll {
-     display:flex; gap:12px; overflow-x:auto;
-    scroll-snap-type:x mandatory; scroll-padding-inline:12px;
+    display:flex;
+    gap:12px;
+    overflow-x:auto;
+    scroll-snap-type:x mandatory;
+    scroll-padding-inline:12px;
   }
 
-  /* Cada tarjeta */
   .order-card {
-    flex:0 0 90%;            /* 100 % viewport */
+    flex:0 0 90%;
     scroll-snap-align:start;
     background:#fff;
-    border:1px solid #ddd;
+    border:1px solid var(--pos-border);
     border-radius:12px;
     box-shadow:0 2px 6px #0001;
-    padding:8px 10px;         /* ↓ era 10 px */
-    font-size:.85rem;         /* ↓ un pelín más pequeño */
+    padding:10px;
+    font-size:.85rem;
     display:flex;
     flex-direction:column;
-    gap:2px;       
+    gap:4px;
   }
 
   .order-card .row {
-     display:flex !important;          /* anula cualquier .row global */
-    flex-direction:row !important;
-    align-items:center;
+    display:flex !important;
     justify-content:space-between;
+    align-items:flex-start;
     border-bottom:1px solid #eee;
-    padding:2px 0;
+    padding:3px 0;
   }
-    .order-card .row strong{
-    color:#444;
+
+  .order-card .row strong {
     font-weight:600;
-    flex:0 0 38%;             /* ancho fijo aprox. etiqueta */
+    color:#444;
+    flex:0 0 38%;
   }
-    .order-card .row span{
-    flex:1 1 62%;
+
+  .order-card .row span {
+    flex:1;
     text-align:right;
-    word-break:break-word;    /* por si Items es largo */
+    word-break:break-word;
   }
-  .order-card .row:last-of-type { border-bottom: none; }
+
+  .order-card .row:last-of-type {
+    border-bottom:none;
+  }
 
   .order-card button {
-    width: 100%;
-    margin-top: 6px;
-    padding: 8px 0;
-    border-radius: 12px;
-    cursor: pointer;
-    background-color: #f92672;
-    color: #fff;
+    width:100%;
+    margin-top:6px;
   }
-
-  /* Oculta la tabla clásica en móvil */
-  table.orders { display: none; }
 }
 
+/* ===============================
+   HEADER PENDING
+================================ */
 .pt-headerPT{
   display:flex;
-  flex-direction:column;   /* 👈 salto de línea real */
-  align-items:flex-start;  /* 👈 izquierda */
-  text-align: left !important;
+  flex-direction:column;
+  align-items:flex-start;
   gap:2px;
   margin:14px 0 10px;
 }
@@ -146,26 +266,31 @@
   font-weight:700;
 }
 
-
-
-/* ---------- Vista desktop ---------- */
-@media (min-width: 769px) {
-  .orders-scroll { display: none; }
-  table.orders   { margin-top: 12px; }
-}
+/* ===============================
+   DOTS SCROLL
+================================ */
 .pt-dots{
   display:flex;
   justify-content:center;
   gap:6px;
-  margin:8px 0 4px;   /* encima de la tarjeta */
+  margin:8px 0 4px;
 }
 .pt-dot{
-  width:8px;height:8px;
+  width:8px;
+  height:8px;
   border-radius:50%;
   background:#ccc;
   transition:background .25s, transform .25s;
 }
 .pt-dot.active{
-  background:#1a1a1b;
+  background:var(--pos-primary);
   transform:scale(1.4);
+}
+
+/* ===============================
+   DESKTOP
+================================ */
+@media (min-width: 769px) {
+  .orders-scroll { display:none; }
+  table.orders { margin-top:12px; }
 }
