@@ -204,36 +204,46 @@ export default function Backoffice() {
           <button className="logout-btn" onClick={logout}>Logout</button>
         </div>
 
-        {menu.map(item =>
-          !item.children ? (
+    {menu.map(item =>
+  !item.children ? (
+    <SidebarButton
+      key={item.key}
+      label={item.label}
+      active={active === item.key}
+      onClick={() => setActive(item.key)}
+    />
+  ) : (
+    <div key={item.key}>
+      <SidebarButton
+        label={item.label}
+        group
+        open={!!open[item.key]}                 // ✅ controla expansión
+        active={active === item.key}
+        onClick={() =>
+          setOpen(o => ({
+            ...o,
+            [item.key]: !o[item.key],           // ✅ toggle real
+          }))
+        }
+      />
+
+      {open[item.key] && (                     // ✅ render condicional
+        <div className="sidebar-children">
+          {item.children.map(ch => (
             <SidebarButton
-              key={item.key}
-              label={item.label}
-              active={active === item.key}
-              onClick={() => setActive(item.key)}
+              key={ch.key}
+              label={ch.label}
+              depth={1}
+              active={active === ch.key}
+              onClick={() => setActive(ch.key)}
             />
-          ) : (
-            <div key={item.key}>
-              <SidebarButton
-                label={item.label}
-                group
-                active={active === item.key}
-                onClick={() => setActive(item.key)}
-              />
-              <div className="sidebar-children">
-                {item.children.map(ch => (
-                  <SidebarButton
-                    key={ch.key}
-                    label={ch.label}
-                    depth={1}
-                    active={active === ch.key}
-                    onClick={() => setActive(ch.key)}
-                  />
-                ))}
-              </div>
-            </div>
-          )
-        )}
+          ))}
+        </div>
+      )}
+    </div>
+  )
+)}
+
       </aside>
 
       <div

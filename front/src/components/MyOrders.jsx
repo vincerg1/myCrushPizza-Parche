@@ -170,20 +170,20 @@ function Dashboard() {
       <header className="dash-head" style={{ display:"flex", alignItems:"center", gap:12 }}>
       <h2>MyOrdersPanel</h2>
 
-{isAdmin && (
-  <div className="app-toggle">
-    <span className="app-toggle-label">App online</span>
+      {isAdmin && (
+        <div className="app-toggle">
+          <span className="app-toggle-label">App online</span>
 
-    <button
-      type="button"
-      onClick={toggleGlobal}
-      aria-pressed={appAccepting}
-      className={`app-toggle-btn ${appAccepting ? "on" : "off"}`}
-    >
-      <span className="app-toggle-knob" />
-    </button>
-  </div>
-)}
+          <button
+            type="button"
+            onClick={toggleGlobal}
+            aria-pressed={appAccepting}
+            className={`app-toggle-btn ${appAccepting ? "on" : "off"}`}
+          >
+            <span className="app-toggle-knob" />
+          </button>
+        </div>
+      )}
       </header>
 
       {err && <div className="pc-alert" style={{ margin:"8px 0" }}>{err}</div>}
