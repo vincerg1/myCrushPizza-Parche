@@ -408,6 +408,58 @@ if (shapeErr){
       res.status(500).json({ error: 'internal' });
     }
   });
+  /* ─────────────── GET /api/sales/today ─────────────── */
+  r.get('/today', auth(), async (req, res) => {
+    try {
+      const TZ = process.env.TIMEZONE || 'Europe/Madrid';
+
+      // inicio y fin del día en TZ
+      const start = new Date(
+        new Date().toLocaleString('sv-SE', { timeZone: TZ }).split(' ')[0] + 'T00:00:00'
+      );
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+
+      // determinar tienda según rol
+      let storeId;
+      if (req.user.role === 'store') {
+        const s = await prisma.store.findFirst({
+          where: { storeName: req.user.storeName },
+          select: { id: true }
+        });
+        if (!s) return res.status(403).json({ error: 'Tienda no válida' });
+        storeId = s.id;
+      } else {
+        storeId = Number(req.query.storeId);
+        if (!storeId) {
+          return res.status(400).json({ error: 'storeId requerido' });
+        }
+      }
+
+      const sales = await prisma.sale.findMany({
+        where: {
+          storeId,
+          date: {
+            gte: start,
+            lt: end
+          }
+        },
+        orderBy: { date: 'desc' },
+        select: {
+          id: true,
+          code: true,
+          date: true,
+          total: true,
+          type: true
+        }
+      });
+
+      res.json(sales);
+    } catch (e) {
+      console.error('[GET /api/sales/today]', e);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
 
   /* ─────────────── PATCH /api/sales/:id/ready ─────────────── */
   r.patch('/:id/ready', auth(), async (req, res) => {
