@@ -257,7 +257,7 @@ export default function StoreCreator() {
             <GoogleMap
               center={center}
               zoom={12}
-              mapContainerStyle={{ width: "100%", height: 440 }}
+              mapContainerStyle={{ width: "100%", height: 300 }}
               options={{ disableDefaultUI: true }}
             >
               {stores.filter(s => s.latitude && s.longitude).map(s => (
@@ -278,26 +278,132 @@ export default function StoreCreator() {
       </div>
 
       {/* ADD STORE MODAL */}
-      {showAdd && (
-        <div className="sc-modalBack" onMouseDown={() => setShowAdd(false)}>
-          <div className="sc-modalBox" onMouseDown={e => e.stopPropagation()}>
-            <h3>Add Store</h3>
-            <form onSubmit={submitStore} className="store-form">
-              {Object.keys(emptyStore).map(k => (
-                <label key={k}>
-                  {k}
-                  <input
-                    name={k}
-                    value={form[k]}
-                    onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
-                  />
-                </label>
-              ))}
-              <button className="sc-btn primary">Save store</button>
-            </form>
-          </div>
+{showAdd && (
+  <div className="sc-modalBack" onMouseDown={() => setShowAdd(false)}>
+    <div
+      className="sc-modalBox"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* HEADER */}
+      <header className="sc-modalHead">
+        <h3 className="sc-modalTitle">Add store</h3>
+        <button
+          className="sc-iconBtn"
+          onClick={() => setShowAdd(false)}
+        >
+          ✕
+        </button>
+      </header>
+
+      {/* BODY */}
+      <form onSubmit={submitStore} className="sc-modalBody store-form">
+        <div className="sc-field">
+          <label className="sc-label">Store name</label>
+          <input
+            className="sc-input"
+            value={form.storeName}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, storeName: e.target.value }))
+            }
+          />
         </div>
-      )}
+
+        <div className="sc-field">
+          <label className="sc-label">Address</label>
+          <input
+            className="sc-input"
+            value={form.address}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, address: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">Latitude</label>
+          <input
+            className="sc-input"
+            value={form.latitude}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, latitude: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">Longitude</label>
+          <input
+            className="sc-input"
+            value={form.longitude}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, longitude: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">City</label>
+          <input
+            className="sc-input"
+            value={form.city}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, city: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">Zip code</label>
+          <input
+            className="sc-input"
+            value={form.zipCode}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, zipCode: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">Email</label>
+          <input
+            className="sc-input"
+            value={form.email}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, email: e.target.value }))
+            }
+          />
+        </div>
+
+        <div className="sc-field">
+          <label className="sc-label">Phone</label>
+          <input
+            className="sc-input"
+            value={form.tlf}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, tlf: e.target.value }))
+            }
+          />
+        </div>
+
+        {/* FOOTER */}
+        <div className="sc-modalFooter">
+          <button
+            type="button"
+            className="sc-btn ghost"
+            onClick={() => setShowAdd(false)}
+          >
+            Cancel
+          </button>
+
+          <button type="submit" className="sc-btn primary">
+            Save store
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
+
 
       {stockModal && <StockModal store={stockModal} onClose={() => setStockModal(null)} />}
     </>

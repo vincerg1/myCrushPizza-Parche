@@ -36,6 +36,7 @@ export default function OfferCreatePanel() {
     campaign: "",
     channel: "GAME",
     acquisition: "GAME",
+      visibility: "PUBLIC",
   });
 
   const [saving, setSaving] = useState(false);
@@ -223,80 +224,129 @@ export default function OfferCreatePanel() {
     return null;
   };
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setMsg(""); setSample([]);
-    const err = validate();
-    if (err) { setMsg(err); return; }
+ const submit = async (e) => {
+  e.preventDefault();
+  setMsg("");
+  setSample([]);
 
-    setSaving(true);
-    try {
-      const payload = {
-        type: form.type,
-        quantity: Number(form.quantity),
-        usageLimit: USAGE_LIMIT,
-        ...(isRandom       ? { percentMin: Number(form.percentMin), percentMax: Number(form.percentMax) } : {}),
-        ...(isFixedPercent ? { percent: Number(form.percent) } : {}),
-        ...(isFixedAmount  ? { amount : Number(form.amount) } : {}),
-        ...((isRandom || isFixedPercent) && String(form.maxAmount).trim() !== "" ? { maxAmount: Number(form.maxAmount) } : {}),
-        ...(form.segments.length ? { segments: form.segments } : {}),
-        ...(String(form.assignedToId).trim() !== "" ? { assignedToId: Number(form.assignedToId) } : {}),
-        ...(form.activeFrom ? { activeFrom: form.activeFrom } : {}),
-        ...(form.expiresAt  ? { expiresAt : form.expiresAt  } : {}),
-        ...(form.isTemporal ? {
-          daysActive: form.daysActive,
-          windowStart: timeToMinutes(form.windowStart),
-          windowEnd  : timeToMinutes(form.windowEnd),
-        } : {}),
-        ...(form.useInGame ? {
-          acquisition: form.acquisition || "GAME",
-          channel: form.channel || "GAME",
-          gameId: Number(form.gameId),
-          ...(form.campaign ? { campaign: form.campaign } : {}),
-        } : {}),
-      };
+  const err = validate();
+  if (err) {
+    setMsg(err);
+    return;
+  }
 
-      const { data } = await api.post(
-        "/api/coupons/bulk-generate",
-        payload,
-        { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
-      );
+  setSaving(true);
 
-      setMsg(`✅ Se crearon ${data?.created ?? 0} cupones. Prefijo: ${data?.prefix || "-"}${
-        data?.constraints?.expiresAt ? ` · Vence: ${new Date(data.constraints.expiresAt).toLocaleString("es-ES")}` : ""
-      }`);
-      setSample(Array.isArray(data?.sample) ? data.sample : []);
+  try {
+    const payload = {
+      type: form.type,
+      quantity: Number(form.quantity),
+      usageLimit: USAGE_LIMIT,
 
-      setForm({
-        type: "RANDOM_PERCENT",
-        quantity: 10,
-        percentMin: 5,
-        percentMax: 15,
-        percent: 10,
-        amount: 9.99,
-        maxAmount: "",
-        segments: [],
-        assignedToId: "",
-        isTemporal: false,
-        daysActive: [],
-        windowStart: "",
-        windowEnd: "",
-        activeFrom: "",
-        expiresAt: "",
-        notes: "",
-        useInGame: false,
-        gameId: "",
-        campaign: "",
-        channel: "GAME",
-        acquisition: "GAME",
-      });
-      clearCustomer();
-    } catch (err) {
-      setMsg(err?.response?.data?.error || "No se pudo generar cupones");
-    } finally {
-      setSaving(false);
-    }
-  };
+      // 🔑 NUEVO: visibilidad explícita
+      visibility: form.visibility,
+
+      ...(isRandom
+        ? {
+            percentMin: Number(form.percentMin),
+            percentMax: Number(form.percentMax),
+          }
+        : {}),
+      ...(isFixedPercent
+        ? { percent: Number(form.percent) }
+        : {}),
+      ...(isFixedAmount
+        ? { amount: Number(form.amount) }
+        : {}),
+      ...((isRandom || isFixedPercent) &&
+      String(form.maxAmount).trim() !== ""
+        ? { maxAmount: Number(form.maxAmount) }
+        : {}),
+      ...(form.segments.length
+        ? { segments: form.segments }
+        : {}),
+      ...(String(form.assignedToId).trim() !== ""
+        ? { assignedToId: Number(form.assignedToId) }
+        : {}),
+      ...(form.activeFrom
+        ? { activeFrom: form.activeFrom }
+        : {}),
+      ...(form.expiresAt
+        ? { expiresAt: form.expiresAt }
+        : {}),
+      ...(form.isTemporal
+        ? {
+            daysActive: form.daysActive,
+            windowStart: timeToMinutes(form.windowStart),
+            windowEnd: timeToMinutes(form.windowEnd),
+          }
+        : {}),
+      ...(form.useInGame
+        ? {
+            acquisition: form.acquisition || "GAME",
+            channel: form.channel || "GAME",
+            gameId: Number(form.gameId),
+            ...(form.campaign
+              ? { campaign: form.campaign }
+              : {}),
+          }
+        : {}),
+    };
+
+    const { data } = await api.post(
+      "/api/coupons/bulk-generate",
+      payload,
+      { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
+    );
+
+    setMsg(
+      `✅ Se crearon ${data?.created ?? 0} cupones. Prefijo: ${
+        data?.prefix || "-"
+      }${
+        data?.constraints?.expiresAt
+          ? ` · Vence: ${new Date(
+              data.constraints.expiresAt
+            ).toLocaleString("es-ES")}`
+          : ""
+      }`
+    );
+
+    setSample(Array.isArray(data?.sample) ? data.sample : []);
+
+    // 🔄 Reset del formulario (visibilidad vuelve a PUBLIC)
+    setForm({
+      type: "RANDOM_PERCENT",
+      quantity: 10,
+      percentMin: 5,
+      percentMax: 15,
+      percent: 10,
+      amount: 9.99,
+      maxAmount: "",
+      segments: [],
+      assignedToId: "",
+      isTemporal: false,
+      daysActive: [],
+      windowStart: "",
+      windowEnd: "",
+      activeFrom: "",
+      expiresAt: "",
+      notes: "",
+      useInGame: false,
+      gameId: "",
+      campaign: "",
+      channel: "GAME",
+      acquisition: "GAME",
+      visibility: "PUBLIC",
+    });
+
+    clearCustomer();
+  } catch (err) {
+    setMsg(err?.response?.data?.error || "No se pudo generar cupones");
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   return (
     <div className="panel-inner">
@@ -399,6 +449,24 @@ export default function OfferCreatePanel() {
 
         <div className="row" style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
+            <div className="row">
+  <label>Visibilidad del cupón</label>
+
+  <label className="small">
+    <input
+      type="checkbox"
+      checked={form.visibility === "RESERVED"}
+      onChange={(e) =>
+        onChange("visibility", e.target.checked ? "RESERVED" : "PUBLIC")
+      }
+    />
+    Cupón individual / reservado (no mostrar en galería)
+  </label>
+
+  <p className="note">
+    Los cupones reservados no aparecerán en la galería pública, aunque estén activos.
+  </p>
+</div>
             <label>Activo desde (opcional)</label>
             <input className="input" type="datetime-local"
               value={form.activeFrom} onChange={(e) => onChange("activeFrom", e.target.value)} />

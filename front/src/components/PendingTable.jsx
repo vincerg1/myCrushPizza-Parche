@@ -326,9 +326,9 @@ const fmtTotal = (sale) =>
       <audio ref={audioRef} src="/telephone-ring-03b.mp3" preload="auto" />
 
       <div className="pt-headerPT">
-        <div className="pt-store-name">
-          as {auth?.storeName}
-        </div>
+<div className="pt-store-name">
+  as {auth?.storeName?.trim() ? auth.storeName : "Admin"}
+</div>
 
         <div className="pt-title-row">
           <h3>Pending orders</h3>
