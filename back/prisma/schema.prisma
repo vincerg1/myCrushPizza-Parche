@@ -97,6 +97,10 @@ enum ProductStatus {
   ACTIVE
   INACTIVE
 }
+enum CouponVisibility {
+  PUBLIC
+  RESERVED
+}
 
 /**
  * ======================= MODELOS =======================
@@ -258,6 +262,7 @@ model Coupon {
   meta         Json?
   segments     Json?
   assignedToId Int?
+  visibility    CouponVisibility  @default(PUBLIC)
   assignedTo   Customer?          @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
   activeFrom   DateTime?
   expiresAt    DateTime?
@@ -271,7 +276,7 @@ model Coupon {
   createdAt    DateTime           @default(now())
   game         Game?              @relation("GameCoupons", fields: [gameId], references: [id], onDelete: SetNull)
   redemptions  CouponRedemption[] @relation("CouponToRedemptions")
-
+  
   @@index([status])
   @@index([assignedToId])
   @@index([expiresAt])

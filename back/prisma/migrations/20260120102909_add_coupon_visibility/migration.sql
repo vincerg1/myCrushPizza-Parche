@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Coupon` ADD COLUMN `visibility` ENUM('PUBLIC', 'RESERVED') NOT NULL DEFAULT 'PUBLIC';
