@@ -193,7 +193,9 @@ const [loadingSales, setLoadingSales] = useState(false);
           {active === "myOrders" && <MyOrdersStore />}
           {active === "storeInventory" && <StoreInventory />}
         </main>
-
+ <footer className="bo-footer">
+    © {new Date().getFullYear()} MyCrushPizza · Backoffice v01
+  </footer>
         {/* MODAL – Ventas de hoy */}
 {showSalesToday && (
   <div className="pt-modal-back" onClick={() => setShowSalesToday(false)}>
@@ -319,14 +321,22 @@ const [loadingSales, setLoadingSales] = useState(false);
             />
           ) : (
             <div key={item.key}>
-              <SidebarButton
-                label={item.label}
-                group
-                open={!!open[item.key]}
-                onClick={() =>
-                  setOpen(o => ({ ...o, [item.key]: !o[item.key] }))
-                }
-              />
+            <SidebarButton
+              label={item.label}
+              group
+              open={!!open[item.key]}
+              active={active === item.key}
+              onClick={() => {
+                // 1️⃣ entra al padre
+                setActive(item.key);
+
+                // 2️⃣ abre / cierra el menú
+                setOpen(o => ({
+                  ...o,
+                  [item.key]: !o[item.key],
+                }));
+              }}
+            />
               {open[item.key] && (
                 <div className="sidebar-children">
                   {item.children.map(ch => (
@@ -349,6 +359,9 @@ const [loadingSales, setLoadingSales] = useState(false);
 
       <main className="panel">
         <div className="panel-inner">{panel}</div>
+          <footer className="bo-footer">
+            © {new Date().getFullYear()} voltaPizza · Backoffice v01
+          </footer>
       </main>
     </div>
   );
