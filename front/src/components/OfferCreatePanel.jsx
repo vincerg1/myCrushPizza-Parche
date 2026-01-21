@@ -347,6 +347,19 @@ export default function OfferCreatePanel() {
   }
 };
 
+useEffect(() => {
+  const shouldBeReserved =
+    String(form.assignedToId).trim() !== "" ||
+    form.useInGame === true;
+
+  if (shouldBeReserved && form.visibility !== "RESERVED") {
+    setForm((f) => ({ ...f, visibility: "RESERVED" }));
+  }
+
+  if (!shouldBeReserved && form.visibility !== "PUBLIC") {
+    setForm((f) => ({ ...f, visibility: "PUBLIC" }));
+  }
+}, [form.assignedToId, form.useInGame]);
 
   return (
     <div className="panel-inner">
@@ -446,26 +459,9 @@ export default function OfferCreatePanel() {
           </div>
           <p className="note">Si lo completas, el cupón solo será válido para ese cliente.</p>
         </div>
-
         <div className="row" style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div className="row">
-  <label>Visibilidad del cupón</label>
-
-  <label className="small">
-    <input
-      type="checkbox"
-      checked={form.visibility === "RESERVED"}
-      onChange={(e) =>
-        onChange("visibility", e.target.checked ? "RESERVED" : "PUBLIC")
-      }
-    />
-    Cupón individual / reservado (no mostrar en galería)
-  </label>
-
-  <p className="note">
-    Los cupones reservados no aparecerán en la galería pública, aunque estén activos.
-  </p>
 </div>
             <label>Activo desde (opcional)</label>
             <input className="input" type="datetime-local"
