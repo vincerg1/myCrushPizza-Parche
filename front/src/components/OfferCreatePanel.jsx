@@ -410,7 +410,7 @@ useEffect(() => {
         )}
 
         <div className="row">
-          <label>Cupones a generar</label>
+          <label>Cupons a generar</label>
           <input className="input" type="number" min="1"
             value={form.quantity} onChange={(e) => onChange("quantity", +e.target.value || 1)} />
           <p className="note">Cada cupón es de 1 solo uso.</p>
