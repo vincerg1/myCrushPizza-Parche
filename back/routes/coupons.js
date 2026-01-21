@@ -1141,7 +1141,7 @@ router.get('/gallery', async (_req, res) => {
     const rows = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
-       
+        visibility: 'PUBLIC',
       },
       select: {
         code: true,
