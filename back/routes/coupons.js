@@ -231,11 +231,10 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
       daysActive = null,
       windowStart = null,
       windowEnd = null,
-
-      // NUEVO: etiquetado para juegos / campañas
-      acquisition = null,  // 'GAME' | 'CLAIM' | 'REWARD' | 'BULK' | 'OTHER'
-      channel     = null,  // 'GAME' | 'WEB' | 'CRM' | 'STORE' | 'APP'
-      gameId      = null,  // Number (si es premio de un juego)
+      visibility = 'PUBLIC',
+      acquisition = null,  
+      channel     = null,  
+      gameId      = null,  
       campaign    = null,
     } = req.body;
 
@@ -298,6 +297,7 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
       daysActive  : daysJson.length ? daysJson : null,
       windowStart : (winStart != null ? winStart : null),
       windowEnd   : (winEnd   != null ? winEnd   : null),
+      visibility: visibility === 'RESERVED' ? 'RESERVED' : 'PUBLIC',
       usageLimit  : Math.max(1, Number(usageLimit) || 1),
       usedCount   : 0,
       status      : 'ACTIVE',
