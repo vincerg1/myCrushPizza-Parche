@@ -1141,7 +1141,7 @@ router.get('/gallery', async (_req, res) => {
     const rows = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
-        // 👀 ya no filtramos por assignedToId ni por stock aquí
+       
       },
       select: {
         code: true,
@@ -1159,8 +1159,8 @@ router.get('/gallery', async (_req, res) => {
         expiresAt: true,
         usageLimit: true,
         usedCount: true,
-        assignedToId: true, // necesitamos saber si está en pool o asignado
-        // 👇 importante para separar por juego en el front
+        assignedToId: true, 
+        visibility: true,
         acquisition: true,
         channel: true,
         gameId: true,
@@ -1254,7 +1254,7 @@ router.get('/gallery', async (_req, res) => {
           remaining: 0,
           sample: null,
           sampleScore: -1,
-          // 👇 que el front reciba de qué juego / canal viene
+          visibility: r.visibility || 'PUBLIC',
           acquisition: r.acquisition || null,
           channel: r.channel || null,
           gameId: r.gameId ?? null,
