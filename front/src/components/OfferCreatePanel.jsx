@@ -400,7 +400,6 @@ useEffect(() => {
               value={form.amount} onChange={(e) => onChange("amount", +e.target.value || 0)} />
           </div>
         )}
-
         {(isRandom || isFixedPercent) && (
           <div className="row">
             <label>Max Amount (€ · opcional, tope al descuento por %)</label>
