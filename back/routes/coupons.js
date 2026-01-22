@@ -164,8 +164,14 @@ function codePattern(prefix) {
   return `MCP-${tag}${pick(2)}-${pick(4)}`;
 }
 function requireApiKey(req, res, next) {
+  console.log('[API KEY]', {
+    want: process.env.SALES_API_KEY,
+    got: req.header('x-api-key'),
+  });
+
   const want = process.env.SALES_API_KEY;
   const got  = req.header('x-api-key');
+
   if (!want) return res.status(500).json({ error: 'server_misconfigured' });
   if (got !== want) return res.status(401).json({ error: 'unauthorized' });
   next();
@@ -211,6 +217,7 @@ function couponPublicShape(row, expiresFallback) {
     title: titleForCouponRow(row),
   };
 }
+
 
 module.exports = (prisma) => {
 router.post('/bulk-generate', requireApiKey, async (req, res) => {
