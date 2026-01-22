@@ -77,7 +77,30 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
+  router.get('/:id', async (req, res) => { 
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: 'invalid_id' });
+  }
 
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      phone: true,
+      segment: true,
+      isRestricted: true
+    }
+  });
+
+  if (!customer) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+
+  res.json(customer);
+  });
   router.get("/admin", async (req, res) => {
     const q = (req.query.q || "").trim();
     const take = Math.min(toInt(req.query.take) || 50, 200);
@@ -121,7 +144,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
     if (!q) return res.json([]);
@@ -146,7 +168,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.post("/", async (req, res) => {
     try {
       let { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
@@ -231,7 +252,6 @@ function normalizePhoneForSave(inputPhone) {
       });
     }
   });
-
   router.patch("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -273,7 +293,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.patch("/:id/restrict", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -296,7 +315,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.post("/resegment", async (_req, res) => {
     try {
       const moneyKeys = [
@@ -457,7 +475,6 @@ function normalizePhoneForSave(inputPhone) {
       });
     }
   });
-
   router.get("/segment-stats", async (_req, res) => {
     try {
       const [bySeg, total, restricted] = await Promise.all([
@@ -487,7 +504,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -499,7 +515,6 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.get("/restriction", async (req, res) => {
     try {
       const q = req.query.phone || req.query.q || "";
