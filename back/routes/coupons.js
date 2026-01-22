@@ -1432,15 +1432,26 @@ router.get('/reservable', requireApiKey, async (_req, res) => {
 router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const assignedToId = Number(req.body.assignedToId);
+    const assignedToId = Number(req.body?.assignedToId);
 
-    if (!Number.isInteger(id) || !Number.isInteger(assignedToId)) {
-      return res.status(400).json({ ok: false, error: 'bad_request' });
+    // Logs útiles
+    console.log('[COUPON RESERVE]', {
+      params: req.params,
+      body: req.body,
+      contentType: req.headers['content-type']
+    });
+
+    // Validaciones duras
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ ok: false, error: 'invalid_coupon_id' });
+    }
+    if (!Number.isInteger(assignedToId)) {
+      return res.status(400).json({ ok: false, error: 'invalid_assignedToId' });
     }
 
     const now = nowInTZ();
 
-    // Verificar que el cupón siga siendo reservable
+    // Asegurar que sigue siendo reservable
     const coupon = await prisma.coupon.findFirst({
       where: {
         id,
@@ -1470,7 +1481,9 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
       ok: true,
       coupon: {
         id: updated.id,
-        code: updated.code
+        code: updated.code,
+        assignedToId: updated.assignedToId,
+        visibility: updated.visibility
       }
     });
   } catch (err) {
