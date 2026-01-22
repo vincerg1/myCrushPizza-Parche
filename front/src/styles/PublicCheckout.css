@@ -570,6 +570,9 @@ border-radius: 20px;
   transform: scale(0.92);
   box-shadow: 0 0 0 4px #ff2f9233;
 }
+.pc-btn-pc-btn-primary-cupon{
+  transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+}
 
 
 /* ===== Botón de atención para "Datos del cliente" ===== */
