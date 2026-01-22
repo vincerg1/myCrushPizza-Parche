@@ -549,7 +549,27 @@ border-radius: 20px;
 
 
 
+.pc-btn-pc-btn-primary-cupon{
+  font-size: 20px;      
+  color: #fff;          
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #4285f4;  
+   border-color: #ff2f92;
+}
 
+.pc-btn-pc-btn-primary-cupon{
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.pc-btn-pc-btn-primary-cupon:active{
+  transform: scale(0.92);
+  box-shadow: 0 0 0 4px #ff2f9233;
+}
 
 
 /* ===== Botón de atención para "Datos del cliente" ===== */

@@ -287,6 +287,14 @@ button {
   transform:scale(1.4);
 }
 
+.no-orders .msg{
+  margin-top: 2px;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -1.6px;
+  color: #b8b8b8;
+}
+
 /* ===============================
    DESKTOP
 ================================ */

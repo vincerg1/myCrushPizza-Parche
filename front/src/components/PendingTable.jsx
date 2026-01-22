@@ -570,7 +570,6 @@ const fmtTotal = (sale) =>
         .orders button{padding:.25rem .55rem;cursor:pointer}
         .no-orders{margin:10rem auto 1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem;color:#555;font-family:sans-serif}
         .no-orders .emoji{font-size:5rem;line-height:1}
-        .no-orders .msg{font-weight:600;letter-spacing:.5px;font-style:italic}
         .pt-modal-back{position:fixed;inset:0;background:#0007;display:flex;align-items:center;justify-content:center;z-index:999}
         .pt-modal-card{background:#fff;padding:12px 14px;border-radius:8px;box-shadow:0 6px 18px #0004;max-height:90vh;overflow:auto;position:relative;text-align:left}
         .pt-buttons{display:flex;gap:6px;justify-content:center;margin-top:8px}

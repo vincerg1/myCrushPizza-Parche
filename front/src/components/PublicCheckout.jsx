@@ -1679,7 +1679,28 @@ if (couponOk && coupon?.code) {
           spellCheck={false}
           maxLength={COUPON_GROUPS.reduce((a, b) => a + b, 0) + (COUPON_GROUPS.length - 1)}
         />
-        <button className="pc-btn pc-btn-primary" onClick={checkCoupon}>Aplicar</button>
+<button
+  className="pc-btn-pc-btn-primary-cupon"
+  onClick={checkCoupon}
+  aria-label="Aplicar cupón"
+  title="Aplicar cupón"
+>
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+<path
+  d="M5 13l4 4L19 7"
+  stroke="white"
+  strokeWidth="5"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+/>
+  </svg>
+</button>
         {coupon && couponOk && (
           <span className="pc-badge pc-badge--brand pc-badge--blink" aria-live="polite">
             {couponMsg}

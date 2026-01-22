@@ -114,14 +114,149 @@ export default function Backoffice() {
   if (!isAdmin) {
     return (
       <div className="store-pos-wrapper">
-        <header className="store-pos-topbar">{/* igual */}</header>
+        <header className="store-pos-topbar">
+  <div className="store-pos-tabs">
+    <button
+      className="menu-btn"
+      onClick={() => setShowMenu(v => !v)}
+      aria-label="Menu"
+    >
+      ☰
+    </button>
+
+    <button className="logout-btn" onClick={logout}>
+      Logout
+    </button>
+
+    <button
+      className={active === "myOrders" ? "active" : ""}
+      onClick={() => setActive("myOrders")}
+    >
+      Orders
+    </button>
+
+    <button
+      className={active === "storeInventory" ? "active" : ""}
+      onClick={() => setActive("storeInventory")}
+    >
+      Inventory
+    </button>
+  </div>
+
+  <div className="app-toggle">
+    <span className="app-toggle-label">
+      {storeActive ? "Store open" : "Store closed"}
+    </span>
+
+    <button
+      type="button"
+      onClick={toggleStore}
+      aria-pressed={storeActive}
+      disabled={savingStore}
+      className={`app-toggle-btn ${storeActive ? "on" : "off"}`}
+    >
+      <span className="app-toggle-knob" />
+    </button>
+  </div>
+
+  {showMenu && (
+    <div className="pos-menu">
+      <button
+        onClick={() => {
+          setShowSalesToday(true);
+          setShowMenu(false);
+        }}
+      >
+        📊 Ventas de hoy
+      </button>
+
+      <button disabled title="Próximamente">
+        💳 Por método de pago
+      </button>
+
+      <button disabled title="Próximamente">
+        🧾 Historial
+      </button>
+    </div>
+  )}
+</header>
+
         <main className="store-pos-panel">
           {active === "myOrders" && <MyOrdersStore />}
           {active === "storeInventory" && <StoreInventory />}
         </main>
         <footer className="bo-footer">
-          © {new Date().getFullYear()} MyCrushPizza · Backoffice v01
+          © {new Date().getFullYear()} voltaPizza · Backoffice v01
         </footer>
+{/* MODAL – Ventas de hoy */}
+{showSalesToday && (
+  <div
+    className="pt-modal-back"
+    onClick={() => setShowSalesToday(false)}
+  >
+    <div
+      className="pt-modal-card sales-today"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* HEADER */}
+      <div className="sales-header">
+        <h3>📊 Ventas de hoy</h3>
+        <span className="sales-date">
+          {moment().format("dddd, DD MMM")}
+        </span>
+      </div>
+
+      {/* STATES */}
+      {loadingSales && (
+        <div className="sales-empty">
+          Cargando ventas…
+        </div>
+      )}
+
+      {!loadingSales && salesToday.length === 0 && (
+        <div className="sales-empty">
+          No hay ventas hoy
+        </div>
+      )}
+
+      {/* LIST */}
+      {!loadingSales && salesToday.length > 0 && (
+        <div className="sales-list">
+          {salesToday.map((s) => (
+            <div className="sales-card" key={s.id}>
+              <div className="sales-meta">
+                <span className="sales-time">
+                  {moment(s.date).format("HH:mm")}
+                </span>
+                <span className="sales-code">
+                  #{s.code || s.id}
+                </span>
+              </div>
+
+              <div className="sales-amount">
+                {Number(
+                  s.total ?? s.totalAmount ?? 0
+                ).toLocaleString("es-ES", {
+                  style: "currency",
+                  currency: "EUR",
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* FOOTER */}
+      <div className="sales-footer">
+        <button onClick={() => setShowSalesToday(false)}>
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
       </div>
     );
   }
