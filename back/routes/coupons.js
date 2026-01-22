@@ -1429,6 +1429,55 @@ router.get('/reservable', requireApiKey, async (_req, res) => {
     res.status(500).json({ ok:false, error:'server' });
   }
 });
+router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const assignedToId = Number(req.body.assignedToId);
+
+    if (!Number.isInteger(id) || !Number.isInteger(assignedToId)) {
+      return res.status(400).json({ ok: false, error: 'bad_request' });
+    }
+
+    const now = nowInTZ();
+
+    // Verificar que el cupón siga siendo reservable
+    const coupon = await prisma.coupon.findFirst({
+      where: {
+        id,
+        status: 'ACTIVE',
+        visibility: 'PUBLIC',
+        assignedToId: null,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } }
+        ]
+      }
+    });
+
+    if (!coupon) {
+      return res.status(409).json({ ok: false, error: 'not_reservable' });
+    }
+
+    const updated = await prisma.coupon.update({
+      where: { id },
+      data: {
+        assignedToId,
+        visibility: 'RESERVED'
+      }
+    });
+
+    return res.json({
+      ok: true,
+      coupon: {
+        id: updated.id,
+        code: updated.code
+      }
+    });
+  } catch (err) {
+    console.error('[coupons.reserve] error', err);
+    return res.status(500).json({ ok: false, error: 'server' });
+  }
+});
 router.get('/games/:gameId/prize', async (req, res) => {
   try {
     const gameId = Number(req.params.gameId);
@@ -1724,48 +1773,7 @@ router.post('/bulk-tag', requireApiKey, async (req, res) => {
     res.status(500).json({ ok:false, error:'server' });
   }
 });
-router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
-  console.log('[RESERVE BODY]', req.body);
-  console.log('[RESERVE HEADERS]', req.headers['content-type']);
-  try {
-    const id = Number(req.params.id);
-    const assignedToId = Number(req.body.assignedToId);
 
-if (!Number.isInteger(id) || !Number.isInteger(assignedToId)) {
-  return res.status(400).json({ ok:false, error:'bad_request' });
-}
-
-    const now = nowInTZ();
-
-    // asegurar que sigue siendo reservable
-    const coupon = await prisma.coupon.findFirst({
-      where: {
-        id,
-        status: 'ACTIVE',
-        visibility: 'PUBLIC',
-        assignedToId: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      }
-    });
-
-    if (!coupon) {
-      return res.status(409).json({ ok:false, error:'not_reservable' });
-    }
-
-    const updated = await prisma.coupon.update({
-      where: { id },
-      data: {
-        assignedToId,
-        visibility: 'RESERVED'
-      }
-    });
-
-    res.json({ ok:true, coupon: { id: updated.id, code: updated.code } });
-  } catch (e) {
-    console.error('[coupons.reserve] error', e);
-    res.status(500).json({ ok:false, error:'server' });
-  }
-});
 
 return router;
 };
