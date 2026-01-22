@@ -1729,9 +1729,9 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
     const id = Number(req.params.id);
     const assignedToId = Number(req.body.assignedToId);
 
-    if (!id || !assignedToId) {
-      return res.status(400).json({ ok:false, error:'bad_request' });
-    }
+if (!Number.isInteger(id) || !Number.isInteger(assignedToId)) {
+  return res.status(400).json({ ok:false, error:'bad_request' });
+}
 
     const now = nowInTZ();
 
