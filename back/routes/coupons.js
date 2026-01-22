@@ -1366,6 +1366,62 @@ router.get('/gallery', async (_req, res) => {
     res.status(500).json({ ok: false, error: 'server' });
   }
 });
+router.get('/reservable', requireApiKey, async (_req, res) => {
+  try {
+    const now = nowInTZ();
+
+    const rows = await prisma.coupon.findMany({
+      where: {
+        status: 'ACTIVE',
+        visibility: 'PUBLIC',
+        assignedToId: null,
+
+        // excluir juegos
+        gameId: null,
+        AND: [
+          { OR: [{ acquisition: null }, { acquisition: { not: 'GAME' } }] },
+          { OR: [{ channel: null }, { channel: { not: 'GAME' } }] }
+        ],
+
+        // vida
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        AND: [
+          { OR: [{ activeFrom: null }, { activeFrom: { lte: now } }] }
+        ]
+      },
+      orderBy: { id: 'asc' }
+    });
+
+    const valid = rows.filter(r => {
+      const used = Number(r.usedCount || 0);
+      const limit = r.usageLimit == null ? null : Number(r.usageLimit);
+      const hasStock = limit == null || used < limit;
+      return hasStock && isWithinWindow(r, now);
+    });
+
+    const coupons = valid.map(r => ({
+      id: r.id,
+      code: r.code,
+      type:
+        r.kind === 'PERCENT' && r.variant === 'RANGE' ? 'RANDOM_PERCENT' :
+        r.kind === 'PERCENT' ? 'FIXED_PERCENT' :
+        'FIXED_AMOUNT',
+      title: titleForCouponRow(r),
+      kind: r.kind,
+      variant: r.variant,
+      amount: r.amount ? Number(r.amount) : null,
+      percent: r.percent ? Number(r.percent) : null,
+      expiresAt: r.expiresAt,
+      usageLimit: r.usageLimit,
+      usedCount: r.usedCount
+    }));
+
+    res.json({ ok: true, total: coupons.length, coupons });
+  } catch (e) {
+    console.error('[coupons.reservable] error', e);
+    res.status(500).json({ ok:false, error:'server' });
+  }
+});
 router.get('/games/:gameId/prize', async (req, res) => {
   try {
     const gameId = Number(req.params.gameId);
