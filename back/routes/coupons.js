@@ -1725,6 +1725,8 @@ router.post('/bulk-tag', requireApiKey, async (req, res) => {
   }
 });
 router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
+  console.log('[RESERVE BODY]', req.body);
+  console.log('[RESERVE HEADERS]', req.headers['content-type']);
   try {
     const id = Number(req.params.id);
     const assignedToId = Number(req.body.assignedToId);
