@@ -428,36 +428,7 @@ useEffect(() => {
             ))}
           </div>
         </div>
-
-        <div className="row">
-          <label>Asignar a cliente (opcional)</label>
-          <div ref={boxRef} style={{ position: "relative" }}>
-            <input
-              className="input"
-              type="search"
-              placeholder="Busca por teléfono o ID (solo dígitos, mínimo 2)…"
-              value={custQuery}
-              onChange={(e) => setCustQuery(e.target.value)}
-              onFocus={() => custOpts.length && setShowDrop(true)}
-            />
-            {form.assignedToId && (
-              <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center" }}>
-                <span className="badge">ID: {form.assignedToId}</span>
-                <button type="button" className="btn" onClick={clearCustomer}>Quitar</button>
-              </div>
-            )}
-            {showDrop && custOpts.length > 0 && (
-              <div className="dropdown">
-                {custOpts.map((c) => (
-                  <div key={c.id} className="dropdown-item" onMouseDown={() => selectCustomer(c)}>
-                    <b>{c.code}</b> — {c.name || "-"} · {c.phone || ""} · <span className="muted">{c.segment || ""}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <p className="note">Si lo completas, el cupón solo será válido para ese cliente.</p>
-        </div>
+        
         <div className="row" style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div className="row">
