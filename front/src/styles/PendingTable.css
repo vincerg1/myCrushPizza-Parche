@@ -288,11 +288,13 @@ button {
 }
 
 .no-orders .msg{
-  margin-top: 2px;
-  font-weight: 600;
+  margin-top: -1px;
+   font-family: 'Permanent Marker';
+  font-weight: 200;
   font-size: 15px;
-  letter-spacing: -1.6px;
+  letter-spacing: -2px;
   color: #b8b8b8;
+   transform: rotate(-2deg);
 }
 
 /* ===============================

@@ -252,8 +252,8 @@ const getTotal = (sale) => {
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
 };
-
-const fmtTotal = (sale) =>
+  
+  const fmtTotal = (sale) =>
   getTotal(sale).toLocaleString("es-ES", {
     style: "currency",
     currency: "EUR",
