@@ -2,7 +2,6 @@
 require('dotenv').config();
 require('./cron/updateDaysOff');
 require('./cron/couponsTick');
-
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -72,7 +71,7 @@ const whatsappRouter        = require("./routes/whatsapp")(prisma);
 const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
 const ingredientExtrasRoutes = require("./routes/ingredientExtras");
-
+const printRouter             = require("./routes/print");
 
 
 /* Montaje */
@@ -97,6 +96,7 @@ app.use("/api/whatsapp",        whatsappRouter);
 app.use("/api/games",           gamesRouter);
 app.use("/api",                 categoriesRouter);
 app.use("/api",                 ingredientExtrasRoutes);
+app.use("/api",                 printRoutes);
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),
