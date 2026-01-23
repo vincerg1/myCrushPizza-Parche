@@ -315,10 +315,10 @@ const printTicket = async () => {
       orderId: view.id,
     });
 
-    console.log("Ticket enviado al backend");
+    alert("🖨️ Ticket enviado a impresión");
   } catch (err) {
     console.error("Error enviando ticket", err);
-    alert("No se pudo imprimir el ticket");
+    alert("❌ Error al imprimir el ticket");
   }
 };
 
