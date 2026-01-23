@@ -1,6 +1,5 @@
 // back/routes/print.js
-import express from "express";
-
+const express = require("express");
 const router = express.Router();
 
 router.post("/print-ticket", (req, res) => {
@@ -17,4 +16,4 @@ router.post("/print-ticket", (req, res) => {
   res.json({ ok: true });
 });
 
-export default router;
+module.exports = router;
