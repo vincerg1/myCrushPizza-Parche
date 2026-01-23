@@ -96,7 +96,7 @@ app.use("/api/whatsapp",        whatsappRouter);
 app.use("/api/games",           gamesRouter);
 app.use("/api",                 categoriesRouter);
 app.use("/api",                 ingredientExtrasRoutes);
-app.use("/api",                 printRoutes);
+app.use("/api",                 printRouter);
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),
