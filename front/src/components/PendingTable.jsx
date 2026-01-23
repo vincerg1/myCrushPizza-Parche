@@ -304,14 +304,24 @@ const getTotal = (sale) => {
   };
   const handleCancelReady = () => setConfirmOrderId(null);
 
-const printTicket = () => {
+const printTicket = async () => {
   if (!view) return;
 
   const text = buildTicketText(view);
 
-  console.log("=== TICKET TEXTO ===");
-  console.log(text);
+  try {
+    await api.post("/api/print-ticket", {
+      ticket: text,
+      orderId: view.id,
+    });
+
+    console.log("Ticket enviado al backend");
+  } catch (err) {
+    console.error("Error enviando ticket", err);
+    alert("No se pudo imprimir el ticket");
+  }
 };
+
 
 
   const badgeNext = loading
