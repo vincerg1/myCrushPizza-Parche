@@ -45,7 +45,7 @@
   color:#fff;
   border:0;
   padding:4px 8px;
-  border-radius:12px;
+  border-radius:20px;
   cursor:pointer;
   font-size:12px;
 }
@@ -136,7 +136,7 @@
   text-align:left;
   background:#fff;
   border:1px solid #eee;
-  border-radius:10px;
+  border-radius:20px;
   padding:10px 12px;
   margin:6px 8px;
   font-size:14px;
@@ -207,7 +207,7 @@
 .sidebar-group.open{
   background:linear-gradient(180deg,#fff5f7,#ffffff);
   border:1px solid #fde2e8;
-  border-radius:14px;
+  border-radius:20px;
   padding:8px 6px;
   box-shadow: 0 4px 12px rgba(255,46,115,.08);
 }
@@ -237,7 +237,7 @@
   left:8px;
   background:#fff;
   border:1px solid #eee;
-  border-radius:10px;
+  border-radius:20px;
   box-shadow:0 6px 18px #0002;
   display:flex;
   flex-direction:column;
@@ -274,7 +274,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 10px 10px;
   background: #fff;
   border-bottom: 1px solid #e5e5e5;
 }
@@ -285,9 +285,9 @@
 }
 
 .store-pos-tabs button {
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid #ddd;
+  padding: 8px 10px;
+  border-radius: 20px;
+  border: 1px solid #f92672;
   background: #fff;
   font-weight: 600;
   cursor: pointer;
@@ -308,7 +308,7 @@
   background: #f92672;
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: 20px;
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
@@ -412,7 +412,7 @@
 .sales-footer button {
   width: 100%;
   padding: 10px 0;
-  border-radius: 14px;
+  border-radius: 20px;
   font-weight: 700;
 }
 
@@ -431,7 +431,7 @@
 
   .panel{
     margin: 12px;
-    border-radius: 22px;
+    border-radius: 20px;
   }
 
   .panel-scroll{
@@ -445,7 +445,7 @@
   background: #f92672;
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: 20px;
   padding: 6px 10px;
   font-weight: 600;
   font-size: 13px;
