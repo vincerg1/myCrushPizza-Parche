@@ -5,6 +5,7 @@ import Ticket from "./Ticket";
 import "../styles/PendingTable.css";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
+import { buildTicketText } from "../utils/ticketText";
 const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
 
 export default function PendingTable() {
@@ -303,16 +304,15 @@ const getTotal = (sale) => {
   };
   const handleCancelReady = () => setConfirmOrderId(null);
 
-  const printTicket = () => {
-    const html = document.getElementById("ticket-content")?.innerHTML;
-    if (!html) return;
-    const w = window.open("", "", "width=320,height=600");
-    w.document.write(`<html><body>${html}</body></html>`);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
-  };
+const printTicket = () => {
+  if (!view) return;
+
+  const text = buildTicketText(view);
+
+  console.log("=== TICKET TEXTO ===");
+  console.log(text);
+};
+
 
   const badgeNext = loading
     ? "Updating…"
