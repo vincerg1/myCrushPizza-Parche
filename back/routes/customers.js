@@ -21,23 +21,24 @@ module.exports = (prisma) => {
   };
 
   /** Normaliza phone para guardar + calcula base9 */
-function normalizePhoneForSave(inputPhone) {
-  const raw = String(inputPhone || "").trim();
+  function normalizePhoneForSave(inputPhone) {
+    const raw = String(inputPhone || "").trim();
 
-  const base9 = esBase9(raw);
-  if (!base9) {
-    return { ok: false, error: "invalid_phone" };
+    const base9 = esBase9(raw);
+    if (!base9) {
+      return { ok: false, error: "invalid_phone" };
+    }
+
+    // 🔒 Canonicalización total: SIEMPRE construimos desde base9
+    const phoneE164 = `+34${base9}`;
+
+    return {
+      ok: true,
+      base9,
+      phoneE164,
+    };
   }
 
-  // 🔒 Canonicalización total: SIEMPRE construimos desde base9
-  const phoneE164 = `+34${base9}`;
-
-  return {
-    ok: true,
-    base9,
-    phoneE164
-  };
-}
   /**
    * Busca por base9 dentro de phone (SIN phoneBase9 en DB).
    * Devuelve un select amplio porque lo reutilizamos en /restriction y en phone_exists.
@@ -65,6 +66,10 @@ function normalizePhoneForSave(inputPhone) {
     });
   }
 
+  // =====================================================
+  // ✅ RUTAS FIJAS PRIMERO (IMPORTANTE)
+  // =====================================================
+
   router.get("/", async (_, res) => {
     try {
       const list = await prisma.customer.findMany({
@@ -77,30 +82,7 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-  router.get('/:id', async (req, res) => { 
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res.status(400).json({ error: 'invalid_id' });
-  }
 
-  const customer = await prisma.customer.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      phone: true,
-      segment: true,
-      isRestricted: true
-    }
-  });
-
-  if (!customer) {
-    return res.status(404).json({ error: 'not_found' });
-  }
-
-  res.json(customer);
-  });
   router.get("/admin", async (req, res) => {
     const q = (req.query.q || "").trim();
     const take = Math.min(toInt(req.query.take) || 50, 200);
@@ -144,6 +126,7 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
+
   router.get("/search", async (req, res) => {
     const q = (req.query.q || "").trim();
     if (!q) return res.json([]);
@@ -168,153 +151,82 @@ function normalizePhoneForSave(inputPhone) {
       res.status(500).json({ error: "internal" });
     }
   });
-  router.post("/", async (req, res) => {
+
+  router.get("/segment-stats", async (_req, res) => {
     try {
-      let { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
+      const [bySeg, total, restricted] = await Promise.all([
+        prisma.customer.groupBy({
+          by: ["segment"],
+          _count: { _all: true },
+        }),
+        prisma.customer.count(),
+        prisma.customer.count({ where: { isRestricted: true } }),
+      ]);
 
-      const n = normalizePhoneForSave(phone);
-      if (!n.ok) return res.status(400).json({ error: n.error });
-
-      const { base9, phoneE164 } = n;
-
-      // ✅ duplicado por base9 (sin phoneBase9)
-      const existing = await findByBase9(base9);
-      if (existing) {
-        return res.status(409).json({ error: "phone_exists", customer: existing });
-      }
-
-      // address opcional
-      let address = (address_1 || "").trim();
-      if (!address) address = `(PICKUP) ${phoneE164}`;
-
-      // coords iniciales
-      const geo = {};
-      const latNum = lat != null ? Number(lat) : NaN;
-      const lngNum = lng != null ? Number(lng) : NaN;
-
-      if (Number.isFinite(latNum)) geo.lat = latNum;
-      if (Number.isFinite(lngNum)) geo.lng = lngNum;
-
-      // geocode si procede
-      const isPickup = /^\(PICKUP\)/i.test(address);
-      if (!isPickup && (!geo.lat || !geo.lng) && GOOGLE) {
-        try {
-          const { data: g } = await axios.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            { params: { address, components: "country:ES", key: GOOGLE } }
-          );
-          const loc = g?.results?.[0]?.geometry?.location;
-          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
-            geo.lat = loc.lat;
-            geo.lng = loc.lng;
-          } else {
-            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
-          }
-        } catch (e) {
-          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
+      const counts = { S1: 0, S2: 0, S3: 0, S4: 0 };
+      for (const row of bySeg) {
+        if (
+          row.segment &&
+          Object.prototype.hasOwnProperty.call(counts, row.segment)
+        ) {
+          counts[row.segment] = row._count._all || 0;
         }
       }
 
-      const baseData = {
-        name: name != null ? String(name).trim() : null,
-        phone: phoneE164,
-        email: email != null ? String(email).trim() : null,
-        address_1: address,
-        portal: portal != null ? String(portal).trim() : null,
-        observations: observations != null ? String(observations).trim() : null,
-        ...geo,
-      };
-
-      const code = await genCustomerCode();
-
-      // ✅ crear SIN phoneBase9
-      const saved = await prisma.customer.create({
-        data: {
-          code,
-          origin: "PHONE",
-          ...baseData,
-        },
+      res.json({
+        total,
+        counts,
+        active: { restricted, unrestricted: Math.max(total - restricted, 0) },
+        updatedAt: new Date().toISOString(),
       });
-
-      res.json(saved);
     } catch (err) {
-      console.error("[CUSTOMERS/post]", err);
-      if (err.code === "P2002") {
-        return res.status(409).json({
-          error: "Unique constraint violation",
-          meta: err.meta,
+      console.error("[/customers/segment-stats] FAIL:", err);
+      res.status(500).json({ error: "internal" });
+    }
+  });
+
+  router.get("/restriction", async (req, res) => {
+    try {
+      const q = req.query.phone || req.query.q || "";
+      const base9 = esBase9(q);
+
+      if (!base9) {
+        return res.json({
+          exists: false,
+          isRestricted: 0,
+          restricted: false,
+          reason: "",
+          code: "",
         });
       }
-      res.status(500).json({
-        error: "internal",
-        message: err?.message || "unknown",
-        code: err?.code || null,
+
+      const c = await findByBase9(base9);
+
+      if (!c) {
+        return res.json({
+          exists: false,
+          isRestricted: 0,
+          restricted: false,
+          reason: "",
+          code: "",
+        });
+      }
+
+      const isR = !!c.isRestricted;
+      res.json({
+        exists: true,
+        isRestricted: isR ? 1 : 0,
+        restricted: isR,
+        reason: c.restrictionReason || "",
+        code: c.code || "",
+        restrictedAt: c.restrictedAt || null,
       });
-    }
-  });
-  router.patch("/:id", async (req, res) => {
-    const id = +req.params.id;
-    if (!id) return res.status(400).json({ error: "Invalid ID" });
-
-    try {
-      const { name, phone, email, address_1, portal, observations, lat, lng } = req.body;
-
-      const data = {
-        ...(name != null ? { name: String(name).trim() } : {}),
-        ...(email != null ? { email: String(email).trim() } : {}),
-        ...(address_1 != null ? { address_1: String(address_1) } : {}),
-        ...(portal != null ? { portal: String(portal).trim() } : {}),
-        ...(observations != null ? { observations: String(observations) } : {}),
-        ...(Number.isFinite(Number(lat)) ? { lat: Number(lat) } : {}),
-        ...(Number.isFinite(Number(lng)) ? { lng: Number(lng) } : {}),
-      };
-
-      // ✅ si actualizan phone desde admin:
-      if (phone != null) {
-        const n = normalizePhoneForSave(phone);
-        if (!n.ok) return res.status(400).json({ error: n.error });
-
-        // ✅ anti-duplicado por base9 contra OTRO customer
-        const hit = await findByBase9(n.base9);
-        if (hit && hit.id !== id) {
-          return res.status(409).json({ error: "phone_exists", customer: hit });
-        }
-
-        data.phone = n.phoneE164;
-      }
-
-      const updated = await prisma.customer.update({ where: { id }, data });
-      res.json(updated);
     } catch (err) {
-      console.error("[CUSTOMERS/patch]", err);
-      if (err.code === "P2002") {
-        return res.status(409).json({ error: "Unique constraint violation", meta: err.meta });
-      }
+      console.error("[CUSTOMERS/restriction] error:", err);
       res.status(500).json({ error: "internal" });
     }
   });
-  router.patch("/:id/restrict", async (req, res) => {
-    const id = +req.params.id;
-    if (!id) return res.status(400).json({ error: "Invalid ID" });
 
-    const flag = !!req.body.isRestricted;
-    const reason = (req.body.reason || "").trim();
-
-    try {
-      const updated = await prisma.customer.update({
-        where: { id },
-        data: {
-          isRestricted: flag,
-          restrictionReason: reason || null,
-          restrictedAt: flag ? new Date() : null,
-        },
-      });
-      res.json(updated);
-    } catch (err) {
-      console.error("[CUSTOMERS/restrict]", err);
-      res.status(500).json({ error: "internal" });
-    }
-  });
   router.post("/resegment", async (_req, res) => {
     try {
       const moneyKeys = [
@@ -424,7 +336,8 @@ function normalizePhoneForSave(inputPhone) {
       const customers = await fetchCustomersWithSales();
 
       const nowMs = Date.now();
-      const daysBetween = (ms1, ms2) => Math.floor((ms1 - ms2) / (1000 * 60 * 60 * 24));
+      const daysBetween = (ms1, ms2) =>
+        Math.floor((ms1 - ms2) / (1000 * 60 * 60 * 24));
 
       const updates = [];
       const counts = { S1: 0, S2: 0, S3: 0, S4: 0 };
@@ -475,35 +388,198 @@ function normalizePhoneForSave(inputPhone) {
       });
     }
   });
-  router.get("/segment-stats", async (_req, res) => {
-    try {
-      const [bySeg, total, restricted] = await Promise.all([
-        prisma.customer.groupBy({
-          by: ["segment"],
-          _count: { _all: true },
-        }),
-        prisma.customer.count(),
-        prisma.customer.count({ where: { isRestricted: true } }),
-      ]);
 
-      const counts = { S1: 0, S2: 0, S3: 0, S4: 0 };
-      for (const row of bySeg) {
-        if (row.segment && Object.prototype.hasOwnProperty.call(counts, row.segment)) {
-          counts[row.segment] = row._count._all || 0;
+  // =====================================================
+  // ✅ RUTAS CON :id AL FINAL (IMPORTANTE)
+  // =====================================================
+
+  router.get("/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: "invalid_id" });
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        segment: true,
+        isRestricted: true,
+      },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    res.json(customer);
+  });
+
+  router.post("/", async (req, res) => {
+    try {
+      let {
+        name,
+        phone,
+        email,
+        address_1,
+        portal,
+        observations,
+        lat,
+        lng,
+      } = req.body;
+
+      const n = normalizePhoneForSave(phone);
+      if (!n.ok) return res.status(400).json({ error: n.error });
+
+      const { base9, phoneE164 } = n;
+
+      // ✅ duplicado por base9 (sin phoneBase9)
+      const existing = await findByBase9(base9);
+      if (existing) {
+        return res.status(409).json({ error: "phone_exists", customer: existing });
+      }
+
+      // address opcional
+      let address = (address_1 || "").trim();
+      if (!address) address = `(PICKUP) ${phoneE164}`;
+
+      // coords iniciales
+      const geo = {};
+      const latNum = lat != null ? Number(lat) : NaN;
+      const lngNum = lng != null ? Number(lng) : NaN;
+
+      if (Number.isFinite(latNum)) geo.lat = latNum;
+      if (Number.isFinite(lngNum)) geo.lng = lngNum;
+
+      // geocode si procede
+      const isPickup = /^\(PICKUP\)/i.test(address);
+      if (!isPickup && (!geo.lat || !geo.lng) && GOOGLE) {
+        try {
+          const { data: g } = await axios.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            { params: { address, components: "country:ES", key: GOOGLE } }
+          );
+          const loc = g?.results?.[0]?.geometry?.location;
+          if (loc && typeof loc.lat === "number" && typeof loc.lng === "number") {
+            geo.lat = loc.lat;
+            geo.lng = loc.lng;
+          } else {
+            console.warn("[CUSTOMERS/post] Geocode sin resultados, guardo sin coords:", address);
+          }
+        } catch (e) {
+          console.warn("[CUSTOMERS/post] Geocode error, guardo sin coords:", e?.message);
         }
       }
 
-      res.json({
-        total,
-        counts,
-        active: { restricted, unrestricted: Math.max(total - restricted, 0) },
-        updatedAt: new Date().toISOString(),
+      const baseData = {
+        name: name != null ? String(name).trim() : null,
+        phone: phoneE164,
+        email: email != null ? String(email).trim() : null,
+        address_1: address,
+        portal: portal != null ? String(portal).trim() : null,
+        observations: observations != null ? String(observations).trim() : null,
+        ...geo,
+      };
+
+      const code = await genCustomerCode();
+
+      // ✅ crear SIN phoneBase9
+      const saved = await prisma.customer.create({
+        data: {
+          code,
+          origin: "PHONE",
+          ...baseData,
+        },
       });
+
+      res.json(saved);
     } catch (err) {
-      console.error("[/customers/segment-stats] FAIL:", err);
+      console.error("[CUSTOMERS/post]", err);
+      if (err.code === "P2002") {
+        return res.status(409).json({
+          error: "Unique constraint violation",
+          meta: err.meta,
+        });
+      }
+      res.status(500).json({
+        error: "internal",
+        message: err?.message || "unknown",
+        code: err?.code || null,
+      });
+    }
+  });
+
+  router.patch("/:id", async (req, res) => {
+    const id = +req.params.id;
+    if (!id) return res.status(400).json({ error: "Invalid ID" });
+
+    try {
+      const { name, phone, email, address_1, portal, observations, lat, lng } =
+        req.body;
+
+      const data = {
+        ...(name != null ? { name: String(name).trim() } : {}),
+        ...(email != null ? { email: String(email).trim() } : {}),
+        ...(address_1 != null ? { address_1: String(address_1) } : {}),
+        ...(portal != null ? { portal: String(portal).trim() } : {}),
+        ...(observations != null ? { observations: String(observations) } : {}),
+        ...(Number.isFinite(Number(lat)) ? { lat: Number(lat) } : {}),
+        ...(Number.isFinite(Number(lng)) ? { lng: Number(lng) } : {}),
+      };
+
+      // ✅ si actualizan phone desde admin:
+      if (phone != null) {
+        const n = normalizePhoneForSave(phone);
+        if (!n.ok) return res.status(400).json({ error: n.error });
+
+        // ✅ anti-duplicado por base9 contra OTRO customer
+        const hit = await findByBase9(n.base9);
+        if (hit && hit.id !== id) {
+          return res.status(409).json({ error: "phone_exists", customer: hit });
+        }
+
+        data.phone = n.phoneE164;
+      }
+
+      const updated = await prisma.customer.update({ where: { id }, data });
+      res.json(updated);
+    } catch (err) {
+      console.error("[CUSTOMERS/patch]", err);
+      if (err.code === "P2002") {
+        return res
+          .status(409)
+          .json({ error: "Unique constraint violation", meta: err.meta });
+      }
       res.status(500).json({ error: "internal" });
     }
   });
+
+  router.patch("/:id/restrict", async (req, res) => {
+    const id = +req.params.id;
+    if (!id) return res.status(400).json({ error: "Invalid ID" });
+
+    const flag = !!req.body.isRestricted;
+    const reason = (req.body.reason || "").trim();
+
+    try {
+      const updated = await prisma.customer.update({
+        where: { id },
+        data: {
+          isRestricted: flag,
+          restrictionReason: reason || null,
+          restrictedAt: flag ? new Date() : null,
+        },
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("[CUSTOMERS/restrict]", err);
+      res.status(500).json({ error: "internal" });
+    }
+  });
+
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -512,47 +588,6 @@ function normalizePhoneForSave(inputPhone) {
       res.json({ ok: true });
     } catch (err) {
       console.error("[CUSTOMERS/delete]", err);
-      res.status(500).json({ error: "internal" });
-    }
-  });
-  router.get("/restriction", async (req, res) => {
-    try {
-      const q = req.query.phone || req.query.q || "";
-      const base9 = esBase9(q);
-
-      if (!base9) {
-        return res.json({
-          exists: false,
-          isRestricted: 0,
-          restricted: false,
-          reason: "",
-          code: "",
-        });
-      }
-
-      const c = await findByBase9(base9);
-
-      if (!c) {
-        return res.json({
-          exists: false,
-          isRestricted: 0,
-          restricted: false,
-          reason: "",
-          code: "",
-        });
-      }
-
-      const isR = !!c.isRestricted;
-      res.json({
-        exists: true,
-        isRestricted: isR ? 1 : 0,
-        restricted: isR,
-        reason: c.restrictionReason || "",
-        code: c.code || "",
-        restrictedAt: c.restrictedAt || null,
-      });
-    } catch (err) {
-      console.error("[CUSTOMERS/restriction] error:", err);
       res.status(500).json({ error: "internal" });
     }
   });
