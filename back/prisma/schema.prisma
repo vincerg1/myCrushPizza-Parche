@@ -101,6 +101,13 @@ enum CouponVisibility {
   PUBLIC
   RESERVED
 }
+enum POSJobStatus {
+  PENDING
+  PROCESSING
+  PRINTED
+  FAILED
+}
+
 
 /**
  * ======================= MODELOS =======================
@@ -411,7 +418,6 @@ model IngredientExtra {
 
   @@unique([ingredientId, categoryId])
 }
-
 model StoreIngredientStock {
   storeId      Int
   ingredientId Int
@@ -423,4 +429,37 @@ model StoreIngredientStock {
   ingredient  Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
   @@id([storeId, ingredientId])
 }
+model POS {
+  id          Int      @id @default(autoincrement())
+  storeId     Int
+  code        String   @unique        // ej: "POS_OURENSE_1"
+  name        String?
+  isActive    Boolean  @default(true)
 
+  lastSeenAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs        POSJob[]
+}
+model POSJob {
+  id          Int      @id @default(autoincrement())
+
+  posId       Int
+  pos         POS      @relation(fields: [posId], references: [id])
+
+  type        String   // "PRINT_TICKET"
+  payload     Json     // ticket, texto, etc.
+
+  status      String   @default("PENDING")
+  // PENDING | PROCESSING | PRINTED | FAILED
+
+  attempts    Int      @default(0)
+  error       String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  processedAt DateTime?
+
+  @@index([posId, status])
+}
