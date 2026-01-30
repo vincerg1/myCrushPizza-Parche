@@ -1,42 +1,41 @@
 // ─────────────────────────────────────────────────────────
-// Ticket.jsx
-//  • QR principal → /customer/ORD-xxxxx  (página resumen)
-//  • Encabezado incluye Customer ID y Order ID
+// Ticket.jsx  (PRINT-READY)
+//  • Optimizado para impresoras térmicas 58mm en Windows
+//  • Usa window.print()
 // ─────────────────────────────────────────────────────────
-import React, { useEffect, useMemo, useState } from "react";
-import QRCode    from "react-qr-code";
-import moment    from "moment";
-import "moment/dist/locale/es";
-import api       from "../setupAxios";
 
-export default function Ticket({ order }) {
+import React, { useEffect, useMemo, useState } from "react";
+import QRCode from "react-qr-code";
+import moment from "moment";
+import "moment/dist/locale/es";
+import api from "../setupAxios";
+
+export default function Ticket({ order, autoPrint = false }) {
   /* ───── catálogo y tienda ───── */
-  const [menu , setMenu ] = useState([]);
+  const [menu, setMenu] = useState([]);
   const [store, setStore] = useState(null);
 
-  /* catálogo completo de pizzas */
   useEffect(() => {
     api.get("/api/pizzas")
-       .then(r => setMenu(Array.isArray(r.data) ? r.data : []))
-       .catch(err => { console.error(err); setMenu([]); });
+      .then(r => setMenu(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setMenu([]));
   }, []);
 
-  /* datos tienda */
   useEffect(() => {
-    if (order.storeId)
+    if (order.storeId) {
       api.get(`/api/stores/${order.storeId}`)
-         .then(r => setStore(r.data))
-         .catch(console.error);
+        .then(r => setStore(r.data))
+        .catch(() => {});
+    }
   }, [order.storeId]);
 
-  /* helpers */
+  /* ───── helpers ───── */
   const nameById = useMemo(() => {
-    const map = Object.create(null);
-    (menu || []).forEach(p => { map[p.id] = p.name ?? p.nombre; });
+    const map = {};
+    menu.forEach(p => { map[p.id] = p.name ?? p.nombre; });
     return map;
   }, [menu]);
 
-  // products puede venir como JSON o array
   const products = useMemo(() => {
     try {
       return Array.isArray(order.products)
@@ -47,7 +46,6 @@ export default function Ticket({ order }) {
     }
   }, [order.products]);
 
-  // --- Normalizador de extras por línea (acepta array o string JSON) ---
   const parseExtras = (v) => {
     if (!v) return [];
     if (Array.isArray(v)) return v;
@@ -55,136 +53,192 @@ export default function Ticket({ order }) {
       try {
         const parsed = JSON.parse(v);
         return Array.isArray(parsed) ? parsed : [];
-      } catch { return []; }
+      } catch {
+        return [];
+      }
     }
     return [];
   };
 
-  const extraLabel = (e = {}) => {
-    // En la DB suele venir { code, label, amount } — mostramos el label.
-    const label = e.label ?? e.name ?? e.code ?? "extra";
-    return String(label);
-  };
-
-  // Desduplicado simple por texto de extra (por si el backend duplica registros)
   const uniqLabels = (arr) => {
     const seen = new Set();
-    const out = [];
-    for (const x of arr) {
-      const t = extraLabel(x);
-      if (!seen.has(t)) { seen.add(t); out.push(t); }
-    }
-    return out;
+    return arr.filter(e => {
+      const t = e?.label ?? e?.name ?? e?.code ?? "extra";
+      if (seen.has(t)) return false;
+      seen.add(t);
+      return true;
+    }).map(e => e.label ?? e.name ?? e.code);
   };
 
-  /* fecha formateada */
-  const f     = moment(order.date).locale("es");
+  /* ───── fecha ───── */
+  const f = moment(order.date).locale("es");
   const fecha = f.format("DD/MM/YY");
   const hora  = f.format("HH:mm");
 
-  /* IDs y URL del QR */
+  /* ───── IDs ───── */
   const customerCode =
-      order.customerCode
-   ?? order.customer?.code
-   ?? (order.customerId ? `CUS-${order.customerId}` : "N/A");
+    order.customerCode ??
+    order.customer?.code ??
+    (order.customerId ? `CUS-${order.customerId}` : "N/A");
 
   const orderCode = order.code ?? `ORD-${order.id}`;
   const qrURL = `${window.location.origin}/customer/${orderCode}`;
 
-  /* ─────────────── render ─────────────── */
-  const storeName = store?.storeName ? `Pizzería ${store.storeName}` : "Pizzería";
+  /* ───── impresión automática (opcional) ───── */
+  useEffect(() => {
+    if (autoPrint) {
+      setTimeout(() => window.print(), 300);
+    }
+  }, [autoPrint]);
+
+  const storeName = store?.storeName
+    ? `Pizzería ${store.storeName}`
+    : "Pizzería";
 
   return (
-    <div className="tkt">
-      {/* ── Encabezado ── */}
-      <div className="tkt-head">
-        <strong>{storeName}</strong><br />
-        {fecha} {hora}<br />
-        {customerCode}<br />{orderCode}
-      </div>
-
-      {/* ── Productos ── */}
-      <table className="tkt-items"><tbody>
-        {products.map((p, i) => {
-          const extras = uniqLabels(parseExtras(p.extras));
-          return (
-            <React.Fragment key={i}>
-              <tr>
-                <td>{p.name || nameById[p.pizzaId] || `#${p.pizzaId}`}</td>
-                <td className="amt">{p.size} ×{p.qty ?? 1}</td>
-              </tr>
-
-              {extras.length > 0 && (
-                <tr>
-                  <td colSpan={2} className="extras">
-                    + {extras.join(", ")}
-                  </td>
-                </tr>
-              )}
-
-              {!!p.notes && (
-                <tr>
-                  <td colSpan={2} className="p-notes">
-                    Obs.: {p.notes}
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </tbody></table>
-
-      {/* ── Total ── */}
-      <div className="tkt-total">
-        Total:&nbsp;{Number(order.total ?? 0).toFixed(2)}&nbsp;€
-      </div>
-      <div className="tkt-sep" />
-
-      {/* ── Tipo ── */}
-      <div className="tkt-type">{order.type}</div>
-
-      {/* ── QR principal ── */}
-      <div className="tkt-qr">
-        <QRCode value={qrURL} size={120} style={{ background: "#fff", padding: 4 }} />
-      </div>
-
-      {/* Observaciones opcionales del pedido */}
-      {order.notes && (
-        <div className="tkt-notes">
-          <strong>Obs.:</strong> {order.notes}
+    <>
+      <div className="tkt">
+        {/* ── Header ── */}
+        <div className="tkt-head">
+          <strong>{storeName}</strong><br />
+          {fecha} {hora}<br />
+          {customerCode}<br />
+          {orderCode}
         </div>
-      )}
 
-      {/* ── Pie ── */}
-      <div className="tkt-foot">
-        <span className="tkt-thanks">Gracias por su pedido</span>
+        {/* ── Items ── */}
+        <table className="tkt-items">
+          <tbody>
+            {products.map((p, i) => {
+              const extras = uniqLabels(parseExtras(p.extras));
+              return (
+                <React.Fragment key={i}>
+                  <tr>
+                    <td>{p.name || nameById[p.pizzaId] || `#${p.pizzaId}`}</td>
+                    <td className="amt">{p.size} ×{p.qty ?? 1}</td>
+                  </tr>
+
+                  {extras.length > 0 && (
+                    <tr>
+                      <td colSpan={2} className="extras">
+                        + {extras.join(", ")}
+                      </td>
+                    </tr>
+                  )}
+
+                  {p.notes && (
+                    <tr>
+                      <td colSpan={2} className="p-notes">
+                        Obs.: {p.notes}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* ── Total ── */}
+        <div className="tkt-total">
+          Total: {Number(order.total ?? 0).toFixed(2)} €
+        </div>
+
         <div className="tkt-sep" />
-        {store ? (
-          <div className="tkt-contact">
-            Tel: {store.tlf || "-"}<br />{store.address}
+
+        {/* ── Tipo ── */}
+        <div className="tkt-type">{order.type}</div>
+
+        {/* ── QR ── */}
+        <div className="tkt-qr">
+          <QRCode value={qrURL} size={120} />
+        </div>
+
+        {order.notes && (
+          <div className="tkt-notes">
+            <strong>Obs.:</strong> {order.notes}
           </div>
-        ) : "Cargando…"}
+        )}
+
+        {/* ── Footer ── */}
+        <div className="tkt-foot">
+          Gracias por su pedido
+          <div className="tkt-sep" />
+          {store && (
+            <div className="tkt-contact">
+              Tel: {store.tlf || "-"}<br />
+              {store.address}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ── Estilos in-line para el PDF/impresora ── */}
+      {/* ───────────────── PRINT CSS ───────────────── */}
       <style>{`
-        .tkt{font-family:monospace;width:100%;max-width:58mm;font-size:11px;text-align:center}
-        .tkt-head{margin-bottom:4px}
-        .tkt-items{width:100%;border-top:1px dashed #000;margin:4px 0}
-        .tkt-items td{padding:2px 0}
-        .tkt-items .amt{text-align:right}
-        /* extras y notas bajo cada producto */
-        .tkt-items .extras{font-size:10px;text-align:left;opacity:.95;padding-top:0}
-        .tkt-items .p-notes{font-size:10px;text-align:left;opacity:.9;padding-top:0}
-        .tkt-total{border-top:1px dashed #000;margin-top:4px;padding-top:2px;text-align:right}
-        .tkt-sep{border-top:1px dashed #000;margin:2px 0}
-        .tkt-type{margin:6px 0}
-        .tkt-qr{margin:6px 0}
-        .tkt-notes{text-align:left;margin:6px 0}
-        .tkt-foot{border-top:1px dashed #000;margin-top:6px;padding-top:4px}
-        .tkt-thanks{font-size:9px}
-        .tkt-contact{font-size:9px}
+        body {
+          margin: 0;
+        }
+
+        .tkt {
+          font-family: monospace;
+          width: 58mm;
+          max-width: 58mm;
+          font-size: 11px;
+          text-align: center;
+        }
+
+        .tkt-items {
+          width: 100%;
+          border-top: 1px dashed #000;
+          margin: 4px 0;
+        }
+
+        .tkt-items td {
+          padding: 2px 0;
+        }
+
+        .amt {
+          text-align: right;
+        }
+
+        .extras, .p-notes {
+          font-size: 10px;
+          text-align: left;
+        }
+
+        .tkt-total {
+          border-top: 1px dashed #000;
+          margin-top: 4px;
+          padding-top: 2px;
+          text-align: right;
+        }
+
+        .tkt-sep {
+          border-top: 1px dashed #000;
+          margin: 4px 0;
+        }
+
+        .tkt-foot {
+          font-size: 9px;
+          margin-top: 6px;
+        }
+
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+
+          .tkt, .tkt * {
+            visibility: visible;
+          }
+
+          .tkt {
+            position: absolute;
+            left: 0;
+            top: 0;
+          }
+        }
       `}</style>
-    </div>
+    </>
   );
 }
