@@ -298,9 +298,126 @@ button {
 }
 
 /* ===============================
-   DESKTOP
+   DESKTOP ADMIN – TABLE UPGRADE
+   (solo desktop, no afecta mobile cards)
 ================================ */
 @media (min-width: 769px) {
-  .orders-scroll { display:none; }
-  table.orders { margin-top:12px; }
+  .orders-scroll { display: none; }
+
+  table.orders {
+    margin-top: 14px;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: #eeeded;
+    border: 1px solid var(--pos-border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px #0001;
+  }
+
+  .orders thead th {
+    background: #fff;
+    border-bottom: 1px solid var(--pos-border);
+    font-size: 0.82rem;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: #000000;
+    padding: 10px 10px;
+    position: sticky; /* si el contenedor scrolla */
+    top: 0;
+    z-index: 1;
+  }
+
+  .orders td {
+    border: none; /* quitamos grid duro */
+    border-bottom: 1px solid #f0f0f0;
+    padding: 10px 10px;
+    font-size: 0.9rem;
+    vertical-align: middle;
+  }
+
+  .orders tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* hover fila (sensación panel) */
+  .orders tbody tr:hover td {
+    background: #fff7fb;
+  }
+
+  /* alineaciones útiles: items a la izquierda */
+  .orders th:nth-child(5),
+  .orders td:nth-child(5) {
+    text-align: left;
+    min-width: 240px;
+  }
+
+  /* code más fuerte */
+  .orders td:nth-child(1) {
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    letter-spacing: .01em;
+  }
+
+  /* tipo como “pill” visual sin cambiar JSX */
+  .orders td:nth-child(3) {
+    font-weight: 700;
+    color: #222;
+  }
+
+  /* store y cliente un poco más suave */
+  .orders td:nth-child(4),
+  .orders td:nth-child(6),
+  .orders td:nth-child(7) {
+    color: #333;
+  }
+
+  /* columna de acciones (Ready / Ver) */
+  .orders td:nth-child(8),
+  .orders td:nth-child(9) {
+    width: 110px;
+    white-space: nowrap;
+  }
+
+  /* botones SOLO dentro de la tabla (no rompes el resto) */
+  table.orders button {
+    appearance: none;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-weight: 800;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: transform .06s ease, filter .15s ease, background .15s ease;
+  }
+
+  /* Ready = primario */
+  .orders td:nth-child(8) button {
+    background: var(--pos-primary);
+    color: #fff;
+  }
+  .orders td:nth-child(8) button:hover {
+    filter: brightness(.95);
+  }
+
+  /* Ver = secundario */
+  .orders td:nth-child(9) button {
+    background: #fff;
+    color: var(--pos-primary);
+    border: 2px solid var(--pos-primary);
+  }
+  .orders td:nth-child(9) button:hover {
+    background: #fff0f6;
+  }
+
+  table.orders button:active {
+    transform: scale(.98);
+  }
+
+  /* reduce “ruido” en tablas muy anchas */
+  .orders td,
+  .orders th {
+    line-height: 1.15;
+  }
 }
+

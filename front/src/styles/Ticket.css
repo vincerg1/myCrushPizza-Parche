@@ -1,49 +1,88 @@
+/* src/styles/Ticket.css */
+
+/* =========================
+   BASE (modal + preview)
+   ========================= */
 .ticket {
-  width: 58mm;                /* Ancho fijo para el recibo de 58mm */
-  padding: 5px 2px;           /* Pequeños márgenes internos horizontal/vertical */
-  font-family: sans-serif;
+  font-family: monospace;
   font-size: 12px;
-}
-
-.ticket-header, .ticket-footer {
   text-align: center;
-  margin-bottom: 5px;
+  background: #fff;
+  padding: 6px 4px;
 }
 
-.ticket-header strong {
-  font-size: 14px;            /* Nombre de tienda un poco más grande/negrita */
+/* =========================
+   CONTENIDO
+   ========================= */
+.ticket-header {
+  margin-bottom: 6px;
 }
 
-.ticket-items ul {
-  list-style: none;
-  padding: 0;
-  margin: 5px 0;
-}
-
-.ticket-items li {
-  margin: 2px 0;
-}
-
-.ticket-total {
+.ticket-items table {
+  width: 100%;
   border-top: 1px dashed #000;
-  margin: 5px 0;
-  padding-top: 5px;
+  border-bottom: 1px dashed #000;
+  margin: 6px 0;
+}
+
+.ticket-items td {
+  padding: 2px 0;
+}
+
+.ticket-items .right {
   text-align: right;
 }
 
-.ticket-type, .ticket-notes {
-  margin: 3px 0;
+.ticket-total {
+  text-align: right;
+  margin-top: 6px;
+  font-weight: bold;
+}
+
+.ticket-type {
+  margin: 6px 0;
 }
 
 .ticket-qr {
-  text-align: center;
-  margin: 10px 0;
+  margin: 8px 0;
 }
 
 .ticket-footer {
-  text-align: center;
-  border-top: 1px solid #000;
-  margin-top: 5px;
-  padding-top: 5px;
-  font-size: 11px;
+  font-size: 10px;
+  margin-top: 6px;
+  border-top: 1px dashed #000;
+  padding-top: 4px;
+}
+
+/* =========================
+   IMPRESIÓN REAL
+   ========================= */
+@page {
+  size: 45mm auto;
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .ticket,
+  .ticket * {
+    visibility: visible;
+  }
+
+  .ticket {
+    position: relative;
+    width: 45mm;         
+    margin-left: -1mm;    
+    margin-right: auto;
+    padding: 0;
+    font-size: 11px;
+  }
 }

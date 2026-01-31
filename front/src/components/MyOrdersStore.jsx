@@ -1,15 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import PendingTable from "./PendingTable";
+import Ticket from "./Ticket";
 import api from "../setupAxios";
 import "../styles/MyOrders.css";
 
 export default function MyOrdersStore() {
   const { auth } = useAuth();
   const storeId = auth?.storeId;
+
   const [storeActive, setStoreActive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // ───── impresión ─────
+  const [printOrder, setPrintOrder] = useState(null);
 
   /* ───────── Load store status ───────── */
   useEffect(() => {
@@ -25,7 +30,7 @@ export default function MyOrdersStore() {
     })();
   }, [storeId]);
 
-  /* ───────── Toggle store (REAL) ───────── */
+  /* ───────── Toggle store ───────── */
   const toggleStore = async () => {
     if (saving) return;
 
@@ -54,7 +59,39 @@ export default function MyOrdersStore() {
       )}
 
       {/* ───────── CONTENT ───────── */}
-      <PendingTable />
+      <PendingTable
+        onPrint={(order) => setPrintOrder(order)}
+      />
+
+      {/* ───────── MODAL PRINT TICKET ───────── */}
+      {printOrder && (
+        <div
+          className="pt-modal-back"
+          onClick={() => setPrintOrder(null)}
+        >
+          <div
+            className="pt-modal-card print-ticket"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Ticket
+              order={printOrder}
+              autoPrint
+            />
+
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <button onClick={() => window.print()}>
+                🖨️ Imprimir de nuevo
+              </button>
+              <button
+                style={{ marginLeft: 12 }}
+                onClick={() => setPrintOrder(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
