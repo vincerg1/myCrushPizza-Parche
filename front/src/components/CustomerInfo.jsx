@@ -118,6 +118,12 @@ export default function CustomerInfo() {
               </a>
             </p>
           )}
+          {data.notes && (
+            <p style={row}>
+              <strong>Notes:</strong><br />
+              {data.notes}
+            </p>
+          )}
         </div>
 
         {/* cronómetro */}
