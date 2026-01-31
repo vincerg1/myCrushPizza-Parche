@@ -481,7 +481,7 @@ if (shapeErr){
 
     let statusMsg = 'Tu pedido está listo.';
     if (type === 'DELIVERY') {
-      statusMsg = 'Tu pedido va en camino 🚚';
+      statusMsg = 'Tu pedido va en camino 🛵';
     } else if (type === 'TAKEAWAY' || type === 'LOCAL') {
       statusMsg = 'Tu pedido está listo para recoger 🍕';
     }
