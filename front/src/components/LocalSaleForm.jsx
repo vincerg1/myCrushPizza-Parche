@@ -838,6 +838,7 @@ const extrasUnitTotal = useMemo(() => {
                       total,
                       extras: aggregatedExtras,
                     };
+                    console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
                     if (customer?.phone?.trim()) payload.customer = customer;
 
                     await api.post("/api/sales", payload);
