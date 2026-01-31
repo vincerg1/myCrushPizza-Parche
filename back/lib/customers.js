@@ -1,14 +1,18 @@
-// src/lib/customers.js
 'use strict';
 
 /**
  * Busca un customer por teléfono. Si no existe, lo crea.
- * - prisma: instancia de Prisma (inyectada desde fuera)
- * - params: { phone, name?, origin?, portal? }
- *
- * IMPORTANTE:
- * - origin es enum CustomerOrigin: PHONE|WALKIN|UBER|GLOVO|QR (y los que tengas en schema)
- * - portal es string libre para tags tipo "GAME_2"
+ * - prisma: instancia de Prisma
+ * - params: {
+ *     phone,
+ *     name?,
+ *     origin?,
+ *     portal?,
+ *     observations?,   // ✅ NUEVO
+ *     address_1?,
+ *     lat?,
+ *     lng?
+ *   }
  */
 
 async function genCustomerCode(prisma) {
@@ -21,27 +25,35 @@ async function genCustomerCode(prisma) {
 
 async function findOrCreateCustomerByPhone(prisma, params = {}) {
   const phoneRaw = String(params.phone || '').trim();
-  if (!phoneRaw) {
-    throw new Error('missing_phone');
-  }
+  if (!phoneRaw) throw new Error('missing_phone');
 
-  const name = params.name != null ? String(params.name).trim() : null;
-  const origin = params.origin != null ? String(params.origin).trim() : null;
-  const portal = params.portal != null ? String(params.portal).trim() : null;
+  const name         = params.name ? String(params.name).trim() : null;
+  const origin       = params.origin ? String(params.origin).trim() : null;
+  const portal       = params.portal ? String(params.portal).trim() : null;
+  const observations = params.observations
+    ? String(params.observations).trim()
+    : null;
 
-  // 1) Buscar por teléfono (exact match como lo tenías)
+  const address_1 = params.address_1 ? String(params.address_1).trim() : null;
+  const lat = params.lat ?? null;
+  const lng = params.lng ?? null;
+
+  // 1) Buscar customer existente
   let customer = await prisma.customer.findFirst({
     where: { phone: phoneRaw },
   });
 
   if (!customer) {
-    // 2) Crear si no existe
+    // 2) Crear customer
     customer = await prisma.customer.create({
       data: {
-        code: await genCustomerCode(prisma), // ✅ CUS-#####
+        code: await genCustomerCode(prisma),
         name,
         phone: phoneRaw,
-        address_1: '-',
+        address_1: address_1 || '-',
+        observations,            // ✅ CLAVE
+        lat,
+        lng,
         ...(origin ? { origin } : {}),
         ...(portal ? { portal } : {}),
       },
@@ -53,21 +65,37 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
       phone: customer.phone,
       origin: customer.origin,
       portal: customer.portal,
+      observations: customer.observations,
     });
+
   } else {
-    // 3) Si ya existe, actualizaciones suaves
+    // 3) Actualizaciones suaves
     const data = {};
 
-    // si llega name y no hay name, lo rellenamos
     if (name && !customer.name) data.name = name;
 
-    // si llega portal y está vacío o distinto, lo actualizamos
-    if (portal) {
-      const curPortal = customer.portal ? String(customer.portal).trim() : '';
-      if (!curPortal || curPortal !== portal) data.portal = portal;
+    if (observations && observations !== customer.observations) {
+      data.observations = observations;   // ✅ CLAVE
     }
 
-    // NOTA: no tocamos origin de un customer existente (evita cambios involuntarios)
+    if (address_1 && address_1 !== customer.address_1) {
+      data.address_1 = address_1;
+    }
+
+    if (lat != null && lng != null) {
+      data.lat = lat;
+      data.lng = lng;
+    }
+
+    // portal = tag técnico (sí se puede actualizar)
+    if (portal) {
+      const curPortal = customer.portal ? String(customer.portal).trim() : '';
+      if (!curPortal || curPortal !== portal) {
+        data.portal = portal;
+      }
+    }
+
+    // origin NO se toca si ya existe (correcto)
     if (Object.keys(data).length) {
       customer = await prisma.customer.update({
         where: { id: customer.id },
@@ -78,7 +106,7 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
         id: customer.id,
         code: customer.code,
         phone: customer.phone,
-        name: customer.name,
+        observations: customer.observations,
         portal: customer.portal,
       });
     } else {
@@ -86,8 +114,6 @@ async function findOrCreateCustomerByPhone(prisma, params = {}) {
         id: customer.id,
         code: customer.code,
         phone: customer.phone,
-        name: customer.name,
-        portal: customer.portal,
       });
     }
   }
