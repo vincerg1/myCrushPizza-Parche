@@ -22,7 +22,8 @@ router.get('/customer/:code', async (req, res) => {
             phone: true,
             address_1: true,
             lat: true,
-            lng: true
+            lng: true,
+            observations
           }
         }
       }
