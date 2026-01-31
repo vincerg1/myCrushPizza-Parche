@@ -180,12 +180,29 @@ export default function DeliverySaleForm() {
           onClose={() => setShowCus(false)}
           onDelete={handleDeleteCustomer}
           onSave={async (data) => {
-            try {
-              const { data: saved } = await api.post("/api/customers", data);
-              setCustomer(saved);
-            } catch (e) { console.error(e); }
-            setShowCus(false);
-          }}
+  try {
+    let saved;
+
+    if (data.id) {
+      // ✅ Cliente existente → PATCH
+      const res = await api.patch(`/api/customers/${data.id}`, data);
+      saved = res.data;
+    } else {
+      // ✅ Cliente nuevo → POST
+      const res = await api.post("/api/customers", data);
+      saved = res.data;
+    }
+
+    console.log("[Customer saved]", saved);
+    setCustomer(saved);
+
+  } catch (e) {
+    console.error("❌ Error saving customer", e);
+    alert("Error saving customer data");
+  }
+
+  setShowCus(false);
+}}
         />
       )}
     </>
