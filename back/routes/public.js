@@ -6,7 +6,7 @@ module.exports = (prisma) => {
 
   /* ─────────────  GET /api/public/customer/:code  ───────────── */
 router.get('/customer/:code', async (req, res) => {
-  const code = req.params.code; // ej. ORD-36930
+  const code = req.params.code;
 
   try {
     const sale = await prisma.sale.findUnique({
@@ -15,7 +15,7 @@ router.get('/customer/:code', async (req, res) => {
         code: true,
         date: true,
         deliveredAt: true,
-        customerData: true, // snapshot completo del checkout
+        customerData: true,
         customer: {
           select: {
             name: true,
@@ -23,7 +23,7 @@ router.get('/customer/:code', async (req, res) => {
             address_1: true,
             lat: true,
             lng: true,
-            observations
+            observations: true
           }
         }
       }
@@ -36,32 +36,32 @@ router.get('/customer/:code', async (req, res) => {
     const rel  = sale.customer || {};
     const snap = sale.customerData || {};
 
-    const name  = rel.name      ?? snap.name      ?? '';
-    const phone = rel.phone     ?? snap.phone     ?? '';
-    const addr  =
-      rel.address_1 ??
+    const name  = snap.name  ?? rel.name  ?? '';
+    const phone = snap.phone ?? rel.phone ?? '';
+
+    const addr =
       snap.address_1 ??
-      snap.addr ??
+      rel.address_1 ??
       '';
 
-    const lat   = rel.lat ?? snap.lat ?? null;
-    const lng   = rel.lng ?? snap.lng ?? null;
+    const lat = snap.lat ?? rel.lat ?? null;
+    const lng = snap.lng ?? rel.lng ?? null;
 
-    const notes =
-      snap.notes ??
-      snap.note ??
+    const observations =
+      snap.observations ??
+      rel.observations ??
       '';
 
     res.json({
-      orderCode  : sale.code,
-      date       : sale.date,
-      deliveredAt: sale.deliveredAt,
+      orderCode   : sale.code,
+      date        : sale.date,
+      deliveredAt : sale.deliveredAt,
       name,
       phone,
       addr,
       lat,
       lng,
-      notes
+      observations
     });
 
   } catch (e) {
@@ -69,6 +69,7 @@ router.get('/customer/:code', async (req, res) => {
     res.status(500).json({ error: 'internal' });
   }
 });
+
 
   /* ────────  PATCH /api/public/customer/:code/delivered  ──────── */
 router.patch('/customer/:code/delivered', async (req, res) => {
