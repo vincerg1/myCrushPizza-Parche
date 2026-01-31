@@ -99,50 +99,50 @@ export default function CustomerInfo() {
       {/* botón back */}
       <button style={backBtn} onClick={() => window.history.back()}>◀ Back</button>
 
-      {/* tarjeta */}
-      <div style={card}>
-        <h1 style={title}>Order information</h1>
+      <div>
+        {/* tarjeta */}
+        <div style={card}>
+          <h1 style={title}>Order information</h1>
+          <p style={row}>ID:&nbsp;{data.orderCode}</p>
+          {data.name  && <p style={row}>Name:&nbsp;{data.name}</p>}
+          {data.phone && (
+            <p style={row}>
+              Phone:&nbsp;<a href={`tel:${data.phone}`} style={link}>{data.phone}</a>
+            </p>
+          )}
+          {addr && (
+            <p style={row}>
+              Address:<br/>
+              <a href={maps} style={link} target="_blank" rel="noopener noreferrer">
+                {addr}
+              </a>
+            </p>
+          )}
+          {data.observations && (
+            <p style={{ ...row, whiteSpace: "pre-wrap" }}>
+              <strong>Notes:</strong><br />
+              {data.observations}
+            </p>
+          )}
+        </div>
 
-        <p style={row}>ID:&nbsp;{data.orderCode}</p>
+        {/* cronómetro */}
+        <div style={timerBox}>
+          <p style={timerLabel}>Elapsed&nbsp;time</p>
+          <p style={timer}>{elapsed}</p>
+        </div>
 
-        {data.name && (
-          <p style={row}>
-            Name:&nbsp;{data.name}
-          </p>
-        )}
-
-        {data.phone && (
-          <p style={row}>
-            Phone:&nbsp;
-            <a href={`tel:${data.phone}`} style={link}>
-              {data.phone}
-            </a>
-          </p>
-        )}
-
-        {addr && (
-          <p style={row}>
-            Address:<br />
-            <a
-              href={maps}
-              style={link}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {addr}
-            </a>
-          </p>
-        )}
-
-        {/* ✅ OBSERVATIONS DEL CLIENTE */}
-        {data.observations && (
-          <p style={{ ...row, whiteSpace: "pre-wrap" }}>
-            <strong>Notes:</strong><br />
-            {data.observations}
-          </p>
-        )}
+        {/* botón Delivered / Finalized */}
+        <div style={{ textAlign:"center", marginTop:16 }}>
+          <button
+            disabled={isDone}
+            onClick={!isDone ? markDelivered : undefined}
+            style={isDone ? doneBtn : btn}
+          >
+            {isDone ? "Finalized 👍" : "Delivered ✓"}
+          </button>
+        </div>
       </div>
-
 
       {/* logo */}
       <img src="/mcpSolid01.png" alt="Logo MCP" style={logo} />
