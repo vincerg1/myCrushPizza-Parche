@@ -1,7 +1,6 @@
 // index.js
 require('dotenv').config();
-require('./cron/updateDaysOff');
-require('./cron/couponsTick');
+
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
@@ -161,6 +160,8 @@ app.use((err, req, res, next) => {
 /* Arranque */
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
+  require('./cron/updateDaysOff');
+require('./cron/couponsTick');
   console.log('⚙️ DATABASE_URL =', process.env.DATABASE_URL);
   console.log(`🚀 Servidor backend escuchando en http://localhost:${PORT}`);
 });
