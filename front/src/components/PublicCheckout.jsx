@@ -1418,14 +1418,19 @@ if (couponOk && coupon?.code) {
       delivery: isDelivery ? "COURIER" : "PICKUP",
       channel: "WHATSAPP",
       customer: isDelivery
-        ? {
-            phone: customer?.phone,
-            name: customer?.name,
-            address_1: customer?.address_1 || query,
-            lat: coords?.lat,
-            lng: coords?.lng,
-          }
-        : { phone: customer?.phone, name: customer?.name },
+  ? {
+      phone: customer?.phone,
+      name: customer?.name,
+      address_1: customer?.address_1 || query,
+      observations: customer?.observations ?? null, // 🔥 CLAVE
+      lat: coords?.lat,
+      lng: coords?.lng,
+    }
+  : {
+      phone: customer?.phone,
+      name: customer?.name,
+      observations: customer?.observations ?? null, // 🔥 TAMBIÉN
+    },
       items: itemsForApi,
       extras: isDelivery
         ? [{
@@ -1439,6 +1444,11 @@ if (couponOk && coupon?.code) {
     };
 
     const { data: created } = await api.post("/api/venta/pedido", payload);
+    console.log("🚨 PAYLOAD FINAL /api/venta/pedido", {
+  payload,
+  customerState: customer,
+  hasObservations: customer?.observations,
+});
     const { data: pay } = await api.post("/api/venta/checkout-session", {
       orderId: created?.id,
       code: created?.code,
