@@ -142,7 +142,6 @@ module.exports = (prisma) => {
       }
     });
   }
-
   async function genOrderCode(db) {
     let code; do { code = 'ORD-' + Math.floor(10000 + Math.random() * 90000); }
     while (await db.sale.findUnique({ where: { code } }));
@@ -158,12 +157,13 @@ module.exports = (prisma) => {
   r.post('/', auth(), async (req, res) => {
     try {
       const {
-        storeId: storeIdBody,
-        type, delivery, customer,
-        products, extras = [],
-        notes = '',
-      } = req.body;
-
+  storeId: storeIdBody,
+  type, delivery,
+  customer,          // opcional (objeto)
+  customerId: customerIdBody, // ✅ opcional (id)
+  products, extras = [],
+  notes = '',
+} = req.body;
       // ── parse de extras y utilidades locales
       const toPriceHard = v => {
         if (v == null || v === '') return NaN;
@@ -210,29 +210,82 @@ module.exports = (prisma) => {
           return res.status(400).json({ error: 'Producto mal formado' });
       }
 
-      /* upsert cliente --------------------------------- */
-      let customerId = null;
-      let snapshot   = null;
-      if (customer?.phone?.trim()) {
-        const data = {
-          phone: customer.phone,
-          name: customer.name ?? null,
-          address_1: customer.address_1 ?? customer.address ?? null,
-          portal: customer.portal ?? null,
-          observations: customer.observations ?? null,
-          lat: customer.lat ?? null,
-          lng: customer.lng ?? null,
+
+/* upsert / link cliente --------------------------------- */
+let customerId = null;
+let snapshot   = null;
+
+// 1) Si viene customerId → lo usamos como fuente de verdad
+if (customerIdBody) {
+  const cid = Number(customerIdBody);
+  if (Number.isFinite(cid) && cid > 0) {
+    const dbCustomer = await prisma.customer.findUnique({ where: { id: cid } });
+    if (dbCustomer) {
+      customerId = dbCustomer.id;
+
+      // snapshot para la venta (lo que guardas en sale.customerData)
+      snapshot = {
+        phone: dbCustomer.phone ?? null,
+        name: dbCustomer.name ?? null,
+        address_1: dbCustomer.address_1 ?? null,
+        portal: dbCustomer.portal ?? null,
+        observations: dbCustomer.observations ?? null,
+        lat: dbCustomer.lat ?? null,
+        lng: dbCustomer.lng ?? null,
+      };
+
+      // Si además viene customer (objeto) → actualizamos campos (incluye observations)
+      if (customer && typeof customer === "object") {
+        const patch = {
+          name: customer.name ?? dbCustomer.name ?? null,
+          address_1: customer.address_1 ?? customer.address ?? dbCustomer.address_1 ?? null,
+          portal: customer.portal ?? dbCustomer.portal ?? null,
+          observations: customer.observations ?? dbCustomer.observations ?? null,
+          lat: customer.lat ?? dbCustomer.lat ?? null,
+          lng: customer.lng ?? dbCustomer.lng ?? null,
         };
 
-        const c = await prisma.customer.upsert({
-          where : { phone: data.phone },
-          update: data,
-          create: { code: await genCustomerCode(prisma), ...data }
+        const updated = await prisma.customer.update({
+          where: { id: dbCustomer.id },
+          data: patch,
         });
 
-        customerId = c.id;
-        snapshot   = data;
+        snapshot = {
+          phone: updated.phone ?? null,
+          name: updated.name ?? null,
+          address_1: updated.address_1 ?? null,
+          portal: updated.portal ?? null,
+          observations: updated.observations ?? null,
+          lat: updated.lat ?? null,
+          lng: updated.lng ?? null,
+        };
       }
+    }
+  }
+}
+
+// 2) Si NO vino customerId pero sí vino customer.phone → hacemos upsert por phone
+if (!customerId && customer?.phone?.trim()) {
+  const data = {
+    phone: String(customer.phone).trim(),
+    name: customer.name ?? null,
+    address_1: customer.address_1 ?? customer.address ?? null,
+    portal: customer.portal ?? null,
+    observations: customer.observations ?? null,
+    lat: customer.lat ?? null,
+    lng: customer.lng ?? null,
+  };
+
+  const c = await prisma.customer.upsert({
+    where: { phone: data.phone },
+    update: data,
+    create: { code: await genCustomerCode(prisma), ...data },
+  });
+
+  customerId = c.id;
+  snapshot = data;
+}
+
 
       /* extras (aplanar + sanear) ---------------------- */
       const nestedExtras = (Array.isArray(products) ? products : []).flatMap(p => {
