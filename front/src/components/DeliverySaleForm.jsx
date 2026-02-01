@@ -23,17 +23,17 @@ export default function DeliverySaleForm() {
   useAuth();
 
   /* ───── workflow ───── */
-  const [step, setStep] = useState("locate");
+  const [step, setStep] = useState("locate"); // locate › order › review
   const [query, setQuery] = useState("");
-  const [coords, setCoords] = useState(null);
-  const [nearest, setNearest] = useState(null);
+  const [coords, setCoords] = useState(null);     // {lat,lng}
+  const [nearest, setNearest] = useState(null);   // {storeId,…}
 
-  const [customer, setCustomer] = useState(null);     // solo visual / UX
-  const [customerId, setCustomerId] = useState(null); // 🔥 FUENTE DE VERDAD
+  const [customer, setCustomer] = useState(null);     // UI / preview
+  const [customerId, setCustomerId] = useState(null); // 🔥 fuente de verdad
 
   const [showCus, setShowCus] = useState(false);
 
-  /* Autocomplete */
+  /* ───── Autocomplete ───── */
   const acRef = useRef(null);
   const onPlaceChanged = useCallback(
     debounce(async () => {
@@ -47,6 +47,7 @@ export default function DeliverySaleForm() {
       setQuery(fullAddr);
       setCoords({ lat, lng });
 
+      // 🔍 buscar cliente por dirección
       try {
         const { data } = await api.get("/api/customers/search", {
           params: { q: fullAddr },
@@ -59,6 +60,7 @@ export default function DeliverySaleForm() {
         setCustomerId(null);
       }
 
+      // 🏪 tienda más cercana
       try {
         const { data } = await api.get("/api/stores/nearest", {
           params: { lat, lng },
@@ -83,7 +85,11 @@ export default function DeliverySaleForm() {
           options={{ componentRestrictions: { country: "es" } }}
         >
           <input
-            style={{ width: "100%", marginBottom: 8, textTransform: "uppercase" }}
+            style={{
+              width: "100%",
+              marginBottom: 8,
+              textTransform: "uppercase",
+            }}
             placeholder="TYPE ADDRESS…"
             value={query}
             onChange={(e) => setQuery(e.target.value.toUpperCase())}
@@ -147,7 +153,7 @@ export default function DeliverySaleForm() {
       <LocalSaleForm
         forcedStoreId={nearest.storeId}
         compact
-        customerId={customer?.id ?? null}
+        customerId={customerId}   // 🔥 SOLO ID
         onDone={() => setStep("review")}
       />
       <button onClick={() => setStep("locate")}>← back</button>
@@ -172,7 +178,6 @@ export default function DeliverySaleForm() {
   async function handleDeleteCustomer(id) {
     const res = await api.delete(`/api/customers/${id}`);
     if (res.status === 200) {
-      alert("Customer deleted!");
       setCustomer(null);
       setCustomerId(null);
       setShowCus(false);
@@ -208,20 +213,12 @@ export default function DeliverySaleForm() {
                 lng: data.lng ?? null,
               };
 
-              let saved;
-              if (data.id) {
-                const res = await api.patch(
-                  `/api/customers/${data.id}`,
-                  payload
-                );
-                saved = res.data;
-              } else {
-                const res = await api.post("/api/customers", payload);
-                saved = res.data;
-              }
+              const res = data.id
+                ? await api.patch(`/api/customers/${data.id}`, payload)
+                : await api.post("/api/customers", payload);
 
-              setCustomer(saved);
-              setCustomerId(saved.id); // 🔥 CLAVE
+              setCustomer(res.data);
+              setCustomerId(res.data.id); // 🔥 CLAVE
               setShowCus(false);
             } catch (e) {
               console.error("❌ Error saving customer", e);
