@@ -147,9 +147,7 @@ export default function CustomersPanel() {
   const [query, setQuery] = useState("");   // dígitos
   const [rows, setRows] = useState([]);
   const [meta, setMeta] = useState({ total: 0 });
-
   const [stats, setStats] = useState({ total:0, counts:{ S1:0,S2:0,S3:0,S4:0 }, active:{restricted:0,unrestricted:0}, updatedAt:null });
-
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -471,7 +469,6 @@ function CustomerFormModal({ initial = {}, onClose, onSubmit, onDelete }) {
             <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Solo dígitos…" />
           </label>
         </div>
-
         <label className="fld">
           <span>Email</span>
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="john@acme.com" />
