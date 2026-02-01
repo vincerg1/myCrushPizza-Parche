@@ -178,31 +178,42 @@ export default function DeliverySaleForm() {
             lng: coords?.lng,
           }}
           onClose={() => setShowCus(false)}
-          onDelete={handleDeleteCustomer}
+          onDelete={handleDeleteCustomer}        
           onSave={async (data) => {
-  try {
-    let saved;
+              try {
+                // 🔥 PAYLOAD NORMALIZADO (IDÉNTICO A CustomersPanel)
+                const payload = {
+                  name: data.name ?? null,
+                  phone: data.phone,
+                  address_1: data.address_1 ?? null,
+                  observations: data.observations ?? null,
+                  lat: data.lat ?? null,
+                  lng: data.lng ?? null,
+                };
 
-    if (data.id) {
-      // ✅ Cliente existente → PATCH
-      const res = await api.patch(`/api/customers/${data.id}`, data);
-      saved = res.data;
-    } else {
-      // ✅ Cliente nuevo → POST
-      const res = await api.post("/api/customers", data);
-      saved = res.data;
-    }
+                console.log("[CUSTOMER PAYLOAD → API]", payload);
 
-    console.log("[Customer saved]", saved);
-    setCustomer(saved);
+                let saved;
 
-  } catch (e) {
-    console.error("❌ Error saving customer", e);
-    alert("Error saving customer data");
-  }
+                if (data.id) {
+                  // PATCH estándar
+                  const res = await api.patch(`/api/customers/${data.id}`, payload);
+                  saved = res.data;
+                } else {
+                  // POST estándar
+                  const res = await api.post("/api/customers", payload);
+                  saved = res.data;
+                }
 
-  setShowCus(false);
-}}
+                console.log("[Customer saved]", saved);
+                setCustomer(saved);
+                setShowCus(false);
+
+              } catch (e) {
+                console.error("❌ Error saving customer", e);
+                alert("Error saving customer data");
+              }
+          }}
         />
       )}
     </>

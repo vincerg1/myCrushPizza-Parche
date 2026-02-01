@@ -839,7 +839,17 @@ const extrasUnitTotal = useMemo(() => {
                       extras: aggregatedExtras,
                     };
                     console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
-                    if (customer?.phone?.trim()) payload.customer = customer;
+                   if (customer?.phone?.trim()) {
+                      payload.customer = {
+                        id: customer.id ?? null,
+                        name: customer.name ?? null,
+                        phone: customer.phone,
+                        address_1: customer.address_1 ?? customer.address ?? null,
+                        observations: customer.observations ?? null,
+                        lat: customer.lat ?? null,
+                        lng: customer.lng ?? null,
+                      };
+                    }
 
                     await api.post("/api/sales", payload);
                     setToast("Sale saved ✓");
