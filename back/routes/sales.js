@@ -214,9 +214,15 @@ module.exports = (prisma) => {
       let customerId = null;
       let snapshot   = null;
       if (customer?.phone?.trim()) {
-        const data = (({ phone, name, address_1, portal, observations, lat, lng }) => ({
-          phone, name, address_1, portal, observations, lat, lng
-        }))(customer);
+        const data = {
+          phone: customer.phone,
+          name: customer.name ?? null,
+          address_1: customer.address_1 ?? customer.address ?? null,
+          portal: customer.portal ?? null,
+          observations: customer.observations ?? null,
+          lat: customer.lat ?? null,
+          lng: customer.lng ?? null,
+        };
 
         const c = await prisma.customer.upsert({
           where : { phone: data.phone },
