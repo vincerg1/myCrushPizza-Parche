@@ -212,7 +212,7 @@ export default function CustomerModal({
         }
         .actions > button{
           border:1px solid var(--border);
-          background:#fff; padding:10px 14px;
+          background:#a32222; padding:10px 14px;
           border-radius:10px;
         }
       `}</style>

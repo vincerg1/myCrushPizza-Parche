@@ -1,14 +1,17 @@
 // DeliverySaleForm – locate ▸ order ▸ review
 import React, { useState, useRef, useCallback } from "react";
-import api   from "../setupAxios";
+import api from "../setupAxios";
 import { debounce } from "lodash";
 import {
-  GoogleMap, Marker, Autocomplete, LoadScriptNext,
+  GoogleMap,
+  Marker,
+  Autocomplete,
+  LoadScriptNext,
 } from "@react-google-maps/api";
 
 import CustomerModal from "./CustomerModal";
 import LocalSaleForm from "./LocalSaleForm";
-import { useAuth }   from "./AuthContext";
+import { useAuth } from "./AuthContext";
 
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ||
@@ -17,15 +20,18 @@ const GOOGLE_KEY =
     : undefined);
 
 export default function DeliverySaleForm() {
-  useAuth();                              // (mantener coherencia)
+  useAuth();
 
   /* ───── workflow ───── */
-  const [step    , setStep    ] = useState("locate"); // locate › order › review
-  const [query   , setQuery   ] = useState("");
-  const [coords  , setCoords  ] = useState(null);     // {lat,lng}
-  const [nearest , setNearest ] = useState(null);     // {storeId,…}
-  const [customer, setCustomer] = useState(null);     // data BBDD
-  const [showCus , setShowCus ] = useState(false);    // modal
+  const [step, setStep] = useState("locate");
+  const [query, setQuery] = useState("");
+  const [coords, setCoords] = useState(null);
+  const [nearest, setNearest] = useState(null);
+
+  const [customer, setCustomer] = useState(null);     // solo visual / UX
+  const [customerId, setCustomerId] = useState(null); // 🔥 FUENTE DE VERDAD
+
+  const [showCus, setShowCus] = useState(false);
 
   /* Autocomplete */
   const acRef = useRef(null);
@@ -41,21 +47,26 @@ export default function DeliverySaleForm() {
       setQuery(fullAddr);
       setCoords({ lat, lng });
 
-      /* lookup cliente POR DIRECCIÓN COMPLETA */
       try {
         const { data } = await api.get("/api/customers/search", {
           params: { q: fullAddr },
         });
-        setCustomer(data?.[0] ?? null);
-      } catch { setCustomer(null); }
+        const found = data?.[0] ?? null;
+        setCustomer(found);
+        setCustomerId(found?.id ?? null);
+      } catch {
+        setCustomer(null);
+        setCustomerId(null);
+      }
 
-      /* tienda más cercana */
       try {
         const { data } = await api.get("/api/stores/nearest", {
           params: { lat, lng },
         });
         setNearest(data);
-      } catch { setNearest(null); }
+      } catch {
+        setNearest(null);
+      }
     }, 200),
     []
   );
@@ -72,9 +83,7 @@ export default function DeliverySaleForm() {
           options={{ componentRestrictions: { country: "es" } }}
         >
           <input
-            style={{
-              width: "100%", marginBottom: 8, textTransform: "uppercase",
-            }}
+            style={{ width: "100%", marginBottom: 8, textTransform: "uppercase" }}
             placeholder="TYPE ADDRESS…"
             value={query}
             onChange={(e) => setQuery(e.target.value.toUpperCase())}
@@ -87,7 +96,12 @@ export default function DeliverySaleForm() {
           <GoogleMap
             center={coords}
             zoom={15}
-            mapContainerStyle={{ height: 300, width: "100%", margin: "12px 0", borderRadius: 6 }}
+            mapContainerStyle={{
+              height: 300,
+              width: "100%",
+              margin: "12px 0",
+              borderRadius: 6,
+            }}
             options={{ disableDefaultUI: true }}
           >
             <Marker position={coords} />
@@ -96,7 +110,10 @@ export default function DeliverySaleForm() {
       )}
 
       {nearest && !nearest.error && (
-        <p>Closest store: <b>#{nearest.storeId}</b> (~{nearest.distanciaKm} km)</p>
+        <p>
+          Closest store: <b>#{nearest.storeId}</b> (~
+          {nearest.distanciaKm} km)
+        </p>
       )}
 
       <div style={{ margin: "8px 0" }}>
@@ -115,7 +132,7 @@ export default function DeliverySaleForm() {
 
         <button
           style={{ marginLeft: 8 }}
-          ddisabled={!(coords && nearest && customer)} 
+          disabled={!(coords && nearest && customerId)}
           onClick={() => setStep("order")}
         >
           Next → products
@@ -124,13 +141,13 @@ export default function DeliverySaleForm() {
     </>
   );
 
-  /* ───── Paso 2 : ORDER (LocalSaleForm en modo compacto) ───── */
+  /* ───── Paso 2 : ORDER ───── */
   const orderView = nearest?.storeId ? (
     <>
       <LocalSaleForm
         forcedStoreId={nearest.storeId}
         compact
-        customer={customer}            /* ← le llega al backend */
+        customerId={customer?.id ?? null}
         onDone={() => setStep("review")}
       />
       <button onClick={() => setStep("locate")}>← back</button>
@@ -142,30 +159,31 @@ export default function DeliverySaleForm() {
     </>
   );
 
-  /* ───── Paso 3 : REVIEW (stub) ───── */
+  /* ───── Paso 3 : REVIEW ───── */
   const reviewView = (
     <>
       <h3>✅ Sale saved</h3>
-      <button onClick={() => window.location.reload()}>New delivery sale</button>
+      <button onClick={() => window.location.reload()}>
+        New delivery sale
+      </button>
     </>
   );
 
   async function handleDeleteCustomer(id) {
-  const res = await api.delete(`/api/customers/${id}`);
-  if (res.status === 200) {
-    alert("Customer deleted!");
-    setShowCus(false); // ✅ nombre correcto
-    setCustomer(null); // opcional: limpiar el cliente seleccionado
-  } else {
-    alert("Failed to delete customer");
+    const res = await api.delete(`/api/customers/${id}`);
+    if (res.status === 200) {
+      alert("Customer deleted!");
+      setCustomer(null);
+      setCustomerId(null);
+      setShowCus(false);
+    }
   }
-}
 
   return (
     <>
       <div style={{ padding: 24 }}>
         {step === "locate" && locateView}
-        {step === "order"  && orderView}
+        {step === "order" && orderView}
         {step === "review" && reviewView}
       </div>
 
@@ -178,41 +196,37 @@ export default function DeliverySaleForm() {
             lng: coords?.lng,
           }}
           onClose={() => setShowCus(false)}
-          onDelete={handleDeleteCustomer}        
+          onDelete={handleDeleteCustomer}
           onSave={async (data) => {
-              try {
-                // 🔥 PAYLOAD NORMALIZADO (IDÉNTICO A CustomersPanel)
-                const payload = {
-                  name: data.name ?? null,
-                  phone: data.phone,
-                  address_1: data.address_1 ?? null,
-                  observations: data.observations ?? null,
-                  lat: data.lat ?? null,
-                  lng: data.lng ?? null,
-                };
+            try {
+              const payload = {
+                name: data.name ?? null,
+                phone: data.phone,
+                address_1: data.address_1 ?? null,
+                observations: data.observations ?? null,
+                lat: data.lat ?? null,
+                lng: data.lng ?? null,
+              };
 
-                console.log("[CUSTOMER PAYLOAD → API]", payload);
-
-                let saved;
-
-                if (data.id) {
-                  // PATCH estándar
-                  const res = await api.patch(`/api/customers/${data.id}`, payload);
-                  saved = res.data;
-                } else {
-                  // POST estándar
-                  const res = await api.post("/api/customers", payload);
-                  saved = res.data;
-                }
-
-                console.log("[Customer saved]", saved);
-                setCustomer(saved);
-                setShowCus(false);
-
-              } catch (e) {
-                console.error("❌ Error saving customer", e);
-                alert("Error saving customer data");
+              let saved;
+              if (data.id) {
+                const res = await api.patch(
+                  `/api/customers/${data.id}`,
+                  payload
+                );
+                saved = res.data;
+              } else {
+                const res = await api.post("/api/customers", payload);
+                saved = res.data;
               }
+
+              setCustomer(saved);
+              setCustomerId(saved.id); // 🔥 CLAVE
+              setShowCus(false);
+            } catch (e) {
+              console.error("❌ Error saving customer", e);
+              alert("Error saving customer data");
+            }
           }}
         />
       )}

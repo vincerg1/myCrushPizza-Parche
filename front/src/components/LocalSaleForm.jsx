@@ -164,7 +164,7 @@ function getPizzaBadge(it) {
 export default function LocalSaleForm({
   forcedStoreId = null,
   compact = false,
-  customer = null,
+   customerId = null,
   ingredientQuery = "",          // ✅ viene de PublicCheckout
   onClearIngredientQuery = () => {}, // (opcional)
   onDone = () => {},
@@ -187,8 +187,18 @@ export default function LocalSaleForm({
   const [categoriesDb, setCategoriesDb] = useState([]);
   const   [extrasAvail, setExtrasAvail] = useState([]);
 const [showAllExtras, setShowAllExtras] = useState(false);
+const [customer, setCustomer] = useState(null);
+useEffect(() => {
+  if (!customerId) {
+    setCustomer(null);
+    return;
+  }
 
-
+  api
+    .get(`/api/customers/${customerId}`)
+    .then(r => setCustomer(r.data))
+    .catch(() => setCustomer(null));
+}, [customerId]);
 const sortedExtras = useMemo(() => {
   return [...extrasAvail].sort((a, b) => Number(b.price) - Number(a.price));
 }, [extrasAvail]);
