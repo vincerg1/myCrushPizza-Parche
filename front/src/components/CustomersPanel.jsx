@@ -384,7 +384,6 @@ export default function CustomersPanel() {
               <div style={{ fontWeight:600 }}>
                 {(c.name || "—").toUpperCase()}
               </div>
-              {c.observations ? <div className="small" style={{ opacity:.7 }}>{c.observations}</div> : null}
             </div>
             <div>{displayESPhone(c.phone) || "—"}</div>
             <div><Badge tone="default">{c.segment || "—"}</Badge></div>
