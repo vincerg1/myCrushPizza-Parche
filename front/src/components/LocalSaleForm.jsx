@@ -832,44 +832,45 @@ const extrasUnitTotal = useMemo(() => {
                       }))
                     );
 
-                   const payload = {
-                      storeId,
-                      type: forcedStoreId ? "DELIVERY" : "LOCAL",
-                      delivery: forcedStoreId ? "COURIER" : "PICKUP",
+    const payload = {
+  storeId,
+  type: forcedStoreId ? "DELIVERY" : "LOCAL",
+  delivery: forcedStoreId ? "COURIER" : "PICKUP",
 
-                      // 🔥 fuente de verdad
-                      customerId: customerId ?? null,
+  // 🔥 FUENTE DE VERDAD (link directo)
+  customerId: customerId ?? null,
 
-                      // 🔥 si existe customer, mandamos observations (y lo básico)
-                      customer: customer?.phone?.trim()
-                        ? {
-                            id: customer.id ?? null,
-                            name: customer.name ?? null,
-                            phone: customer.phone,
-                            address_1: customer.address_1 ?? customer.address ?? null,
-                            observations: customer.observations ?? null,
-                            lat: customer.lat ?? null,
-                            lng: customer.lng ?? null,
-                          }
-                        : null,
+  // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
+  customer: customer
+    ? {
+        id: customer.id ?? null,
+        name: customer.name ?? null,
+        phone: customer.phone ?? null,
+        address_1: customer.address_1 ?? customer.address ?? null,
+        observations: customer.observations ?? null,
+        lat: customer.lat ?? null,
+        lng: customer.lng ?? null,
+      }
+    : null,
 
-                      products: cart.map((c) => ({
-                        pizzaId: c.pizzaId,
-                        size: c.size,
-                        qty: c.qty,
-                        price: c.price,
-                        extras: extrasArrayForItem(c),
-                      })),
+  products: cart.map((c) => ({
+    pizzaId: c.pizzaId,
+    size: c.size,
+    qty: c.qty,
+    price: c.price,
+    extras: extrasArrayForItem(c),
+  })),
 
-                      totalProducts: cart.reduce(
-                        (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
-                        0
-                      ),
+  totalProducts: cart.reduce(
+    (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
+    0
+  ),
 
-                      discounts: 0,
-                      total,
-                      extras: aggregatedExtras,
-                    };
+  discounts: 0,
+  total,
+  extras: aggregatedExtras,
+};
+
 
                     console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
 
