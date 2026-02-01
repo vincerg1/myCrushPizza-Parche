@@ -394,30 +394,39 @@ module.exports = (prisma) => {
   // =====================================================
 
   router.get("/:id", async (req, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: "invalid_id" });
-    }
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ error: "invalid_id" });
+  }
 
-    const customer = await prisma.customer.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        phone: true,
-        segment: true,
-        isRestricted: true,
-      },
-    });
-
-    if (!customer) {
-      return res.status(404).json({ error: "not_found" });
-    }
-
-    res.json(customer);
+  const customer = await prisma.customer.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      phone: true,
+      email: true,
+      address_1: true,
+      portal: true,
+      observations: true,
+      lat: true,
+      lng: true,
+      segment: true,
+      isRestricted: true,
+      restrictedAt: true,
+      restrictionReason: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
 
+  if (!customer) {
+    return res.status(404).json({ error: "not_found" });
+  }
+
+  res.json(customer);
+  });
   router.post("/", async (req, res) => {
     try {
       let {
@@ -511,7 +520,6 @@ module.exports = (prisma) => {
       });
     }
   });
-
   router.patch("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -556,7 +564,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.patch("/:id/restrict", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
@@ -579,7 +586,6 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
-
   router.delete("/:id", async (req, res) => {
     const id = +req.params.id;
     if (!id) return res.status(400).json({ error: "Invalid ID" });
