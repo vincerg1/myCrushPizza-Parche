@@ -148,7 +148,7 @@ export default function CustomerModal({
           )}
 
           <button className="primary" onClick={handleSave}>
-            Guardar
+            Continuar
           </button>
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function CustomerModal({
 
         input:focus, textarea:focus{
           border-color:var(--brand);
-          box-shadow:0 0 0 3px rgba(66,133,244,.18);
+          box-shadow:0 0 0 3px rgba(221, 223, 226, 0.18);
         }
 
         .actions{
@@ -212,8 +212,8 @@ export default function CustomerModal({
         }
         .actions > button{
           border:1px solid var(--border);
-          background:#a32222; padding:10px 14px;
-          border-radius:10px;
+          background:#9b9595; padding:10px 14px;
+          border-radius:20px; color:#fff;font-weight:700;
         }
       `}</style>
     </div>

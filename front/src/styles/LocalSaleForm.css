@@ -497,13 +497,13 @@
   z-index: 5;
 }
 .lsf-card__addbtn {
-  width: 45px;
+  width: 50px;
   height: 25px;
   border-radius: 20%;
   border: none;
   display: grid;
   place-items: center;
-  font-size: 13px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;

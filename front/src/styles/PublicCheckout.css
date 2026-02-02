@@ -23,14 +23,26 @@
   display:flex;
   flex-direction:column;
 }
+.pc-page {
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+}
 .pc-wrap{
   max-width:980px;
   margin:0 auto;
-  padding:14px;
+  padding:18px;
   flex:1;                   
 }
+.pc-wrap {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+.pc-wrap--narrow{
+  max-width: 720px !important;
+ touch-action: pan-y;
+  overscroll-behavior: contain;
+}
 
-/* Card / paso */
 .pc-card{
   display:block;
   box-sizing:border-box;
@@ -100,7 +112,10 @@ border-radius: 20px;
 }
 .pc-actions > *{ min-width:0; }  /* hijos flexibles */
 .pc-actions .push{ margin-left:auto; }
-
+.pc-card .pc-actions.pc-actions-center .pc-btn{
+  width: 100%;
+  max-width: 320px;
+}
 /* Elección inicial en columna */
 .pc-choice{
   display:flex;
@@ -164,7 +179,11 @@ border-radius: 20px;
 }
 @media (min-width:860px){
   .pc-grid{ grid-template-columns:2fr 1fr; }
+  .pc-wrap--narrow{
+  width: 90%;
 }
+}
+
 
 /* Notas / alertas */
 .pc-note{ color:var(--muted); font-size:.95rem; }
@@ -248,11 +267,20 @@ border-radius: 20px;
     margin-left:auto;
     margin-right:auto;
   }
+  .pc-wrap--narrow{
+  width: 90%;
+}
 }
 
 /* Por si el dispositivo es muy estrecho */
 @media (max-width:420px){
   .pc-logo{ width:min(340px, 100%); }
+   .pc-card{
+    min-width: unset;
+  }
+  .pc-wrap--narrow{
+  width: 90%;
+}
 }
 
 /* ---- Animaciones título ---- */
@@ -495,7 +523,39 @@ border-radius: 20px;
   flex-wrap:wrap;            /* ← importante para que el badge pueda bajar a la siguiente línea */
 }
 .pc-card .pc-actions .pc-input{ flex:1; min-width:220px; }
-.pc-card .pc-actions .pc-btn{ white-space:nowrap; }
+/* .pc-card .pc-actions .pc-btn{ white-space:nowrap; } */
+
+
+/* NAV: cambiar método (arriba) */
+.pc-card .pc-actions-nav .pc-btn{
+  white-space: nowrap;
+}
+
+/* CTA principal: Datos del cliente */
+.pc-card .pc-actions-cta{
+  justify-content: center;
+}
+
+.pc-card .pc-actions-cta .pc-btn{
+  white-space: normal;
+  text-align: center;
+  min-width: 220px;
+  max-width: 320px;
+}
+
+/* CTA full width en móvil */
+@media (max-width: 420px){
+    .pc-card{
+    min-width: unset;
+  }
+  .pc-card .pc-actions-cta .pc-btn{
+    width: 100%;
+  }
+  .pc-wrap--narrow{
+  width: 90%;
+}
+}
+
 
 /* Badge base */
 .pc-badge{
@@ -582,6 +642,7 @@ border-radius: 20px;
   color: #fff;
   border: 0;
   box-shadow: 0 10px 20px rgba(249,38,114,.18), 0 4px 10px rgba(0,0,0,.06);
+  width: 100%;
 }
 .pc-btn-attn:hover{ filter: brightness(1.03); }
 .pc-btn-attn:active{ transform: translateY(1px); }
@@ -611,6 +672,7 @@ border-radius: 20px;
 
 /* ===== CTA gris para “Siguiente → productos” cuando falte cliente ===== */
 .pc-btn-muted{
+  width: 90%;
   background:#e9e9ee;
   color:#8a8a8a;
   border:1px solid #dcdce6;

@@ -198,26 +198,34 @@ export default function PublicCheckout() {
     },
     [getStoreById]
   );
+const goToOrderStep = useCallback(async (nextCustomer) => {
+  const cust = nextCustomer || customer;
 
-  const handleNextClick = async () => {
-    setTriedNext(true);
-    const ok = nextGuard();
-    if (!ok) return;
+  // Revalidamos reglas base
+  const ok = hasBaseCustomer(cust);
+  if (!ok) return;
 
-    const rchk = await checkRestriction(customer?.phone);
-    if (Number(rchk?.isRestricted) === 1) {
-      setRestrictModal({
-        open: true,
-        reason: rchk.reason || "",
-        code: rchk.code || "",
-        phone: customer?.phone || ""
-      });
-      setIsPaying(false);
-      return;
-    }
+  // Restricción telefónica (misma lógica que ya usas)
+  const rchk = await checkRestriction(cust?.phone);
+  if (Number(rchk?.isRestricted) === 1) {
+    setRestrictModal({
+      open: true,
+      reason: rchk.reason || "",
+      code: rchk.code || "",
+      phone: cust?.phone || ""
+    });
+    return;
+  }
 
-    setStep("order");
-  };
+  setStep("order");
+}, [customer, checkRestriction]);
+
+const handleNextClick = () => {
+  setTriedNext(true);
+
+  // 🔒 En Fase 2, avanzar SOLO se hace desde CustomerModal.onSave
+  setShowCus(true);
+};
 
   // ===== DELIVERY: Autocomplete =====
   const acRef = useRef(null);
@@ -379,21 +387,27 @@ const checkCoupon = useCallback(async () => {
     return el.closest?.("[data-noswipe]") ? true : false;
   };
 
-  const goBack = () => {
-    if (mode === "deliveryLocate" || mode === "pickupLocate") {
-      setMode("choose");
-      setStep("locate");
-      return;
-    }
-    if (step === "review") {
-      setStep("order");
-      return;
-    }
-    if (step === "order") {
-      setStep("locate");
-      return;
-    }
-  };
+ const goBack = () => {
+  // 🚫 En portada NO se permite swipe
+  if (mode === "choose") return;
+
+  if (mode === "deliveryLocate" || mode === "pickupLocate") {
+    setMode("choose");
+    setStep("locate");
+    return;
+  }
+
+  if (step === "review") {
+    setStep("order");
+    return;
+  }
+
+  if (step === "order") {
+    setStep("locate");
+    return;
+  }
+};
+
 
   const goForward = () => {
     if (step === "locate") {
@@ -406,30 +420,63 @@ const checkCoupon = useCallback(async () => {
     }
   };
 
-  const onTouchStart = (e) => {
-    const touch = e.touches[0];
-    tStart.current = { x: touch.clientX, y: touch.clientY, at: Date.now(), target: e.target };
-  };
+const EDGE = 20;
 
-  const onTouchMove = (e) => {
-    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-    const touch = e.touches[0];
-       const dx = touch.clientX - tStart.current.x;
-    const dy = Math.abs(touch.clientY - tStart.current.y);
-    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) e.preventDefault();
-  };
+const onTouchStart = (e) => {
+  const touch = e.touches[0];
 
-  const onTouchEnd = (e) => {
-    if (!tStart.current.target || isInteractive(tStart.current.target)) return;
-    const changed = e.changedTouches?.[0];
-    if (!changed) return;
-    const dx = changed.clientX - tStart.current.x;
-    const dy = Math.abs(changed.clientY - tStart.current.y);
-    if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
-      if (dx < 0) goForward();
-      else goBack();
-    }
+  if (
+    touch.clientX < EDGE ||
+    window.innerWidth - touch.clientX < EDGE
+  ) {
+    tStart.current = { x: 0, y: 0, at: 0, target: null };
+    return;
+  }
+
+  tStart.current = {
+    x: touch.clientX,
+    y: touch.clientY,
+    at: Date.now(),
+    target: e.target
   };
+};
+
+const onTouchMove = (e) => {
+  if (!tStart.current.target) return;
+  if (isInteractive(tStart.current.target)) return;
+
+  const touch = e.touches[0];
+  const dx = touch.clientX - tStart.current.x;
+  const dy = Math.abs(touch.clientY - tStart.current.y);
+
+  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
+    e.preventDefault(); // 🔒 clave
+  }
+};
+
+
+const onTouchEnd = (e) => {
+  if (!tStart.current.target) return;
+  if (isInteractive(tStart.current.target)) {
+    tStart.current.target = null;
+    return;
+  }
+
+  const changed = e.changedTouches?.[0];
+  if (!changed) return;
+
+  const dx = changed.clientX - tStart.current.x;
+  const dy = Math.abs(changed.clientY - tStart.current.y);
+
+  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
+    if (dx < 0) goForward();
+    else goBack();
+  }
+
+  // 🔁 reset SIEMPRE
+  tStart.current = { x: 0, y: 0, at: 0, target: null };
+};
+
   const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
     if (e.key === "ArrowRight") goForward();
@@ -885,7 +932,7 @@ const checkCoupon = useCallback(async () => {
   );
   const deliveryLocateView = (
     <div className="pc-card">
-      <div className="pc-actions" style={{ marginBottom: 8 }}>
+      <div className="pc-actions pc-actions-nav" style={{ marginBottom: 8 }}>
         <button
           className="pc-btn pc-btn-ghost push"
           onClick={() => {
@@ -979,7 +1026,7 @@ const checkCoupon = useCallback(async () => {
         </div>
       )}
 
-      <div className="pc-actions" style={{ marginTop: 10 }}>
+      <div className="pc-actions" style={{ marginTop: 50 }}>
         <button
           className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
           onClick={() => setShowCus(true)}
@@ -987,13 +1034,7 @@ const checkCoupon = useCallback(async () => {
           Datos del cliente
         </button>
 
-        <button
-          className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-          onClick={handleNextClick}
-          disabled={outOfRange ? true : false}
-        >
-          Siguiente → productos
-        </button>
+
       </div>
 
       {showCus && (
@@ -1001,10 +1042,12 @@ const checkCoupon = useCallback(async () => {
           variant="delivery"
           initial={{ ...customer, address_1: customer?.address_1 || query, lat: coords?.lat, lng: coords?.lng }}
           onClose={() => setShowCus(false)}
-          onSave={(data) => {
-            setCustomer({ ...customer, ...data });
-            setShowCus(false);
-          }}
+          onSave={async (data) => {
+          const merged = { ...customer, ...data };
+          setCustomer(merged);
+          setShowCus(false);
+          await goToOrderStep(merged);
+        }}
         />
       )}
     </div>
@@ -1100,19 +1143,12 @@ const checkCoupon = useCallback(async () => {
           )}
 
           {/* Botones */}
-          <div className="pc-actions" style={{ marginTop: 10 }}>
+          <div className="pc-actions" style={{ marginTop: 50 }}>
             <button
               className={`pc-btn ${baseOk ? "pc-btn-muted" : "pc-btn-attn pc-btn-attn-pulse"} ${!baseOk && flashCus ? "pc-shake" : ""}`}
               onClick={() => setShowCus(true)}
             >
               Datos del cliente
-            </button>
-
-            <button
-              className={`pc-btn ${baseOk ? "pc-btn-attn pc-btn-attn-pulse" : "pc-btn-muted"} push`}
-              onClick={handleNextClick}
-            >
-              Siguiente → productos
             </button>
           </div>
         </div>
@@ -1123,10 +1159,12 @@ const checkCoupon = useCallback(async () => {
           variant="pickup"
           initial={{ ...customer }}
           onClose={() => setShowCus(false)}
-          onSave={(data) => {
-            setCustomer({ ...customer, ...data });
-            setShowCus(false);
-          }}
+          onSave={async (data) => {
+          const merged = { ...customer, ...data };
+          setCustomer(merged);
+          setShowCus(false);
+          await goToOrderStep(merged);
+        }}
         />
       )}
     </div>
@@ -1161,36 +1199,41 @@ const orderView = (
     </div>
 
     {/* 🧠 LOCAL SALE FORM */}
-    <LocalSaleForm
-      forcedStoreId={
-        mode === "deliveryLocate"
-          ? Number(nearest?.storeId)
-          : Number(selectedStoreId) || undefined
-      }
-      compact
-      customer={customer}
-      ingredientQuery={ingredientQuery}
-      onClearIngredientQuery={() => setIngredientQuery("")}
-      onConfirmCart={(data) => {
-        const sid =
-          mode === "deliveryLocate"
-            ? Number(nearest?.storeId)
-            : Number(selectedStoreId);
+<LocalSaleForm
+  forcedStoreId={
+    mode === "deliveryLocate"
+      ? Number(nearest?.storeId)
+      : Number(selectedStoreId) || undefined
+  }
+  compact
+  customer={customer}
+  ingredientQuery={ingredientQuery}
+  onClearIngredientQuery={() => setIngredientQuery("")}
+  initialCart={step === "order" ? pending?.items : null}
+onConfirmCart={(data) => {
+  const sid =
+    mode === "deliveryLocate"
+      ? Number(nearest?.storeId)
+      : Number(selectedStoreId);
 
-        const sel = sid ? getStoreById(sid) : null;
-        const addr = sid ? storeAddrById[sid] : undefined;
+  const sel = sid ? getStoreById(sid) : null;
+  const addr = sid ? storeAddrById[sid] : undefined;
 
-        setPending({
-          ...data,
-          customer,
-          storeId: sid ?? data.storeId,
-          storeName: sel?.storeName || sel?.name || "",
-          storeAddress: addr,
-        });
-        setStep("review");
-      }}
-      onDone={() => {}}
-    />
+  setPending(prev => ({
+    ...(prev || {}),          // ⬅️ conserva lo anterior si existe
+    ...data,                  // ⬅️ items, total, etc
+    customer,
+    storeId: sid ?? data.storeId,
+    storeName: sel?.storeName || sel?.name || "",
+    storeAddress: addr,
+  }));
+
+  setStep("review");
+}}
+
+  onDone={() => {}}
+/>
+
 
   </div>
 );
@@ -1769,7 +1812,7 @@ if (couponOk && coupon?.code) {
       />
 
       <div
-        className="pc-wrap"
+        className="pc-wrap pc-wrap--narrow"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -1778,7 +1821,11 @@ if (couponOk && coupon?.code) {
         {mode === "choose" && CouponCard}
         {mode === "deliveryLocate" && step === "locate" && deliveryLocateView}
         {mode === "pickupLocate" && step === "locate" && pickupLocateView}
-        {step === "order" && orderView}
+        {step === "order" && (
+          <div data-noswipe>
+            {orderView}
+          </div>
+        )}
         {step === "review" && reviewView}
       </div>
 

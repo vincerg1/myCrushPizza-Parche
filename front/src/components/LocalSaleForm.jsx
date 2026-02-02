@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
@@ -168,6 +168,7 @@ export default function LocalSaleForm({
   ingredientQuery = "",          // ✅ viene de PublicCheckout
   onClearIngredientQuery = () => {}, // (opcional)
   onDone = () => {},
+   initialCart = null,
   onConfirmCart = null,
 }) {
   const { auth } = useAuth();
@@ -188,6 +189,15 @@ export default function LocalSaleForm({
   const   [extrasAvail, setExtrasAvail] = useState([]);
 const [showAllExtras, setShowAllExtras] = useState(false);
 const [customer, setCustomer] = useState(null);
+useEffect(() => {
+  const incoming = Array.isArray(initialCart) ? initialCart : null;
+  if (!incoming || incoming.length === 0) return;
+
+  setCart((prev) => {
+    if (Array.isArray(prev) && prev.length > 0) return prev;
+    return incoming;
+  });
+}, [initialCart]);
 useEffect(() => {
   if (!customerId) {
     setCustomer(null);
@@ -257,7 +267,30 @@ useEffect(() => {
     .map(c => c.name);
 }, [categoriesDb, menu]);
 
+// ─── Swipe categorías ─────────────────────────────
+const swipeCatRef = useRef({ x: 0, y: 0 });
 
+const SWIPE_CAT_X = 60;
+const SWIPE_CAT_Y_MAX = 45;
+
+const moveCategory = useCallback(
+  (dir) => {
+    if (!categories.length) return;
+
+    const idx = categories.findIndex(
+      (c) => normalize(c) === normalize(cat)
+    );
+    if (idx === -1) return;
+
+    const next =
+      dir > 0
+        ? Math.min(categories.length - 1, idx + 1)
+        : Math.max(0, idx - 1);
+
+    if (next !== idx) setCat(categories[next]);
+  },
+  [categories, cat]
+);
   useEffect(() => {
     if (!categories.length) {
       if (cat) setCat("");
@@ -349,6 +382,30 @@ useEffect(() => {
     const max = qtyOptions[qtyOptions.length - 1] || 1;
     setSel((s) => ({ ...s, qty: Math.min(Math.max(1, Number(s.qty || 1)), max) }));
   }, [qtyOptions]);
+const onCatTouchStart = (e) => {
+  const t = e.touches?.[0];
+  if (!t) return;
+
+  swipeCatRef.current = {
+    x: t.clientX,
+    y: t.clientY,
+  };
+};
+
+const onCatTouchEnd = (e) => {
+  if (productModalOpen || cartOpen) return;
+
+  const t = e.changedTouches?.[0];
+  if (!t) return;
+
+  const dx = t.clientX - swipeCatRef.current.x;
+  const dy = Math.abs(t.clientY - swipeCatRef.current.y);
+
+  if (Math.abs(dx) > SWIPE_CAT_X && dy < SWIPE_CAT_Y_MAX) {
+    if (dx < 0) moveCategory(+1); // swipe left
+    else moveCategory(-1);        // swipe right
+  }
+};
 
   /* handlers */
   const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
@@ -472,7 +529,12 @@ const extrasUnitTotal = useMemo(() => {
         </div>
 
         {/* Grid productos */}
-        <div className="lsf-grid" role="list">
+        <div
+              className="lsf-grid"
+              role="list"
+              onTouchStart={onCatTouchStart}
+              onTouchEnd={onCatTouchEnd}
+            >
           {itemsAvail.map((it) => {
             const img = getImg(it);
             const flipped = flippedId === it.pizzaId;
@@ -515,7 +577,7 @@ const extrasUnitTotal = useMemo(() => {
                       }}
                       aria-label={`Añadir ${it.name}`}
                     >
-                      {alreadyInCart ? "✔️" : "+add"}
+                      {alreadyInCart ? "✔️" : "+agregar"}
                     </button>
 
                   <div className="lsf-card__overlay">
