@@ -893,38 +893,62 @@ const onKeyDown = (e) => {
     );
   }
   // Paso 0: escoger modo
-  const chooseMode = (
-    <div className="pc-card pc-card--hero">
-      <img src={logo} alt="MyCrushPizza" className="pc-logo pc-logo--bleed" />
-      <h2 className="pc-title pc-title-center pc-title-pulse">¿Cómo quieres tu pedido?</h2>
+const chooseMode = (
+  <div className="pc-card pc-card--hero pc-hero-new">
 
-      <div className="pc-choice">
+    {/* CONTENEDOR BLANCO REAL */}
+    <div className="pc-hero-whiteBox">
+
+      {/* LOGO */}
+      <div className="pc-hero-logoInner">
+        <img src={logo} alt="MyCrushPizza" />
+      </div>
+
+      {/* PREGUNTA */}
+      <h2 className="pc-hero-question">
+        ¿Cómo quieres tu pedido?
+      </h2>
+
+      {/* BOTONES */}
+      <div className="pc-hero-actions">
         <button
-          className="pc-btn pc-btn-primary"
-          style={{ fontSize: "18px" }}
+          className="pc-btn pc-hero-btn"
           onClick={() => {
             setMode("pickupLocate");
             setStep("locate");
             setTriedNext(false);
           }}
         >
-          Recoger en tienda
+          Recoger
         </button>
 
         <button
-          className="pc-btn pc-btn-primary"
-          style={{ fontSize: "18px" }}
+          className="pc-btn pc-hero-btn"
           onClick={() => {
             setMode("deliveryLocate");
             setStep("locate");
             setTriedNext(false);
           }}
         >
-          Enviar a domicilio
+          Domi
         </button>
       </div>
+
     </div>
-  );
+
+    {/* OFERTAS (FUERA DEL BLANCO) */}
+    <div
+      className="pc-hero-offers"
+      onClick={() => window.location.href = "https://juego.mycrushpizza.com/"}
+      role="button"
+      aria-label="Ver ofertas"
+    >
+      OFERTAS
+    </div>
+
+  </div>
+);
+
   const deliveryLocateView = (
     <div className="pc-card">
       <div className="pc-actions pc-actions-nav" style={{ marginBottom: 8 }}>

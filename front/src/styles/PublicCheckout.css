@@ -912,3 +912,87 @@ border-radius: 20px;
   0%,100% { transform: scale(1); filter:none; }
   50%    { transform: scale(1.05); filter: drop-shadow(0 0 10px rgba(255,255,255,.3)); }
 }
+/* ===============================
+   HERO NUEVA PORTADA (REFINADA)
+================================ */
+
+.pc-hero-new {
+  background: #ff2e73;
+  border-radius: 20px;
+  padding: 0px 0px 0px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* compactación general */
+}
+.pc-hero-logoWrap {
+  background: #ff2e73;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+}
+.pc-hero-logoInner {
+ background: rgb(255, 255, 255);
+  border-radius: 20px;
+  padding: 0px;              /* MÁS AIRE */
+  display: flex;
+  justify-content: center;
+}
+.pc-hero-logoInner img {
+  width: 300px;               /* más presencia */
+  max-width: 100%;
+  display: block;
+}
+.pc-hero-question {
+  margin: 20px 0 5px;
+  text-align: center;
+  color: #ff2e73;
+  font-weight: 700;
+  font-size: 20px;
+}
+.pc-hero-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 0px;
+}
+.pc-hero-btn {
+  min-width: 150px;          /* MISMAS DIMENSIONES */
+  padding: 10px 30;
+  border-radius: 20px;
+  font-size: 25px;
+  font-weight: 600;
+  background: #4285f4;
+  color: #fff;
+}
+.pc-hero-offers {
+  margin-top: 10px;
+  margin-bottom: 5px;
+  background: #ff5a96;
+  color: #f7ff00;
+  font-weight: 900;
+  font-size: 30px;           /* MÁS PROTAGONISTA */
+  letter-spacing: 8px;
+  text-align: center;
+  padding: 18px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  position: relative;
+  animation: offersPulse 2.4s ease-in-out infinite;
+}
+@keyframes offersPulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 rgba(247,255,0,0.0); }
+  50%  { transform: scale(1.03); box-shadow: 0 0 18px rgba(247,255,0,0.55); }
+  100% { transform: scale(1); box-shadow: 0 0 0 rgba(247,255,0,0.0); }
+}
+.pc-hero-offers:active {
+  transform: scale(0.98);
+}
+.pc-hero-whiteBox {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 40px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
