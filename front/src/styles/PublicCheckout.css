@@ -54,8 +54,8 @@ overscroll-behavior: contain;
   border-radius:var(--pc-radius);
   padding:var(--pc-card-pad);
   box-shadow:0 10px 20px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.04);
-  margin:14px auto;                /* centrado horizontal */
-  overflow:hidden;                 /* recorta halos internos */
+  margin:10px auto;              
+  overflow:hidden;              
 }
 .pc-title{
   margin:20px 0 14px;
@@ -919,10 +919,10 @@ border-radius: 20px;
 .pc-hero-new {
   background: #ff2e73;
   border-radius: 20px;
-  padding: 0px 0px 0px;
+  padding: 0px 0px;
   display: flex;
   flex-direction: column;
-  gap: 10px; /* compactación general */
+  gap: 0; 
 }
 .pc-hero-logoWrap {
   background: #ff2e73;
@@ -938,12 +938,12 @@ border-radius: 20px;
   justify-content: center;
 }
 .pc-hero-logoInner img {
-  width: 300px;               /* más presencia */
+  width: 325px;               /* más presencia */
   max-width: 100%;
   display: block;
 }
 .pc-hero-question {
-  margin: 20px 0 5px;
+  margin: 10px 0 5px;
   text-align: center;
   color: #ff2e73;
   font-weight: 700;
@@ -966,14 +966,14 @@ border-radius: 20px;
 }
 .pc-hero-offers {
   margin-top: 10px;
-  margin-bottom: 5px;
+  margin-bottom: 0px;
   background: #ff5a96;
   color: #f7ff00;
   font-weight: 900;
   font-size: 30px;           /* MÁS PROTAGONISTA */
-  letter-spacing: 8px;
+  letter-spacing: 20px;
   text-align: center;
-  padding: 18px 12px;
+  padding: 18px 10px;
   border-radius: 20px;
   cursor: pointer;
   position: relative;
@@ -990,9 +990,9 @@ border-radius: 20px;
 .pc-hero-whiteBox {
   background: #ffffff;
   border-radius: 20px;
-  padding: 40px 20px 20px;
+  padding: 30px 0px 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 5px;
 }
