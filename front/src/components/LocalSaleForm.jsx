@@ -186,9 +186,13 @@ export default function LocalSaleForm({
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
   const [categoriesDb, setCategoriesDb] = useState([]);
-  const   [extrasAvail, setExtrasAvail] = useState([]);
-const [showAllExtras, setShowAllExtras] = useState(false);
-const [customer, setCustomer] = useState(null);
+  const [extrasAvail, setExtrasAvail] = useState([]);
+  const [showAllExtras, setShowAllExtras] = useState(false);
+  const [customer, setCustomer] = useState(null);
+  const [dragX, setDragX] = useState(0);
+  const dragActive = useRef(false);
+
+
 useEffect(() => {
   const incoming = Array.isArray(initialCart) ? initialCart : null;
   if (!incoming || incoming.length === 0) return;
@@ -382,18 +386,38 @@ const moveCategory = useCallback(
     const max = qtyOptions[qtyOptions.length - 1] || 1;
     setSel((s) => ({ ...s, qty: Math.min(Math.max(1, Number(s.qty || 1)), max) }));
   }, [qtyOptions]);
+
+
 const onCatTouchStart = (e) => {
   const t = e.touches?.[0];
   if (!t) return;
 
+  dragActive.current = true;
   swipeCatRef.current = {
     x: t.clientX,
     y: t.clientY,
   };
-};
+}
+const onCatTouchMove = (e) => {
+  if (!dragActive.current) return;
 
+  const t = e.touches?.[0];
+  if (!t) return;
+
+  const dx = t.clientX - swipeCatRef.current.x;
+  const dy = Math.abs(t.clientY - swipeCatRef.current.y);
+
+  // solo gesto horizontal limpio
+  if (dy > SWIPE_CAT_Y_MAX) return;
+
+  // resistencia (no se va a la mierda)
+  const resisted = dx * 0.35;
+
+  setDragX(resisted);
+};
 const onCatTouchEnd = (e) => {
-  if (productModalOpen || cartOpen) return;
+  if (!dragActive.current) return;
+  dragActive.current = false;
 
   const t = e.changedTouches?.[0];
   if (!t) return;
@@ -401,11 +425,15 @@ const onCatTouchEnd = (e) => {
   const dx = t.clientX - swipeCatRef.current.x;
   const dy = Math.abs(t.clientY - swipeCatRef.current.y);
 
+  // snap back visual
+  setDragX(0);
+
   if (Math.abs(dx) > SWIPE_CAT_X && dy < SWIPE_CAT_Y_MAX) {
-    if (dx < 0) moveCategory(+1); // swipe left
-    else moveCategory(-1);        // swipe right
+    if (dx < 0) moveCategory(+1);
+    else moveCategory(-1);
   }
 };
+
 
   /* handlers */
   const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
@@ -420,10 +448,10 @@ const onCatTouchEnd = (e) => {
 
   const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
 
-const extrasUnitTotal = useMemo(() => {
-  const selected = extrasAvail.filter((ex) => sel.extras[ex.ingredientId]);
-  return selected.reduce((sum, ex) => sum + num(ex.price), 0);
-}, [sel.extras, extrasAvail]);
+  const extrasUnitTotal = useMemo(() => {
+    const selected = extrasAvail.filter((ex) => sel.extras[ex.ingredientId]);
+    return selected.reduce((sum, ex) => sum + num(ex.price), 0);
+  }, [sel.extras, extrasAvail]);
 
   const addLine = () => {
     if (!current) return;
@@ -480,13 +508,18 @@ const extrasUnitTotal = useMemo(() => {
 
   return (
     <>
-      <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
-      
-      
+        <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         <div className="lsf-top">
-          <div className="lsf-top__title">{compact ? "Selecciona productos" : "Local sale"}</div>
+          <div className="lsf-top__title">
+            {compact ? "Selecciona productos" : "Local sale"}
+          </div>
 
-          <button type="button" className="lsf-cartbtn" onClick={() => setCartOpen(true)} aria-label="Abrir carrito">
+          <button
+            type="button"
+            className="lsf-cartbtn"
+            onClick={() => setCartOpen(true)}
+            aria-label="Abrir carrito"
+          >
             🛒 <span className="lsf-cartbtn__count">{cartCount}</span>
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
@@ -529,12 +562,15 @@ const extrasUnitTotal = useMemo(() => {
         </div>
 
         {/* Grid productos */}
-        <div
-              className="lsf-grid"
-              role="list"
-              onTouchStart={onCatTouchStart}
-              onTouchEnd={onCatTouchEnd}
-            >
+        <div className="lsf-grid-wrap">
+          <div
+            className="lsf-grid"
+            role="list"
+            style={{ transform: `translateX(${dragX}px)` }}
+            onTouchStart={onCatTouchStart}
+            onTouchMove={onCatTouchMove}
+            onTouchEnd={onCatTouchEnd}
+          >
           {itemsAvail.map((it) => {
             const img = getImg(it);
             const flipped = flippedId === it.pizzaId;
@@ -615,6 +651,7 @@ const extrasUnitTotal = useMemo(() => {
                 : "No hay items disponibles."}
             </div>
           )}
+        </div>
         </div>
       </div>
 

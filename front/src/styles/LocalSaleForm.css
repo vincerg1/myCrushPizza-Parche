@@ -8,6 +8,8 @@
   width: 100%;
   max-width: 100%;
   overflow-x: hidden; 
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;
 }
 
 /* ───────── Mobile-first TPV layout ───────── */
@@ -81,8 +83,10 @@
 .lsf-tab.is-active {
   border-color: #1a73e8;
 }
-
-/* Grid productos */
+.lsf-grid-wrap {
+  overflow: hidden;
+  position: relative;
+}
 .lsf-grid {
   width: 100%;
   display: grid;
@@ -91,6 +95,8 @@
   padding: 0;
   margin: 0;
   box-sizing: border-box;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform;     
 }
 
 /* Card base */

@@ -381,18 +381,21 @@ const goBack = () => {
   // 🚫 En portada NO se permite swipe
   if (mode === "choose") return;
 
-  if (mode === "deliveryLocate" || mode === "pickupLocate") {
-    setMode("choose");
-    setStep("locate");
-    return;
-  }
-
+  // ✅ PRIORIDAD ABSOLUTA: review → order
   if (step === "review") {
     setStep("order");
     return;
   }
 
+  // order → locate
   if (step === "order") {
+    setStep("locate");
+    return;
+  }
+
+  // locate → choose (solo aquí)
+  if (mode === "deliveryLocate" || mode === "pickupLocate") {
+    setMode("choose");
     setStep("locate");
     return;
   }

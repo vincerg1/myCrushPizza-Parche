@@ -58,7 +58,7 @@ overscroll-behavior: contain;
   overflow:hidden;                 /* recorta halos internos */
 }
 .pc-title{
-  margin:2px 0 14px;
+  margin:20px 0 14px;
   font-size:1.25rem;
   font-weight:800;
   color:var(--brand-pink);
@@ -789,26 +789,12 @@ border-radius: 20px;
 
 .pc-empty-address__img {
   width: 100%;
-  max-width: 320px;        /* 👈 más grande pero controlada */
+  max-width: 320px;        
   margin: 0 auto 10px;
-
   display: block;
-
-  border-radius: 22px;     /* suaviza esquinas */
-  filter: grayscale(100%) contrast(0.95);
+  border-radius: 20px;    
+  filter: grayscale(100%) ;
   opacity: 0.85;
-
-  /* 💫 integración visual */
-  box-shadow:
-    0 12px 30px rgba(0, 0, 0, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
-
-  /* sensación de “difuminado” */
-  background: linear-gradient(
-    to bottom,
-    rgba(255,255,255,0.6),
-    rgba(255,255,255,0)
-  );
 }
 .pc-empty-address {
   position: relative;
@@ -817,12 +803,7 @@ border-radius: 20px;
   content: "";
   position: absolute;
   inset: -6px;
-  border-radius: 26px;
-  background: radial-gradient(
-    circle at center,
-    rgba(255,255,255,0.35),
-    transparent 70%
-  );
+  border-radius: 20px;
   z-index: -1;
 }
 
