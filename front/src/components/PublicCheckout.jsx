@@ -42,30 +42,20 @@ export default function PublicCheckout() {
   // Flow: choose → deliveryLocate/pickupLocate (locate) → order → review
   const [mode, setMode] = useState("choose");
   const [step, setStep] = useState("locate");
-
-  // comunes / delivery
   const [query, setQuery] = useState("");
   const [coords, setCoords] = useState(null);
   const [nearest, setNearest] = useState(null);
   const [outOfRange, setOutOfRange] = useState(false);
-
-  // pickup
   const [stores, setStores] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState(null);
   const [mapCenter, setMapCenter] = useState({ lat: 40.4168, lng: -3.7038 });
   const [mapZoom, setMapZoom] = useState(12);
-
-  // cliente / carrito
   const [customer, setCustomer] = useState(null);
   const [showCus, setShowCus] = useState(false);
   const [pending, setPending] = useState(null);
   const [flashCus, setFlashCus] = useState(false);
-
-  // validación visual + cache dirección tienda
   const [triedNext, setTriedNext] = useState(false);
   const [storeAddrById, setStoreAddrById] = useState({});
-
-  // pagar
   const [isPaying, setIsPaying] = useState(false);
   const [restrictModal, setRestrictModal] = useState({
     open: false,
@@ -98,6 +88,9 @@ export default function PublicCheckout() {
       return { checked: true, isRestricted: 0, reason: "", code: "" };
     }
   }, []);
+  const EMPTY_ADDRESS_IMG =
+  "https://res.cloudinary.com/djtswalha/image/upload/v1770106549/9c3761b6-294c-429a-bbe0-825cc1f6f8bb_cvuibh.png";
+
 
   // ===== LEGALES / COOKIES =====
   const [showTermsPurchase, setShowTermsPurchase] = useState(false);
@@ -266,7 +259,7 @@ const onPlaceChanged = useCallback(async () => {
   const [couponOk, setCouponOk] = useState(false);
   const [showCouponToast, setShowCouponToast] = useState(false);
   const COUPON_GROUPS = [3, 4, 4];
-const [ingredientQuery, setIngredientQuery] = useState("");
+  const [ingredientQuery, setIngredientQuery] = useState("");
   const [showCouponInfo, setShowCouponInfo] = useState(false);
 
   useEffect(() => {
@@ -333,9 +326,6 @@ const checkCoupon = useCallback(async () => {
     setCouponMsg("No se pudo validar el cupón.");
   }
 }, [couponCode]);
-
-
-
   // ===== PICKUP: cargar tiendas activas =====
   useEffect(() => {
     if (mode !== "pickupLocate") return;
@@ -374,20 +364,20 @@ const checkCoupon = useCallback(async () => {
   };
 
   // =================== SWIPE NAV ===================
+  const [dragX, setDragX] = useState(0);
   const tStart = useRef({ x: 0, y: 0, at: 0, target: null });
   const SWIPE_X = 70;
   const SWIPE_Y_MAX = 40;
-
-  const isInteractive = (el) => {
-    if (!el) return false;
-    const tag = el.tagName;
-    if (!tag) return false;
-    const tagU = tag.toUpperCase();
-    if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(tagU)) return true;
-    return el.closest?.("[data-noswipe]") ? true : false;
-  };
-
- const goBack = () => {
+  const EDGE = 20;
+    const isInteractive = (el) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (!tag) return false;
+      const tagU = tag.toUpperCase();
+      if (["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A", "LABEL"].includes(tagU)) return true;
+      return el.closest?.("[data-noswipe]") ? true : false;
+    };
+const goBack = () => {
   // 🚫 En portada NO se permite swipe
   if (mode === "choose") return;
 
@@ -407,9 +397,7 @@ const checkCoupon = useCallback(async () => {
     return;
   }
 };
-
-
-  const goForward = () => {
+const goForward = () => {
     if (step === "locate") {
       if (nextGuard()) setStep("order");
       return;
@@ -418,10 +406,7 @@ const checkCoupon = useCallback(async () => {
       if (pending) setStep("review");
       return;
     }
-  };
-
-const EDGE = 20;
-
+};
 const onTouchStart = (e) => {
   const touch = e.touches[0];
 
@@ -440,7 +425,6 @@ const onTouchStart = (e) => {
     target: e.target
   };
 };
-
 const onTouchMove = (e) => {
   if (!tStart.current.target) return;
   if (isInteractive(tStart.current.target)) return;
@@ -449,16 +433,22 @@ const onTouchMove = (e) => {
   const dx = touch.clientX - tStart.current.x;
   const dy = Math.abs(touch.clientY - tStart.current.y);
 
-  if (Math.abs(dx) > SWIPE_X && dy < SWIPE_Y_MAX) {
-    e.preventDefault(); // 🔒 clave
+if (dy < SWIPE_Y_MAX) {
+  // feedback visual suave
+  const clamped = Math.max(-120, Math.min(120, dx));
+  setDragX(clamped * 0.25); // resistencia
+
+  if (Math.abs(dx) > SWIPE_X) {
+    e.preventDefault();
   }
+}
 };
-
-
 const onTouchEnd = (e) => {
   if (!tStart.current.target) return;
+
   if (isInteractive(tStart.current.target)) {
     tStart.current.target = null;
+    setDragX(0);
     return;
   }
 
@@ -473,14 +463,16 @@ const onTouchEnd = (e) => {
     else goBack();
   }
 
+  // 🧈 reset visual suave
+  setDragX(0);
+
   // 🔁 reset SIEMPRE
   tStart.current = { x: 0, y: 0, at: 0, target: null };
 };
-
-  const onKeyDown = (e) => {
+const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
     if (e.key === "ArrowRight") goForward();
-  };
+};
 
   // =================== VISTAS ===================
   const flashCustomerBtn = useCallback(() => {
@@ -965,8 +957,17 @@ const onTouchEnd = (e) => {
             onChange={(e) => setQuery(e.target.value.toUpperCase())}
           />
         </Autocomplete>
+        
       </LoadScriptNext>
-
+      {!coords && (
+        <div className="pc-empty-address">
+          <img
+            src={EMPTY_ADDRESS_IMG}
+            alt="No sabemos dónde vives"
+            className="pc-empty-address__img"
+          />
+        </div>
+      )}
       {coords && (
         <LoadScriptNext googleMapsApiKey={GOOGLE_KEY}>
           <div className="pc-map" data-noswipe>
@@ -1001,7 +1002,6 @@ const onTouchEnd = (e) => {
           </div>
         </LoadScriptNext>
       )}
-
       {nearest && !nearest.error && !outOfRange && (
         <p className="pc-note">
           🧭 Tienda más cercana: <b>#{nearest.storeId}</b> (~{Number(nearest.distanciaKm).toFixed(2)} km)
@@ -1013,7 +1013,6 @@ const onTouchEnd = (e) => {
           Distancia estimada: ~{Number(nearest.distanciaKm).toFixed(2)} km. Prueba con otra dirección o selecciona <b>Recoger en tienda</b>.
         </div>
       )}
-
       {!baseOk && triedNext && (
         <div className="pc-alert" role="alert" aria-live="polite" style={{ marginTop: 8 }}>
           Faltan <b>Nombre</b> y <b>Teléfono</b> del cliente. Toca “Datos del cliente” para completar.
@@ -1169,8 +1168,7 @@ const onTouchEnd = (e) => {
       )}
     </div>
   );
-  // Paso 2: carrito
-// ✅ orderView (PublicCheckout.jsx) — reemplaza SOLO este bloque
+
 
 const orderView = (
   <div className="pc-fullscreen">
@@ -1812,7 +1810,8 @@ if (couponOk && coupon?.code) {
       />
 
       <div
-        className="pc-wrap pc-wrap--narrow"
+        className={`pc-wrap pc-wrap--narrow ${mode === "choose" ? "pc-wrap--hero" : ""}`}
+         style={{ transform: `translateX(${dragX}px)` }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
