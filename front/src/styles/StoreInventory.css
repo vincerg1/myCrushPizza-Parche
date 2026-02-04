@@ -178,5 +178,33 @@
     align-items: center;
     justify-content: center;
   }
+
+  /* ───────────── TOP SEARCH ACTION ───────────── */
+
+.storeInv-searchTop {
+  display: flex;
+  justify-content: flex-end; 
+  margin-bottom: 4px;
+}
+.storeInv-searchBtn:hover {
+  background: #f5f5f5;
+}
+.storeInv-searchBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;      /* 👈 TAMAÑO DEL EMOJI */
+  padding: 2px;         /* 👈 TAMAÑO DEL BOTÓN */
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.storeInv-searchBtn:hover {
+  background: #f5f5f5;
+}
+
+
 }
 

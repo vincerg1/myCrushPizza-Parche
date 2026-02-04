@@ -26,7 +26,6 @@ export default function Backoffice() {
   const { auth, logout } = useAuth();
   const role = auth?.role;
   const isAdmin = role === "admin";
-
   const [active, setActive] = useState(null);
   const [open, setOpen] = useState({ offers: false, pizzaCreator: false });
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);

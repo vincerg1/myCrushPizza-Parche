@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "../styles/CustomersPanel.css";
+import CustomerIncentiveModal from "./CustomerIncentiveModal";
 /** ===== Config base de API ===== */
 const guessDevBase = () => {
   const { protocol, hostname, port } = window.location;
@@ -150,7 +151,11 @@ export default function CustomersPanel() {
   const [stats, setStats] = useState({ total:0, counts:{ S1:0,S2:0,S3:0,S4:0 }, active:{restricted:0,unrestricted:0}, updatedAt:null });
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+const [incentiveCustomer, setIncentiveCustomer] = useState(null);
 
+const startIncentive = (customer) => {
+  setIncentiveCustomer(customer);
+};
   const loadStats = async () => {
     try {
       const s = await CustomersAPI.stats();
@@ -160,8 +165,6 @@ export default function CustomersPanel() {
       // no detenemos la UI si fallan métricas
     }
   };
-
-  // carga inicial: últimos 5 + stats
   const loadLatest = async () => {
     setLoading(true); setError("");
     try {
@@ -173,7 +176,6 @@ export default function CustomersPanel() {
       console.error(e); setError("No se pudo cargar clientes. " + e.message);
     } finally { setLoading(false); }
   };
-
   const reloadSameFilter = async () => {
     const digits = normalizePhone(query);
     setLoading(true); setError("");
@@ -301,28 +303,26 @@ export default function CustomersPanel() {
   return (
     <div className="customers-panel">
       {/* Header */}
-<header className="customers-header">
-  <div className="customers-header-left">
-    <h2>Customers</h2>
-    <button onClick={onResegment} className="btn btn-ghost">
-      Actualizar segmentos
-    </button>
-  </div>
+      <header className="customers-header">
+        <div className="customers-header-left">
+          <h2>Customers</h2>
+          <button onClick={onResegment} className="btn btn-ghost">
+            Actualizar segmentos
+          </button>
+        </div>
 
-  <div className="customers-header-right">
-    <input
-      value={query}
-      onChange={(e) => setQuery(normalizePhone(e.target.value))}
-      placeholder="Search by phone…"
-      className="customers-search"
-    />
-    <button onClick={startCreate} className="btn-primary">
-      + Add customer
-    </button>
-  </div>
-</header>
-
-
+        <div className="customers-header-right">
+          <input
+            value={query}
+            onChange={(e) => setQuery(normalizePhone(e.target.value))}
+            placeholder="Search by phone…"
+            className="customers-search"
+          />
+          <button onClick={startCreate} className="btn-primary">
+            + Add customer
+          </button>
+        </div>
+      </header>
       {/* Stats card */}
       <section style={{
         display:"grid",
@@ -371,44 +371,85 @@ export default function CustomersPanel() {
           <div>Status</div>
           <div>Actions</div>
         </div>
-
         {rows.map((c, i) => (
-          <div key={c.id} style={{
-            display:"grid",
-            gridTemplateColumns:"120px 1fr 160px 90px 120px 200px",
-            padding:"12px", borderTop:"1px solid #eee", alignItems:"center",
-            background: i % 2 ? "#fcfcfc" : "#fff"
-          }}>
-            <div style={{fontVariantNumeric:"tabular-nums"}}>{c.code}</div>
+          <div
+            key={c.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "120px 1fr 160px 90px 120px 200px",
+              padding: "12px",
+              borderTop: "1px solid #eee",
+              alignItems: "center",
+              background: i % 2 ? "#fcfcfc" : "#fff",
+            }}
+          >
+            <div style={{ fontVariantNumeric: "tabular-nums" }}>{c.code}</div>
+
             <div title={c.observations || ""}>
-              <div style={{ fontWeight:600 }}>
+              <div style={{ fontWeight: 600 }}>
                 {(c.name || "—").toUpperCase()}
               </div>
             </div>
+
             <div>{displayESPhone(c.phone) || "—"}</div>
-            <div><Badge tone="default">{c.segment || "—"}</Badge></div>
+
             <div>
-              {c.isRestricted
-                ? <Badge tone="warn">Restricted</Badge>
-                : <Badge tone="success">Active</Badge>}
+              <Badge tone="default">{c.segment || "—"}</Badge>
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-              <button className="btn btn-sm" onClick={() => startEdit(c)}>Edit</button>
-              <button className="btn btn-sm" onClick={async () => {
-                const flag = !c.isRestricted;
-                const reason = flag ? (prompt("Reason for restriction (optional):") || "") : "";
-                try {
-                  const up = await CustomersAPI.toggleRestrict(c.id, flag, reason);
-                  setRows(prev => prev.map(r => r.id === c.id ? { ...r, ...up } : r));
-                  loadStats();
-                } catch (e) {
-                  console.error(e); alert("No se pudo cambiar el estado de restricción.");
-                }
-              }}>{c.isRestricted ? "Unrestrict" : "Restrict"}</button>
+
+            <div>
+              {c.isRestricted ? (
+                <Badge tone="warn">Restricted</Badge>
+              ) : (
+                <Badge tone="success">Active</Badge>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => startEdit(c)}
+              >
+                Edit
+              </button>
+
+              <button
+                className="btn btn-sm"
+                onClick={() => startIncentive(c)}
+              >
+                Push
+              </button>
+
+              <button
+                className="btn btn-sm"
+                onClick={async () => {
+                  const flag = !c.isRestricted;
+                  const reason = flag
+                    ? prompt("Reason for restriction (optional):") || ""
+                    : "";
+                  try {
+                    const up = await CustomersAPI.toggleRestrict(
+                      c.id,
+                      flag,
+                      reason
+                    );
+                    setRows((prev) =>
+                      prev.map((r) =>
+                        r.id === c.id ? { ...r, ...up } : r
+                      )
+                    );
+                    loadStats();
+                  } catch (e) {
+                    console.error(e);
+                    alert("No se pudo cambiar el estado de restricción.");
+                  }
+                }}
+              >
+                {c.isRestricted ? "Unrest" : "Rest"}
+              </button>
             </div>
           </div>
         ))}
-
         {!rows.length && !loading && (
           <div style={{ padding:16, textAlign:"center", color:"#6b7280" }}>No customers.</div>
         )}
@@ -424,6 +465,12 @@ export default function CustomersPanel() {
           onDelete={editing?.id ? () => onDeleteCurrent(editing.id) : null}
         />
       )}
+      {incentiveCustomer && (
+      <CustomerIncentiveModal
+        customer={incentiveCustomer}
+        onClose={() => setIncentiveCustomer(null)}
+      />
+    )}
     </div>
   );
 }

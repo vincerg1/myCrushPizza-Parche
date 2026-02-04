@@ -1,5 +1,5 @@
 // src/components/OfferCreatePanel.jsx
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import api from "../setupAxios";
 
 const SEGMENTS = ["S1", "S2", "S3", "S4"];
@@ -14,6 +14,7 @@ const TYPE_LABELS = {
 const USAGE_LIMIT = 1;
 
 export default function OfferCreatePanel() {
+
   const [form, setForm] = useState({
     type: "RANDOM_PERCENT",
     quantity: 10,
@@ -23,7 +24,6 @@ export default function OfferCreatePanel() {
     amount: 9.99,
     maxAmount: "",
     segments: [],
-    assignedToId: "",
     isTemporal: false,
     daysActive: [],
     windowStart: "",
@@ -36,126 +36,90 @@ export default function OfferCreatePanel() {
     campaign: "",
     channel: "GAME",
     acquisition: "GAME",
-      visibility: "PUBLIC",
+    visibility: "PUBLIC", // 🔒 SIEMPRE PUBLIC EN DEFAULT
   });
 
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [sample, setSample] = useState([]);
 
-  // NEW: games dropdown
+  /* ───────────── Games ───────────── */
+
   const [games, setGames] = useState([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState("");
+
+  /* ───────────── Helpers ───────────── */
 
   const isRandom       = form.type === "RANDOM_PERCENT";
   const isFixedPercent = form.type === "FIXED_PERCENT";
   const isFixedAmount  = form.type === "FIXED_AMOUNT";
 
-  const onChange = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const onChange = (k, v) =>
+    setForm((f) => ({ ...f, [k]: v }));
 
   const timeToMinutes = (hhmm) => {
     if (!hhmm || !/^\d{2}:\d{2}$/.test(hhmm)) return null;
     const [h, m] = hhmm.split(":").map(Number);
-    return (Number.isFinite(h) && Number.isFinite(m)) ? h * 60 + m : null;
+    return h * 60 + m;
   };
+
+  /* ───────────── Segments ───────────── */
 
   const allSegmentsSelected = useMemo(
     () => form.segments.length === SEGMENTS.length,
     [form.segments]
   );
-  const toggleAllSegments = (checked) => onChange("segments", checked ? [...SEGMENTS] : []);
+
+  const toggleAllSegments = (checked) =>
+    onChange("segments", checked ? [...SEGMENTS] : []);
+
   const toggleSegment = (seg) => {
-    setForm((f) => {
-      const has = f.segments.includes(seg);
-      return { ...f, segments: has ? f.segments.filter((s) => s !== seg) : [...f.segments, seg] };
-    });
+    setForm((f) => ({
+      ...f,
+      segments: f.segments.includes(seg)
+        ? f.segments.filter((s) => s !== seg)
+        : [...f.segments, seg],
+    }));
   };
+
   const toggleDay = (day) => {
-    setForm((f) => {
-      const has = f.daysActive.includes(day);
-      const next = has ? f.daysActive.filter((d) => d !== day) : [...f.daysActive, day];
-      return { ...f, daysActive: next };
-    });
+    setForm((f) => ({
+      ...f,
+      daysActive: f.daysActive.includes(day)
+        ? f.daysActive.filter((d) => d !== day)
+        : [...f.daysActive, day],
+    }));
   };
 
-  const [custQuery, setCustQuery] = useState("");
-  const [custOpts, setCustOpts]   = useState([]);
-  const [showDrop, setShowDrop]   = useState(false);
-  const debounceRef = useRef(null);
-  const boxRef = useRef(null);
-  const onlyDigits = (s="") => s.replace(/\D/g, "");
+  /* ───────────── Games loader ───────────── */
 
   useEffect(() => {
-    const q = custQuery.trim();
-    const digits = onlyDigits(q);
-    if (!digits || digits.length < 2) { setCustOpts([]); setShowDrop(false); return; }
+    if (!form.useInGame) return;
 
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const { data } = await api.get("/api/customers/admin", { params: { q: digits, take: 6 } });
-        const items = Array.isArray(data?.items) ? data.items : [];
-        setCustOpts(items);
-        setShowDrop(true);
-      } catch {
-        setCustOpts([]);
-        setShowDrop(false);
-      }
-    }, 250);
-
-    return () => debounceRef.current && clearTimeout(debounceRef.current);
-  }, [custQuery]);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (!boxRef.current?.contains(e.target)) setShowDrop(false);
-    };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, []);
-
-  const selectCustomer = (c) => {
-    onChange("assignedToId", c.id);
-    setCustQuery(`${c.code} · ${c.name || "-"} · ${c.phone || ""}`);
-    setCustOpts([]);
-    setShowDrop(false);
-  };
-  const clearCustomer = () => {
-    onChange("assignedToId", "");
-    setCustQuery("");
-    setCustOpts([]);
-    setShowDrop(false);
-  };
-
-  // NEW: load games when useInGame is enabled
-  useEffect(() => {
     let cancelled = false;
 
     const loadGames = async () => {
-      if (!form.useInGame) return;
-
       setGamesLoading(true);
       setGamesError("");
       try {
         const { data } = await api.get("/api/games", {
           params: { active: true },
-          headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY },
+          headers: {
+            "x-api-key": process.env.REACT_APP_SALES_API_KEY,
+          },
         });
 
-        const items = Array.isArray(data?.items) ? data.items : [];
-        if (cancelled) return;
+        if (!cancelled) {
+          const items = Array.isArray(data?.items) ? data.items : [];
+          setGames(items);
 
-        setGames(items);
-
-        // auto-select first active game if none selected
-        if (!form.gameId && items.length) {
-          setForm((f) => ({ ...f, gameId: String(items[0].id) }));
+          if (!form.gameId && items.length) {
+            setForm((f) => ({ ...f, gameId: String(items[0].id) }));
+          }
         }
-      } catch (e) {
-        if (cancelled) return;
-        setGames([]);
-        setGamesError("No se pudieron cargar los juegos.");
+      } catch {
+        if (!cancelled) setGamesError("No se pudieron cargar los juegos.");
       } finally {
         if (!cancelled) setGamesLoading(false);
       }
@@ -163,203 +127,147 @@ export default function OfferCreatePanel() {
 
     loadGames();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.useInGame]);
 
-  // NEW: if user unchecks useInGame, clear game fields
   useEffect(() => {
     if (!form.useInGame) {
       setGames([]);
       setGamesLoading(false);
       setGamesError("");
-      setForm((f) => ({ ...f, gameId: "", campaign: "", channel: "GAME", acquisition: "GAME" }));
+      setForm((f) => ({
+        ...f,
+        gameId: "",
+        campaign: "",
+        channel: "GAME",
+        acquisition: "GAME",
+      }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.useInGame]);
 
+  /* ───────────── Validation ───────────── */
+
   const validate = () => {
-    if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 1)
+    if (!Number.isFinite(Number(form.quantity)) || form.quantity < 1)
       return "Cantidad de cupones inválida.";
+
     if (!form.expiresAt)
       return "Debes indicar fecha/hora de caducidad.";
 
     if (isRandom) {
-      const min = Number(form.percentMin), max = Number(form.percentMax);
-      if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max > 90 || max < min)
-        return "Rango de % inválido (1–90) y Min ≤ Max.";
-    }
-    if (isFixedPercent) {
-      const p = Number(form.percent);
-      if (!Number.isFinite(p) || p < 1 || p > 90) return "% fijo inválido (1–90).";
-    }
-    if (isFixedAmount) {
-      const a = Number(form.amount);
-      if (!Number.isFinite(a) || a <= 0) return "Importe fijo inválido (> 0).";
+      const min = Number(form.percentMin);
+      const max = Number(form.percentMax);
+      if (min < 1 || max > 90 || max < min)
+        return "Rango de % inválido (1–90).";
     }
 
-    if ((isRandom || isFixedPercent) && String(form.maxAmount).trim() !== "") {
+    if (isFixedPercent) {
+      const p = Number(form.percent);
+      if (p < 1 || p > 90)
+        return "% fijo inválido (1–90).";
+    }
+
+    if (isFixedAmount) {
+      const a = Number(form.amount);
+      if (a <= 0)
+        return "Importe fijo inválido.";
+    }
+
+    if ((isRandom || isFixedPercent) && form.maxAmount !== "") {
       const m = Number(form.maxAmount);
-      if (!Number.isFinite(m) || m <= 0) return "Max Amount debe ser un número > 0.";
+      if (!Number.isFinite(m) || m <= 0)
+        return "Max Amount inválido.";
     }
 
     if (form.isTemporal) {
-      if (!form.daysActive.length) return "Selecciona al menos un día de la semana.";
-      const ws = timeToMinutes(form.windowStart);
-      const we = timeToMinutes(form.windowEnd);
-      if (ws == null || we == null) return "Completa hora inicio y fin (HH:MM).";
-    }
-
-    if (String(form.assignedToId).trim() !== "") {
-      const cid = Number(form.assignedToId);
-      if (!Number.isFinite(cid) || cid <= 0) return "ID de cliente inválido.";
+      if (!form.daysActive.length)
+        return "Selecciona días activos.";
+      if (
+        timeToMinutes(form.windowStart) == null ||
+        timeToMinutes(form.windowEnd) == null
+      )
+        return "Horario inválido.";
     }
 
     if (form.useInGame) {
       const gid = Number(form.gameId);
-      if (!Number.isFinite(gid) || gid <= 0) return "Debes seleccionar un juego.";
-      // Optional: ensure selected id exists in loaded list (when available)
-      if (games.length && !games.some((g) => Number(g.id) === gid)) return "El juego seleccionado no es válido.";
+      if (!Number.isFinite(gid) || gid <= 0)
+        return "Debes seleccionar un juego.";
     }
 
     return null;
   };
 
- const submit = async (e) => {
-  e.preventDefault();
-  setMsg("");
-  setSample([]);
+  /* ───────────── Submit ───────────── */
 
-  const err = validate();
-  if (err) {
-    setMsg(err);
-    return;
-  }
+  const submit = async (e) => {
+    e.preventDefault();
+    setMsg("");
+    setSample([]);
 
-  setSaving(true);
+    const err = validate();
+    if (err) return setMsg(err);
 
-  try {
-    const payload = {
-      type: form.type,
-      quantity: Number(form.quantity),
-      usageLimit: USAGE_LIMIT,
+    setSaving(true);
 
-      // 🔑 NUEVO: visibilidad explícita
-      visibility: form.visibility,
+    try {
+      const payload = {
+        type: form.type,
+        quantity: Number(form.quantity),
+        usageLimit: USAGE_LIMIT,
+        visibility: "PUBLIC",
 
-      ...(isRandom
-        ? {
-            percentMin: Number(form.percentMin),
-            percentMax: Number(form.percentMax),
-          }
-        : {}),
-      ...(isFixedPercent
-        ? { percent: Number(form.percent) }
-        : {}),
-      ...(isFixedAmount
-        ? { amount: Number(form.amount) }
-        : {}),
-      ...((isRandom || isFixedPercent) &&
-      String(form.maxAmount).trim() !== ""
-        ? { maxAmount: Number(form.maxAmount) }
-        : {}),
-      ...(form.segments.length
-        ? { segments: form.segments }
-        : {}),
-      ...(String(form.assignedToId).trim() !== ""
-        ? { assignedToId: Number(form.assignedToId) }
-        : {}),
-      ...(form.activeFrom
-        ? { activeFrom: form.activeFrom }
-        : {}),
-      ...(form.expiresAt
-        ? { expiresAt: form.expiresAt }
-        : {}),
-      ...(form.isTemporal
-        ? {
-            daysActive: form.daysActive,
-            windowStart: timeToMinutes(form.windowStart),
-            windowEnd: timeToMinutes(form.windowEnd),
-          }
-        : {}),
-      ...(form.useInGame
-        ? {
-            acquisition: form.acquisition || "GAME",
-            channel: form.channel || "GAME",
-            gameId: Number(form.gameId),
-            ...(form.campaign
-              ? { campaign: form.campaign }
-              : {}),
-          }
-        : {}),
-    };
+        ...(isRandom && {
+          percentMin: Number(form.percentMin),
+          percentMax: Number(form.percentMax),
+        }),
 
-    const { data } = await api.post(
-      "/api/coupons/bulk-generate",
-      payload,
-      { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
-    );
+        ...(isFixedPercent && { percent: Number(form.percent) }),
+        ...(isFixedAmount && { amount: Number(form.amount) }),
 
-    setMsg(
-      `✅ Se crearon ${data?.created ?? 0} cupones. Prefijo: ${
-        data?.prefix || "-"
-      }${
-        data?.constraints?.expiresAt
-          ? ` · Vence: ${new Date(
-              data.constraints.expiresAt
-            ).toLocaleString("es-ES")}`
-          : ""
-      }`
-    );
+        ...(form.maxAmount && { maxAmount: Number(form.maxAmount) }),
+        ...(form.segments.length && { segments: form.segments }),
+        ...(form.activeFrom && { activeFrom: form.activeFrom }),
+        ...(form.expiresAt && { expiresAt: form.expiresAt }),
 
-    setSample(Array.isArray(data?.sample) ? data.sample : []);
+        ...(form.isTemporal && {
+          daysActive: form.daysActive,
+          windowStart: timeToMinutes(form.windowStart),
+          windowEnd: timeToMinutes(form.windowEnd),
+        }),
 
-    // 🔄 Reset del formulario (visibilidad vuelve a PUBLIC)
-    setForm({
-      type: "RANDOM_PERCENT",
-      quantity: 10,
-      percentMin: 5,
-      percentMax: 15,
-      percent: 10,
-      amount: 9.99,
-      maxAmount: "",
-      segments: [],
-      assignedToId: "",
-      isTemporal: false,
-      daysActive: [],
-      windowStart: "",
-      windowEnd: "",
-      activeFrom: "",
-      expiresAt: "",
-      notes: "",
-      useInGame: false,
-      gameId: "",
-      campaign: "",
-      channel: "GAME",
-      acquisition: "GAME",
-      visibility: "PUBLIC",
-    });
+        ...(form.useInGame && {
+          gameId: Number(form.gameId),
+          campaign: form.campaign || undefined,
+          channel: form.channel,
+          acquisition: form.acquisition,
+        }),
+      };
 
-    clearCustomer();
-  } catch (err) {
-    setMsg(err?.response?.data?.error || "No se pudo generar cupones");
-  } finally {
-    setSaving(false);
-  }
-};
+      const { data } = await api.post(
+        "/api/coupons/bulk-generate",
+        payload,
+        { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
+      );
 
-useEffect(() => {
-  const shouldBeReserved =
-    String(form.assignedToId).trim() !== "" ||
-    form.useInGame === true;
+      setMsg(`✅ Se crearon ${data?.created ?? 0} cupones`);
+      setSample(Array.isArray(data?.sample) ? data.sample : []);
+    } catch {
+      setMsg("No se pudo generar cupones.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  if (shouldBeReserved && form.visibility !== "RESERVED") {
-    setForm((f) => ({ ...f, visibility: "RESERVED" }));
-  }
 
-  if (!shouldBeReserved && form.visibility !== "PUBLIC") {
-    setForm((f) => ({ ...f, visibility: "PUBLIC" }));
-  }
-}, [form.assignedToId, form.useInGame]);
+
+
+
+
+
+
+
+
+
 
   return (
     <div className="panel-inner">

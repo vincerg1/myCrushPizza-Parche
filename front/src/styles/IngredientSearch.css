@@ -1,0 +1,112 @@
+/* ───────────── WRAPPER ───────────── */
+
+.ingredientSearch {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ───────────── HEADER ───────────── */
+
+.ingredientSearch-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ingredientSearch-back {
+  background: none;
+  border: none;
+  color: #4285f4;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 6px 4px;
+}
+
+.ingredientSearch-back:hover {
+  text-decoration: underline;
+}
+
+.ingredientSearch-head input {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+/* ───────────── EMPTY ───────────── */
+
+.ingredientSearch-empty {
+  font-size: 14px;
+  color: #777;
+  padding: 12px 4px;
+}
+
+/* ───────────── LIST ───────────── */
+
+.ingredientSearch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ───────────── ROW ───────────── */
+
+.ingredientSearch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fafafa;
+  border: 1px solid #eee;
+}
+
+.ingredientSearch-row.inactive {
+  opacity: 0.55;
+}
+
+/* ───────────── INFO ───────────── */
+
+.ingredientSearch-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.ingredientSearch-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ingredientSearch-cat {
+  font-size: 12px;
+  color: #888;
+}
+
+/* ───────────── TOGGLE ───────────── */
+
+.ingredientSearch-toggle {
+  min-width: 90px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.ingredientSearch-toggle.on {
+  background: #e6f0ff;
+  color: #4285f4;
+}
+
+.ingredientSearch-toggle.off {
+  background: #fbeaea;
+  color: #c0392b;
+}
+
+.ingredientSearch-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

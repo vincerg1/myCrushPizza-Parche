@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
+import IngredientSearch from "./IngredientSearch";
 import "../styles/StoreInventory.css";
 
 export default function StoreInventory() {
@@ -11,6 +12,9 @@ export default function StoreInventory() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [openCat, setOpenCat] = useState(null);
+
+  // 🔍 nuevo: control de vista
+  const [view, setView] = useState("inventory"); // inventory | search
 
   /* ───────────── LOAD ───────────── */
 
@@ -51,7 +55,6 @@ export default function StoreInventory() {
       map[cat].push(r);
     });
 
-    // ordenar ingredientes por nombre
     Object.values(map).forEach((list) =>
       list.sort((a, b) => a.name.localeCompare(b.name, "es"))
     );
@@ -75,13 +78,42 @@ export default function StoreInventory() {
 
   /* ───────────── UI ───────────── */
 
-  return (
-    <div className="storeInv">
-      <h2 className="storeInv-title">
-        Inventory – {auth.storeName}
-      </h2>
+return (
+  <div className="storeInv">
+  {/* 🔍 QUICK SEARCH */}
+  {view === "inventory" && (
+    <div className="storeInv-searchTop">
+     <button
+      className="storeInv-searchBtn"
+      onClick={() => setView("search")}
+      type="button"
+      aria-label="Buscar ingrediente"
+    >
+      👁️
+    </button>
+    </div>
+  )}
 
-      {orderedCategories.map((cat) => {
+  <h2 className="storeInv-title">
+    Inventory – {auth.storeName}
+  </h2>
+
+  {/* 🔍 SEARCH VIEW */}
+  {view === "search" && (
+    <IngredientSearch
+      rows={rows}
+      onToggle={toggle}
+      saving={saving}
+      onBack={() => setView("inventory")}
+    />
+  )}
+
+  {/* … resto del inventario */}
+
+
+    {/* 📦 INVENTORY VIEW */}
+    {view === "inventory" &&
+      orderedCategories.map((cat) => {
         const list = grouped[cat];
         const inactiveCount = list.filter((i) => !i.active).length;
 
@@ -91,7 +123,9 @@ export default function StoreInventory() {
             <button
               className="storeInv-catHead"
               onClick={() =>
-                setOpenCat((prev) => (prev === cat ? null : cat))
+                setOpenCat((prev) =>
+                  prev === cat ? null : cat
+                )
               }
             >
               <span className="storeInv-catName">{cat}</span>
@@ -111,7 +145,9 @@ export default function StoreInventory() {
                 {list.map((r) => (
                   <div
                     key={r.id}
-                    className={`storeInv-row ${!r.active ? "inactive" : ""}`}
+                    className={`storeInv-row ${
+                      !r.active ? "inactive" : ""
+                    }`}
                   >
                     <div className="storeInv-name">
                       {r.name}
@@ -134,9 +170,10 @@ export default function StoreInventory() {
         );
       })}
 
-      {saving && (
-        <div className="storeInv-saving">Saving…</div>
-      )}
-    </div>
-  );
+    {saving && (
+      <div className="storeInv-saving">Saving…</div>
+    )}
+  </div>
+);
+
 }

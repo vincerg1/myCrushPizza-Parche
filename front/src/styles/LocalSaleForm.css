@@ -171,7 +171,7 @@
   text-transform: uppercase;
   line-height: 1.2;
   padding-right: 24px; /* espacio al final antes de repetir */
-  animation: lsf-ticker 10s linear infinite;
+  animation: lsf-ticker 5s linear infinite;
 }
 @keyframes lsf-ticker {
   0%   { transform: translateX(50%); }
@@ -195,6 +195,33 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
+@keyframes price-blink {
+  0% {
+    opacity: 1;
+    color: inherit;
+  }
+
+  30% {
+    opacity: 0.96;
+    color: #f92672;
+  }
+
+  60% {
+    opacity: 1;
+    color: inherit;
+  }
+
+  100% {
+    opacity: 1;
+    color: inherit;
+  }
+}
+
+
+.lsf-card__price.is-ticking {
+  animation: price-blink 0.35s ease-in-out;
+}
+
 .lsf-card__ticker {
   position: relative;
   overflow: hidden;

@@ -16,6 +16,7 @@ const GOOGLE_KEY =
 
 const COUNTRY = "ES";
 const DELIVERY_FEE = 2.5;
+const MIN_ORDER_PRODUCTS = 9.99;
 const DELIVERY_BLOCK = 5;
 const DELIVERY_MAX_KM = Number(
   process.env.REACT_APP_DELIVERY_MAX_KM || process.env.DELIVERY_MAX_KM || 7
@@ -620,7 +621,7 @@ const onKeyDown = (e) => {
 
           <h4>8. Pago</h4>
           <p>Pago con tarjeta a través de pasarela certificada (p. ej., Stripe). Aplicamos verificaciones antifraude automáticas.</p>
-
+          <p>El importe mínimo de pedido es de <b>9,99 € en productos</b>, sin incluir gastos de envío.</p>
           <h4>9. Factura</h4>
           <p>Solicítala respondiendo a la confirmación o por email con tus datos fiscales.</p>
 
@@ -930,7 +931,7 @@ const chooseMode = (
             setTriedNext(false);
           }}
         >
-          Domi
+          Domicilio
         </button>
       </div>
 
@@ -1428,7 +1429,13 @@ const startPayment = useCallback(async () => {
 
   if (!pending || isPaying) return;
   setIsPaying(true);
-
+if (productsSubtotal < MIN_ORDER_PRODUCTS) {
+  alert(
+    `El pedido mínimo es de ${MIN_ORDER_PRODUCTS.toFixed(2)} € en productos (sin incluir gastos de envío).`
+  );
+  setIsPaying(false);
+  return;
+}
   try {
     const { data: app } = await api.get("/api/app/status");
     if (!app?.accepting) {

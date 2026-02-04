@@ -191,8 +191,17 @@ export default function LocalSaleForm({
   const [customer, setCustomer] = useState(null);
   const [dragX, setDragX] = useState(0);
   const dragActive = useRef(false);
+ const [tick, setTick] = useState(false);
 
+ useEffect(() => {
+    const id = setInterval(() => {
+      setTick(true);
+      setTimeout(() => setTick(false), 600);
+    }, 5000);
 
+    return () => clearInterval(id);
+  }, []);
+ 
 useEffect(() => {
   const incoming = Array.isArray(initialCart) ? initialCart : null;
   if (!incoming || incoming.length === 0) return;
@@ -620,7 +629,9 @@ const onCatTouchEnd = (e) => {
                   <div className="lsf-card__ticker">
                     <div className="lsf-card__name">{it.name}</div>
                   </div>
-                  <div className="lsf-card__price">€{basePrice.toFixed(2)}</div>
+                  <div className={`lsf-card__price ${tick ? "is-ticking" : ""}`}>
+                      €{basePrice.toFixed(2)}
+                    </div>
                 </div>
                   </div>
 
