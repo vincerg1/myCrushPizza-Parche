@@ -1,6 +1,6 @@
 // src/components/CustomerIncentiveModal.jsx
 import React from "react";
-import OfferCreatePanel from "./OfferCreatePanel";
+import OfferCreatePanelCustomer from "./OfferCreatePanelCustomer";
 
 
 export default function CustomerIncentiveModal({
@@ -82,11 +82,10 @@ export default function CustomerIncentiveModal({
         </div>
 
         {/* Offer creation – CUSTOMER mode */}
-        <OfferCreatePanel
-          mode="CUSTOMER"
-          customer={customer}
-          onDone={onClose}
-        />
+      <OfferCreatePanelCustomer
+        customer={customer}
+        onDone={onClose}
+      />
       </div>
     </div>
   );
