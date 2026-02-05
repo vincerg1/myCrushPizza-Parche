@@ -1,7 +1,7 @@
 // src/components/OfferCreatePanelCustomer.jsx
 import React, { useState } from "react";
 import api from "../setupAxios";
-
+console.log("🔥🔥🔥 OfferCreatePanelCustomer FILE LOADED");
 const TYPE_LABELS = {
   RANDOM_PERCENT: "Random (%)",
   FIXED_PERCENT: "% fijo",
@@ -9,9 +9,13 @@ const TYPE_LABELS = {
 };
 
 export default function OfferCreatePanelCustomer({
+  
   customer,
   onDone,
 }) {
+  
+   console.log("🔥🔥🔥 OfferCreatePanelCustomer RENDER", customer);
+  
   const [form, setForm] = useState({
     type: "RANDOM_PERCENT",
     percentMin: 5,
