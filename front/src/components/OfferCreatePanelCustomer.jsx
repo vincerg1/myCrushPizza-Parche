@@ -73,62 +73,55 @@ export default function OfferCreatePanelCustomer({
 
   /* ───────────── Submit ───────────── */
 
-  const submit = async (e) => {
-    e.preventDefault();
-    setMsg("");
-    console.log("🚀 Enviando cupón a PushCustomer", payload);
-    const err = validate();
-    if (err) {
-      setMsg(err);
-      return;
-    }
+const submit = async () => {
+  setMsg("");
 
-    setSaving(true);
+  const err = validate();
+  if (err) {
+    setMsg(err);
+    return;
+  }
 
-    try {
-      const payload = {
-        // 🎯 Cupón
-        type: form.type,
-
-        ...(isRandom && {
-          percentMin: Number(form.percentMin),
-          percentMax: Number(form.percentMax),
-        }),
-
-        ...(isFixedPercent && {
-          percent: Number(form.percent),
-        }),
-
-        ...(isFixedAmount && {
-          amount: Number(form.amount),
-        }),
-
-        ...(form.maxAmount && {
-          maxAmount: Number(form.maxAmount),
-        }),
-
-        expiresAt: form.expiresAt,
-        notes: form.notes || null,
-
-        // 🎯 Contexto CUSTOMER
-        customerId: customer.id,
-      };
-
-      await api.post(
-        "/api/coupons/PushCustomer",
-        payload,
-        { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
-      );
-
-      setMsg("✅ Cupón creado y enviado al cliente.");
-      setTimeout(() => onDone?.(), 900);
-    } catch (e) {
-      console.error(e);
-      setMsg("No se pudo crear o enviar el cupón.");
-    } finally {
-      setSaving(false);
-    }
+  const payload = {
+    type: form.type,
+    ...(isRandom && {
+      percentMin: Number(form.percentMin),
+      percentMax: Number(form.percentMax),
+    }),
+    ...(isFixedPercent && {
+      percent: Number(form.percent),
+    }),
+    ...(isFixedAmount && {
+      amount: Number(form.amount),
+    }),
+    ...(form.maxAmount && {
+      maxAmount: Number(form.maxAmount),
+    }),
+    expiresAt: form.expiresAt,
+    notes: form.notes || null,
+    customerId: customer.id,
   };
+
+  console.log("🔥🔥 PUSH CUSTOMER PAYLOAD", payload);
+
+  setSaving(true);
+  try {
+    await api.post(
+      "/api/coupons/PushCustomer",
+      payload,
+      { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
+    );
+
+    setMsg("✅ Cupón creado y enviado al cliente.");
+    setTimeout(() => onDone?.(), 900);
+  } catch (e) {
+    console.error(e);
+    setMsg("No se pudo crear o enviar el cupón.");
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   return (
     <form onSubmit={submit} className="card" style={{ maxWidth: 760 }}>

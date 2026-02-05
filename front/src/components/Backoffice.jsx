@@ -29,8 +29,6 @@ export default function Backoffice() {
   const [active, setActive] = useState(null);
   const [open, setOpen] = useState({ offers: false, pizzaCreator: false });
   const [sidebarW, setSidebarW] = useState(DEFAULT_W);
-
-  // ───── Store status (STORE POS) ─────
   const [storeActive, setStoreActive] = useState(true);
   const [savingStore, setSavingStore] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -114,33 +112,33 @@ export default function Backoffice() {
     return (
       <div className="store-pos-wrapper">
         <header className="store-pos-topbar">
-  <div className="store-pos-tabs">
-    <button
-      className="menu-btn"
-      onClick={() => setShowMenu(v => !v)}
-      aria-label="Menu"
-    >
-      ☰
-    </button>
+        <div className="store-pos-tabs">
+          <button
+            className="menu-btn"
+            onClick={() => setShowMenu(v => !v)}
+            aria-label="Menu"
+          >
+            ☰
+          </button>
 
-    <button className="logout-btn" onClick={logout}>
-      Logout
-    </button>
+          <button className="logout-btn" onClick={logout}>
+            Logout
+          </button>
 
-    <button
-      className={active === "myOrders" ? "active" : ""}
-      onClick={() => setActive("myOrders")}
-    >
-      Orders
-    </button>
+          <button
+            className={active === "myOrders" ? "active" : ""}
+            onClick={() => setActive("myOrders")}
+          >
+            Orders
+          </button>
 
-    <button
-      className={active === "storeInventory" ? "active" : ""}
-      onClick={() => setActive("storeInventory")}
-    >
-      Inventory
-    </button>
-  </div>
+          <button
+            className={active === "storeInventory" ? "active" : ""}
+            onClick={() => setActive("storeInventory")}
+          >
+            Inventory
+          </button>
+        </div>
 
   <div className="app-toggle">
     <span className="app-toggle-label">

@@ -2,7 +2,6 @@
 import React from "react";
 import OfferCreatePanelCustomer from "./OfferCreatePanelCustomer";
 
-
 export default function CustomerIncentiveModal({
   customer,
   onClose,
