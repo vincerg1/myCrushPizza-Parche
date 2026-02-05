@@ -8,8 +8,6 @@ const TYPE_LABELS = {
   FIXED_AMOUNT: "€ fijo",
 };
 
-const USAGE_LIMIT = 1;
-
 export default function OfferCreatePanelCustomer({
   customer,
   onDone,
@@ -38,11 +36,8 @@ export default function OfferCreatePanelCustomer({
   /* ───────────── Validation ───────────── */
 
   const validate = () => {
-    if (!customer?.id)
-      return "Cliente inválido.";
-
-    if (!form.expiresAt)
-      return "Debes indicar fecha/hora de caducidad.";
+    if (!customer?.id) return "Cliente inválido.";
+    if (!form.expiresAt) return "Debes indicar fecha/hora de caducidad.";
 
     if (isRandom) {
       const min = Number(form.percentMin);
@@ -79,19 +74,17 @@ export default function OfferCreatePanelCustomer({
     setMsg("");
 
     const err = validate();
-    if (err) return setMsg(err);
+    if (err) {
+      setMsg(err);
+      return;
+    }
 
     setSaving(true);
 
     try {
       const payload = {
+        // 🎯 Cupón
         type: form.type,
-        quantity: 1,
-        usageLimit: USAGE_LIMIT,
-
-        // 🔒 CUSTOMER MODE
-        visibility: "RESERVED",
-        assignedToId: customer.id,
 
         ...(isRandom && {
           percentMin: Number(form.percentMin),
@@ -111,14 +104,14 @@ export default function OfferCreatePanelCustomer({
         }),
 
         expiresAt: form.expiresAt,
+        notes: form.notes || null,
 
-        // 📩 Backend sabrá que esto es PUSH
-        channel: "SMS",
-        acquisition: "DIRECT",
+        // 🎯 Contexto CUSTOMER
+        customerId: customer.id,
       };
 
       await api.post(
-        "/api/coupons/bulk-generate",
+        "/api/coupons/PushCustomer",
         payload,
         { headers: { "x-api-key": process.env.REACT_APP_SALES_API_KEY } }
       );
@@ -126,7 +119,8 @@ export default function OfferCreatePanelCustomer({
       setMsg("✅ Cupón creado y enviado al cliente.");
       setTimeout(() => onDone?.(), 900);
     } catch (e) {
-      setMsg("No se pudo crear el cupón.");
+      console.error(e);
+      setMsg("No se pudo crear o enviar el cupón.");
     } finally {
       setSaving(false);
     }

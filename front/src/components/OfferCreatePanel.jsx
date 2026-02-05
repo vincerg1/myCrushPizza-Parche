@@ -472,7 +472,7 @@ export default function OfferCreatePanel() {
         <div className="actions">
           <button className="btn" type="button" onClick={() => setForm({
             type:"RANDOM_PERCENT", quantity:10, percentMin:5, percentMax:15, percent:10, amount:9.99,
-            maxAmount:"", segments:[], assignedToId:"", isTemporal:false, daysActive:[],
+            maxAmount:"", segments:[], assignedTold:"", isTemporal:false, daysActive:[],
             windowStart:"", windowEnd:"", activeFrom:"", expiresAt:"", notes:"",
             useInGame:false, gameId:"", campaign:"", channel:"GAME", acquisition:"GAME"
           })}>Limpiar</button>

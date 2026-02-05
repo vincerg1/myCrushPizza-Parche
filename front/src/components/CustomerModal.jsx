@@ -66,7 +66,6 @@ export default function CustomerModal({
 
     onSave(payload);
   };
-
   const handleDelete = () => {
     if (initial.id && window.confirm("¿Eliminar este cliente?")) {
       onDelete?.(initial.id);

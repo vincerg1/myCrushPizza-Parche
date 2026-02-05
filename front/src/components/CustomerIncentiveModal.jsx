@@ -2,15 +2,7 @@
 import React from "react";
 import OfferCreatePanel from "./OfferCreatePanel";
 
-/**
- * Modal para crear un incentivo (cupón) individual
- * para un cliente concreto desde CustomersPanel.
- *
- * Responsabilidad:
- * - Mostrar contexto del cliente
- * - Montar OfferCreatePanel en modo CUSTOMER
- * - Cerrar al finalizar
- */
+
 export default function CustomerIncentiveModal({
   customer,
   onClose,
