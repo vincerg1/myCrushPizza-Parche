@@ -41,7 +41,7 @@ async function main(count = COUNT) {
       percentMax: null,
       maxAmount: null,
       segments: null,
-      assignedTold: null,
+      assignedToId: null,
       activeFrom: null,
       expiresAt: null,
       daysActive: null,

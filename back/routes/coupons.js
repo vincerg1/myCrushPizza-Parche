@@ -187,7 +187,7 @@ const toNum = (v) => {
 async function findActiveCouponForCustomer(prisma, customerId, now) {
   const c = await prisma.coupon.findFirst({
     where: {
-      assignedTold: customerId,
+      assignedToId: customerId,
       status: 'ACTIVE',
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     },
@@ -280,8 +280,8 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
         amount      : kind === 'AMOUNT' ? String(amount) : null,
         maxAmount   : maxAmount ? String(maxAmount) : null,
 
-        assignedTold: Number(customerId),
-        visibility  : 'RESERVED',
+        assignedToId: Number(customerId),
+        visibility: 'RESERVED',
 
         usageLimit  : 1,
         usedCount   : 0,
@@ -317,7 +317,7 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
       amount,
       maxAmount,
       usageLimit = 1,
-      assignedTold = null,
+      assignedToId = null,
       segments = null,
       activeFrom = null,
       expiresAt = null,
@@ -383,7 +383,7 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
       amount      : kind === 'AMOUNT' ? String(Number(amount)) : null,
       maxAmount   : (kind === 'PERCENT' && maxAmount != null && maxAmount !== '')
                      ? String(Number(maxAmount)) : null,
-      assignedTold: assignedTold ? Number(assignedTold) : null,
+      assignedToId: assignedToId ? Number(assignedToId) : null,
       segments    : segJson,
       activeFrom  : activeFrom ? new Date(activeFrom) : null,
       expiresAt   : expiresAt  ? new Date(expiresAt)  : null,
@@ -432,7 +432,7 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
         windowEnd  : base.windowEnd,
         usageLimit: base.usageLimit,
         segments: segJson,
-        assignedTold: base.assignedTold
+        assignedToId: base.assignedToId
       }
     });
   } catch (e) {
@@ -602,7 +602,7 @@ router.get('/validate', async (req, res) => {
     if (!isWithinWindow(row, refTime))
       return res.json({ valid:false, reason:'outside_time_window' });
 
-    if (row.assignedTold && customerId && Number(row.assignedTold) !== customerId)
+    if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId)
       return res.json({ valid:false, reason:'not_owner' });
 
     if (Array.isArray(row.segments) && row.segments.length && segment && !row.segments.includes(segment))
@@ -653,7 +653,7 @@ router.post('/redeem', async (req, res) => {
       return res.status(409).json({ error: 'already_used' });
     }
 
-    if (row.assignedTold && customerId && Number(row.assignedTold) !== customerId) {
+    if (row.assignedToId && customerId && Number(row.assignedToId) !== customerId) {
       return res.status(409).json({ error: 'not_owner' });
     }
     if (Array.isArray(row.segments) && row.segments.length && segmentFromBody && !row.segments.includes(segmentFromBody)) {
@@ -1078,7 +1078,7 @@ router.post('/direct-claim', async (req, res) => {
     stage = 'check_active_coupon';
     const activeCoupon = await prisma.coupon.findFirst({
       where: {
-        assignedTold: customer.id,
+        assignedToId: customer.id,
         status: 'ACTIVE',
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
       },
@@ -1149,8 +1149,8 @@ router.post('/direct-claim', async (req, res) => {
           { gameId: null }
         ],
         OR: [
-          { assignedTold: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-          { assignedTold: { not: null }, expiresAt: { lte: now } }
+          { assignedToId: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+          { assignedToId: { not: null }, expiresAt: { lte: now } }
         ]
       },
       orderBy: { id: 'asc' }
@@ -1166,7 +1166,7 @@ router.post('/direct-claim', async (req, res) => {
       where: { id: poolCoupon.id },
       data: {
         expiresAt,
-        assignedTold: customer.id,
+        assignedToId: customer.id,
         acquisition: 'CLAIM',
         channel: 'WEB',
         campaign: campaign ?? poolCoupon.campaign ?? null
@@ -1252,7 +1252,7 @@ router.get('/gallery', async (_req, res) => {
         expiresAt: true,
         usageLimit: true,
         usedCount: true,
-        assignedTold: true, 
+        assignedToId: true, 
         visibility: true,
         acquisition: true,
         channel: true,
@@ -1363,7 +1363,7 @@ router.get('/gallery', async (_req, res) => {
       // 👉 "Stock real del pool":
       // solo cuentan cupones SIN dueño, vigentes y con saldo
       const hasFree =
-        r.assignedTold == null &&
+        r.assignedToId == null &&
         inLife &&
         inWindow &&
         (limitNum == null || limitNum > used);
@@ -1467,7 +1467,7 @@ router.get('/reservable', requireApiKey, async (_req, res) => {
       where: {
         status: 'ACTIVE',
         visibility: 'PUBLIC',
-        assignedTold: null,
+        assignedToId: null,
 
         // excluir juegos
         gameId: null,
@@ -1518,7 +1518,7 @@ router.get('/reservable', requireApiKey, async (_req, res) => {
 router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const assignedTold = Number(req.body?.assignedTold);
+    const assignedToId = Number(req.body?.assignedToId);
 
     // Logs útiles
     console.log('[COUPON RESERVE]', {
@@ -1531,8 +1531,8 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
     if (!Number.isInteger(id)) {
       return res.status(400).json({ ok: false, error: 'invalid_coupon_id' });
     }
-    if (!Number.isInteger(assignedTold)) {
-      return res.status(400).json({ ok: false, error: 'invalid_assignedTold' });
+    if (!Number.isInteger(assignedToId)) {
+      return res.status(400).json({ ok: false, error: 'invalid_assignedToId' });
     }
 
     const now = nowInTZ();
@@ -1543,7 +1543,7 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
         id,
         status: 'ACTIVE',
         visibility: 'PUBLIC',
-        assignedTold: null,
+        assignedToId: null,
         OR: [
           { expiresAt: null },
           { expiresAt: { gt: now } }
@@ -1558,7 +1558,7 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
     const updated = await prisma.coupon.update({
       where: { id },
       data: {
-        assignedTold,
+        assignedToId,
         visibility: 'RESERVED'
       }
     });
@@ -1568,7 +1568,7 @@ router.put('/reservable/:id/reserve', requireApiKey, async (req, res) => {
       coupon: {
         id: updated.id,
         code: updated.code,
-        assignedTold: updated.assignedTold,
+        assignedToId: updated.assignedToId,
         visibility: updated.visibility
       }
     });
@@ -1591,7 +1591,7 @@ router.get('/games/:gameId/prize', async (req, res) => {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
-        assignedTold: null,   // 🔹 SOLO cupones del pool (sin dueño)
+        assignedToId: null,   // 🔹 SOLO cupones del pool (sin dueño)
       },
       select: {
         kind: true, variant: true, percent: true, percentMin: true, percentMax: true,
@@ -1715,7 +1715,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
         status: 'ACTIVE',
         acquisition: 'GAME',
         gameId,
-        assignedTold: null,
+        assignedToId: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { id: 'asc' },
@@ -1754,7 +1754,7 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       where: { id: row.id },
       data: {
         expiresAt,
-        assignedTold: effectiveCustomerId ?? null,
+        assignedToId: effectiveCustomerId ?? null,
         channel: 'GAME',
         campaign: req.body.campaign ?? row.campaign ?? null
       }
