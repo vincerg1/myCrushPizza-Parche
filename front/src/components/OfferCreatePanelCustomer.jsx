@@ -72,7 +72,7 @@ export default function OfferCreatePanelCustomer({
   const submit = async (e) => {
     e.preventDefault();
     setMsg("");
-
+    console.log("🚀 Enviando cupón a PushCustomer", payload);
     const err = validate();
     if (err) {
       setMsg(err);
