@@ -268,9 +268,9 @@ model Coupon {
   campaign     String?
   meta         Json?
   segments     Json?
-assignedToId Int?
-visibility   CouponVisibility @default(PUBLIC)
- assignedTo   Customer? @relation("CustomerAssignedCoupons",fields: [assignedToId],references: [id],onDelete: SetNull)
+  assignedToId Int?
+  visibility   CouponVisibility @default(PUBLIC)
+  assignedTo   Customer? @relation("CustomerAssignedCoupons",fields: [assignedToId],references: [id],onDelete: SetNull)
   activeFrom   DateTime?
   expiresAt    DateTime?
   daysActive   Json?
@@ -285,9 +285,8 @@ visibility   CouponVisibility @default(PUBLIC)
   redemptions  CouponRedemption[] @relation("CouponToRedemptions")
   
   @@index([status])
- @@index([assignedToId])
+  @@index([assignedToId])
   @@index([expiresAt])
-  // Índices útiles para pools y analítica
   @@index([acquisition])
   @@index([channel])
   @@index([gameId])

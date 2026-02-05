@@ -232,30 +232,46 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
       customerId,
       expiresAt,
       activeFrom = null,
-      notes = null
+      observations = null
     } = req.body;
 
     if (!customerId || !expiresAt) {
       return res.status(400).json({ error: 'missing_customer_or_expiry' });
     }
 
-    // ───── Validación de tipo (reuse lógica) ─────
+    // ───── Validación de tipo ─────
     let kind, variant;
+
     if (type === 'RANDOM_PERCENT') {
-      kind = 'PERCENT'; variant = 'RANGE';
-      if (percentMin < 1 || percentMax > 90 || percentMax < percentMin) {
+      kind = 'PERCENT';
+      variant = 'RANGE';
+
+      if (
+        !Number.isFinite(percentMin) ||
+        !Number.isFinite(percentMax) ||
+        percentMin < 1 ||
+        percentMax > 90 ||
+        percentMax < percentMin
+      ) {
         return res.status(400).json({ error: 'bad_range' });
       }
+
     } else if (type === 'FIXED_PERCENT') {
-      kind = 'PERCENT'; variant = 'FIXED';
-      if (percent < 1 || percent > 90) {
+      kind = 'PERCENT';
+      variant = 'FIXED';
+
+      if (!Number.isFinite(percent) || percent < 1 || percent > 90) {
         return res.status(400).json({ error: 'bad_percent' });
       }
+
     } else if (type === 'FIXED_AMOUNT') {
-      kind = 'AMOUNT'; variant = 'FIXED';
-      if (amount <= 0) {
+      kind = 'AMOUNT';
+      variant = 'FIXED';
+
+      if (!Number.isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: 'bad_amount' });
       }
+
     } else {
       return res.status(400).json({ error: 'bad_type' });
     }
@@ -268,20 +284,21 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
 
     const code = codePattern(prefix);
 
-    // ───── Cupón ─────
+    // ───── Crear cupón ─────
     const coupon = await prisma.coupon.create({
       data: {
         code,
         kind,
         variant,
-        percent     : variant === 'FIXED' && kind === 'PERCENT' ? percent : null,
-        percentMin  : variant === 'RANGE' ? percentMin : null,
-        percentMax  : variant === 'RANGE' ? percentMax : null,
+
+        percent     : kind === 'PERCENT' && variant === 'FIXED' ? percent : null,
+        percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? percentMin : null,
+        percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? percentMax : null,
         amount      : kind === 'AMOUNT' ? String(amount) : null,
         maxAmount   : maxAmount ? String(maxAmount) : null,
 
         assignedToId: Number(customerId),
-        visibility: 'RESERVED',
+        visibility  : 'RESERVED',
 
         usageLimit  : 1,
         usedCount   : 0,
@@ -290,19 +307,17 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
         activeFrom  : activeFrom ? new Date(activeFrom) : null,
         expiresAt   : new Date(expiresAt),
 
-        notes,
+        meta        : observations ? { observations } : null,
+
         acquisition : 'CRM',
         channel     : 'SMS'
       }
     });
 
-    // ───── Side-effect: SMS (Twilio) ─────
-    // await sendCouponSMS(customerId, coupon.code, expiresAt)
-
     return res.json({ ok: true, coupon });
 
   } catch (e) {
-    console.error('[coupons.customer] error', e);
+    console.error('[coupons.PushCustomer] error', e);
     return res.status(500).json({ error: 'server' });
   }
 });
