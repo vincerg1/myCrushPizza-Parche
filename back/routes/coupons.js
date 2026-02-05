@@ -285,34 +285,35 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
     const code = codePattern(prefix);
 
     // ───── Crear cupón ─────
-    const coupon = await prisma.coupon.create({
-      data: {
-        code,
-        kind,
-        variant,
+  const coupon = await prisma.coupon.create({
+  data: {
+    code,
+    kind,
+    variant,
 
-        percent     : kind === 'PERCENT' && variant === 'FIXED' ? percent : null,
-        percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? percentMin : null,
-        percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? percentMax : null,
-        amount      : kind === 'AMOUNT' ? String(amount) : null,
-        maxAmount   : maxAmount ? String(maxAmount) : null,
+    percent     : kind === 'PERCENT' && variant === 'FIXED' ? percent : null,
+    percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? percentMin : null,
+    percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? percentMax : null,
+    amount      : kind === 'AMOUNT' ? String(amount) : null,
+    maxAmount   : maxAmount ? String(maxAmount) : null,
 
-        assignedToId: Number(customerId),
-        visibility  : 'RESERVED',
+    assignedToId: Number(customerId),
+    visibility  : 'RESERVED',
 
-        usageLimit  : 1,
-        usedCount   : 0,
-        status      : 'ACTIVE',
+    usageLimit  : 1,
+    usedCount   : 0,
+    status      : 'ACTIVE',
 
-        activeFrom  : activeFrom ? new Date(activeFrom) : null,
-        expiresAt   : new Date(expiresAt),
+    activeFrom  : activeFrom ? new Date(activeFrom) : null,
+    expiresAt   : new Date(expiresAt),
 
-        meta        : observations ? { observations } : null,
+    meta        : observations ? { observations } : null,
 
-        acquisition : 'CRM',
-        channel     : 'SMS'
-      }
-    });
+    acquisition : 'DIRECT', // 🔥 FIX
+    channel     : 'SMS'
+  }
+});
+
 
     return res.json({ ok: true, coupon });
 
