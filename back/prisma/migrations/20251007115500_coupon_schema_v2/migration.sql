@@ -8,7 +8,7 @@
 ALTER TABLE `Coupon` DROP COLUMN `used`,
     ADD COLUMN `activeFrom` DATETIME(3) NULL,
     ADD COLUMN `amount` DECIMAL(10, 2) NULL,
-    ADD COLUMN `assignedToId` INTEGER NULL,
+    ADD COLUMN `assignedTold` INTEGER NULL,
     ADD COLUMN `daysActive` JSON NULL,
     ADD COLUMN `kind` ENUM('PERCENT', 'AMOUNT') NOT NULL DEFAULT 'PERCENT',
     ADD COLUMN `maxAmount` DECIMAL(10, 2) NULL,
@@ -27,10 +27,10 @@ ALTER TABLE `Coupon` DROP COLUMN `used`,
 CREATE INDEX `Coupon_status_idx` ON `Coupon`(`status`);
 
 -- CreateIndex
-CREATE INDEX `Coupon_assignedToId_idx` ON `Coupon`(`assignedToId`);
+CREATE INDEX `Coupon_assignedTold_idx` ON `Coupon`(`assignedTold`);
 
 -- CreateIndex
 CREATE INDEX `Coupon_expiresAt_idx` ON `Coupon`(`expiresAt`);
 
 -- AddForeignKey
-ALTER TABLE `Coupon` ADD CONSTRAINT `Coupon_assignedToId_fkey` FOREIGN KEY (`assignedToId`) REFERENCES `Customer`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `Coupon` ADD CONSTRAINT `Coupon_assignedTold_fkey` FOREIGN KEY (`assignedTold`) REFERENCES `Customer`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;

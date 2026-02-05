@@ -268,9 +268,9 @@ model Coupon {
   campaign     String?
   meta         Json?
   segments     Json?
-  assignedToId Int?
+  assignedTold Int?
   visibility    CouponVisibility  @default(PUBLIC)
-  assignedTo   Customer?          @relation("CustomerAssignedCoupons", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   Customer?          @relation("CustomerAssignedCoupons", fields: [assignedTold], references: [id], onDelete: SetNull)
   activeFrom   DateTime?
   expiresAt    DateTime?
   daysActive   Json?
@@ -285,7 +285,7 @@ model Coupon {
   redemptions  CouponRedemption[] @relation("CouponToRedemptions")
   
   @@index([status])
-  @@index([assignedToId])
+  @@index([assignedTold])
   @@index([expiresAt])
   // Índices útiles para pools y analítica
   @@index([acquisition])
@@ -447,16 +447,13 @@ model POSJob {
 
   posId       Int
   pos         POS      @relation(fields: [posId], references: [id])
-
-  type        String   // "PRINT_TICKET"
-  payload     Json     // ticket, texto, etc.
-
+  type        String   
+  payload     Json    
   status      String   @default("PENDING")
   // PENDING | PROCESSING | PRINTED | FAILED
 
   attempts    Int      @default(0)
   error       String?
-
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   processedAt DateTime?
