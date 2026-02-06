@@ -1276,7 +1276,15 @@ async function redeemCouponAtomic(tx, {
   if (row.status === 'DISABLED') return;
   if (!isActiveByDate(row, nowRef)) return;
   if (!isWithinWindow(row, nowRef)) return;
-  if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0)) return;
+  if ((row.usageLimit ?? 1) <= (row.usedCount ?? 0)) {
+  if (row.status !== 'USED') {
+    await tx.coupon.update({
+      where: { code },
+      data: { status: 'USED' }
+    });
+  }
+  return;
+}
 
   // Incremento atómico si aún quedan usos
   const inc = await tx.coupon.updateMany({
