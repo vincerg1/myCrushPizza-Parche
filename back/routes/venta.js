@@ -1390,7 +1390,6 @@ if (!phone) throw new Error('Invalid phone');
               where: { id: sale.id },
               data: {
                 status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-                paidAt: payOk ? new Date() : null,
                 stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
                 processed: false
               }
