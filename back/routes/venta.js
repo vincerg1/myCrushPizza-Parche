@@ -319,7 +319,15 @@ router.post('/pedido', async (req, res) => {
     coupon: rawCoupon,
     couponCode: rawCouponCode
   } = req.body || {};
-  logI('POST /pedido ←', { storeId, items: items?.length || 0, channel, type, delivery, coupon: rawCoupon || rawCouponCode });
+
+  logI('POST /pedido ←', {
+    storeId,
+    items: items?.length || 0,
+    channel,
+    type,
+    delivery,
+    coupon: rawCoupon || rawCouponCode
+  });
 
   try {
     if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
@@ -331,25 +339,40 @@ router.post('/pedido', async (req, res) => {
         return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
       }
     }
+
     if (String(delivery).toUpperCase() === 'COURIER') {
       const lat = Number(customer?.lat), lng = Number(customer?.lng);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        return res.status(400).json({ error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.' });
+        return res.status(400).json({
+          error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.'
+        });
       }
+
       const activeStores = await prisma.store.findMany({
         where: { active: true, latitude: { not: null }, longitude: { not: null } },
         select: { id: true, latitude: true, longitude: true }
       });
-      if (!activeStores.length) return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
+      if (!activeStores.length) {
+        return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
+      }
 
       let nearest = { id: null, km: Infinity };
       for (const s of activeStores) {
         const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
         if (km < nearest.km) nearest = { id: s.id, km };
       }
+
       if (!nearest || nearest.km > DELIVERY_MAX_KM) {
-        logW('Pedido fuera de cobertura', { lat, lng, nearestKm: Number(nearest?.km?.toFixed?.(2) ?? 'NaN'), limitKm: DELIVERY_MAX_KM, nearestStoreId: nearest?.id || null });
-        return res.status(400).json({ error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).` });
+        logW('Pedido fuera de cobertura', {
+          lat,
+          lng,
+          nearestKm: Number(nearest?.km?.toFixed?.(2) ?? 'NaN'),
+          limitKm: DELIVERY_MAX_KM,
+          nearestStoreId: nearest?.id || null
+        });
+        return res.status(400).json({
+          error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).`
+        });
       }
     }
 
@@ -359,53 +382,51 @@ router.post('/pedido', async (req, res) => {
       String(type).toUpperCase() === 'DELIVERY' ||
       String(delivery).toUpperCase() === 'COURIER';
 
-if (customer?.phone?.trim()) {
-  const phone = normPhone(customer.phone);
-  if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
+    if (customer?.phone?.trim()) {
+      const phone = normPhone(customer.phone);
+      if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
 
-  const name = (customer.name || '').trim();
+      const name = (customer.name || '').trim();
 
-  const createAddress = isDelivery
-    ? (customer.address_1 || 'SIN DIRECCIÓN')
-    : `(PICKUP) ${phone}`;
+      const createAddress = isDelivery
+        ? (customer.address_1 || 'SIN DIRECCIÓN')
+        : `(PICKUP) ${phone}`;
 
-  const c = await prisma.customer.upsert({
-    where: { phone },               // 🔐 clave canónica
-    update: {
-      name,
-      ...(isDelivery && {
-        address_1: customer.address_1 || 'SIN DIRECCIÓN',
-        lat: clean(customer.lat),
-        lng: clean(customer.lng),
-      }),
-      portal: clean(customer.portal),
-      observations: clean(customer.observations),
-    },
-    create: {
-      code: await genCustomerCode(prisma),
-      phone,                        // 🔥 siempre +34...
-      name,
-      address_1: createAddress,
-      portal: clean(customer.portal),
-      observations: clean(customer.observations),
-      lat: isDelivery ? clean(customer.lat) : null,
-      lng: isDelivery ? clean(customer.lng) : null,
-    },
-  });
+      const c = await prisma.customer.upsert({
+        where: { phone }, // 🔐 clave canónica
+        update: {
+          name,
+          ...(isDelivery && {
+            address_1: customer.address_1 || 'SIN DIRECCIÓN',
+            lat: clean(customer.lat),
+            lng: clean(customer.lng)
+          }),
+          portal: clean(customer.portal),
+          observations: clean(customer.observations)
+        },
+        create: {
+          code: await genCustomerCode(prisma),
+          phone, // 🔥 siempre +34...
+          name,
+          address_1: createAddress,
+          portal: clean(customer.portal),
+          observations: clean(customer.observations),
+          lat: isDelivery ? clean(customer.lat) : null,
+          lng: isDelivery ? clean(customer.lng) : null
+        }
+      });
 
-  customerId = c.id;
-  snapshot = {
-    phone: c.phone,
-    name: c.name,
-    address_1: c.address_1,
-    portal: c.portal,
-    observations: c.observations,
-    lat: c.lat,
-    lng: c.lng
-  };
-}
-
-
+      customerId = c.id;
+      snapshot = {
+        phone: c.phone,
+        name: c.name,
+        address_1: c.address_1,
+        portal: c.portal,
+        observations: c.observations,
+        lat: c.lat,
+        lng: c.lng
+      };
+    }
 
     // Ítems (solo pizzas base/size/qty/precio)
     const normItems = await normalizeItems(prisma, items);
@@ -424,6 +445,7 @@ if (customer?.phone?.trim()) {
           .concat(it?.ingredients || [])
           .concat(it?.complements || [])
           .concat(it?.sides || []);
+
         for (const ex of pools) {
           const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
           if (!Number.isFinite(parsed) || parsed < 0) continue;
@@ -434,6 +456,7 @@ if (customer?.phone?.trim()) {
       }
       return out;
     };
+
     const unitExtrasForItem = (it = {}) => {
       const pools = []
         .concat(it?.extras || [])
@@ -444,6 +467,7 @@ if (customer?.phone?.trim()) {
         .concat(it?.ingredients || [])
         .concat(it?.complements || [])
         .concat(it?.sides || []);
+
       return pools
         .map((ex) => {
           const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
@@ -462,7 +486,7 @@ if (customer?.phone?.trim()) {
       const itemExtras = collectExtrasFromItems(items);
       const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
         ...li,
-        extras: unitExtrasForItem(items[idx]) || [],
+        extras: unitExtrasForItem(items[idx]) || []
       }));
 
       const orderLevelExtras = (Array.isArray(extras) ? extras : [])
@@ -470,7 +494,11 @@ if (customer?.phone?.trim()) {
           const amountNum = toPrice(ex?.amount);
           const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
           if (!Number.isFinite(amount)) return null;
-          return { code: String(ex?.code || 'EXTRA'), label: String(ex?.label || 'Extra'), amount };
+          return {
+            code: String(ex?.code || 'EXTRA'),
+            label: String(ex?.label || 'Extra'),
+            amount
+          };
         })
         .filter(Boolean);
 
@@ -479,41 +507,98 @@ if (customer?.phone?.trim()) {
       // Cupón (preview) — sin canjear
       let discounts = 0;
       let couponEntry = null;
+
       const couponCode = upper(rawCoupon || rawCouponCode || '');
       if (couponCode) {
         const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
         const nowRef = nowInTZ();
 
-        // Validación fuerte (activa/fechas/ventana/uso)
-        const valid =
-          !!coup &&
-          coup.status === 'ACTIVE' &&
-          (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
-          isActiveByDate(coup, nowRef) &&
-          isWithinWindow(coup, nowRef);
+        // ✅ Validación profesional: SOLO ACTIVE pasa. Todo lo demás devuelve motivo.
+        if (!coup) {
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'NOT_FOUND',
+            message: 'El cupón no existe.',
+            details: { code: couponCode }
+          });
+        }
 
-       if (!valid) {
-        const rej = buildCouponRejection(coup, nowRef) || { reason:'INVALID', message:'Cupón inválido' };
-        return res.status(422).json({
-          error: 'INVALID_COUPON',
-          reason: rej.reason,
-          message: rej.message,
-          details: {
-            code: couponCode,
-            activeFrom: coup?.activeFrom, expiresAt: coup?.expiresAt,
-            daysActive: normalizeDaysActive(coup?.daysActive),
-            windowStart: coup?.windowStart ?? null, windowEnd: coup?.windowEnd ?? null,
-            usageLimit: coup?.usageLimit ?? null, usedCount: coup?.usedCount ?? null, usedAt: coup?.usedAt ?? null
-          }
-        });
-      }
+        if (String(coup.status).toUpperCase() === 'USED') {
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'ALREADY_USED',
+            message: 'Cupón ya utilizado.',
+            details: { code: couponCode, usedAt: coup.usedAt ?? null }
+          });
+        }
+
+        if (String(coup.status).toUpperCase() === 'DISABLED') {
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'DISABLED',
+            message: 'Cupón deshabilitado.',
+            details: { code: couponCode }
+          });
+        }
+
+        if (String(coup.status).toUpperCase() !== 'ACTIVE') {
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'INVALID_STATUS',
+            message: 'Cupón inválido.',
+            details: { code: couponCode, status: coup.status }
+          });
+        }
+
+        if (!isActiveByDate(coup, nowRef)) {
+          // Esta razón la interpreta tu explainCouponRejection (expirado / no activo aún)
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'EXPIRED_OR_NOT_YET_ACTIVE',
+            details: {
+              code: couponCode,
+              activeFrom: coup.activeFrom ?? null,
+              expiresAt: coup.expiresAt ?? null
+            }
+          });
+        }
+
+        if (!isWithinWindow(coup, nowRef)) {
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'OUT_OF_WINDOW',
+            details: {
+              code: couponCode,
+              daysActive: normalizeDaysActive(coup.daysActive),
+              windowStart: coup.windowStart ?? null,
+              windowEnd: coup.windowEnd ?? null
+            }
+          });
+        }
+
+        if ((coup.usageLimit ?? 1) <= (coup.usedCount ?? 0)) {
+          // si tiene usedAt, tu frontend lo puede mostrar con ALREADY_USED (pero aquí es límite)
+          return res.status(422).json({
+            error: 'INVALID_COUPON',
+            reason: 'USAGE_LIMIT',
+            message: 'Se alcanzó el límite de usos del cupón.',
+            details: {
+              code: couponCode,
+              usageLimit: coup.usageLimit ?? 1,
+              usedCount: coup.usedCount ?? 0,
+              usedAt: coup.usedAt ?? null
+            }
+          });
+        }
 
         // 🚦 Blindaje adicional: si es del juego (MCP-CD), exigir AMOUNT/FIXED
         assertGameCouponShape(coup, couponCode);
 
+        // ✅ Calcular descuento
         const { discount, percentApplied, amountApplied, label } =
           computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
 
+        // ✅ Importante: si no aplica, NO bloqueamos el pedido; simplemente no añadimos cupón
         if (discount > 0) {
           discounts = discount;
           couponEntry = {
@@ -559,10 +644,11 @@ if (customer?.phone?.trim()) {
           status: 'AWAITING_PAYMENT',
           address_1: snapshot?.address_1 ?? null,
           lat: snapshot?.lat ?? null,
-          lng: snapshot?.lng ?? null,
+          lng: snapshot?.lng ?? null
         },
-        select: { id: true, code: true, total: true, currency: true, discounts: true },
+        select: { id: true, code: true, total: true, currency: true, discounts: true }
       });
+
       return sale;
     });
 
@@ -570,6 +656,7 @@ if (customer?.phone?.trim()) {
       where: { id: Number(storeId) },
       select: { id: true, acceptingOrders: true, storeName: true }
     });
+
     if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
     if (!storeRow.acceptingOrders) {
       return res.status(403).json({ error: 'La tienda no está aceptando pedidos ahora mismo.' });
