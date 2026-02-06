@@ -1,5 +1,6 @@
 'use strict';
 const { toE164ES } = require('../utils/phone');
+const { buildOrderPaidSMS } = require('../utils/orderSMS');
 const express = require('express');
 const router  = express.Router();
 
@@ -933,7 +934,9 @@ router.post('/checkout-session', async (req, res) => {
     }
 });
 router.post('/checkout/confirm', async (req, res) => {
-  if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
+  if (!stripeReady) {
+    return res.status(503).json({ error: 'Stripe no configurado' });
+  }
 
   try {
     const { sessionId, orderCode } = req.body || {};
@@ -941,25 +944,39 @@ router.post('/checkout/confirm', async (req, res) => {
       return res.status(400).json({ error: 'sessionId u orderCode requerido' });
     }
 
-    // Recuperar sesión
+    // ─────────────────────────────
+    // 1️⃣ Recuperar sesión Stripe
+    // ─────────────────────────────
     let session = null;
     if (sessionId) {
-      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+      session = await stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['payment_intent']
+      });
     }
 
-    // Venta
+    // ─────────────────────────────
+    // 2️⃣ Buscar venta
+    // ─────────────────────────────
     let sale = null;
     if (session?.metadata?.saleId) {
-      sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
+      sale = await prisma.sale.findUnique({
+        where: { id: Number(session.metadata.saleId) }
+      });
     }
     if (!sale && session?.id) {
-      sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+      sale = await prisma.sale.findFirst({
+        where: { stripeCheckoutSessionId: session.id }
+      });
     }
     if (!sale && orderCode) {
-      sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
+      sale = await prisma.sale.findUnique({
+        where: { code: String(orderCode) }
+      });
     }
 
-    // ¿Está pagado?
+    // ─────────────────────────────
+    // 3️⃣ ¿Está pagado?
+    // ─────────────────────────────
     const payStatus = session?.payment_status || null;
     let pi = null;
     let stripePiId = null;
@@ -974,30 +991,51 @@ router.post('/checkout/confirm', async (req, res) => {
       }
     }
 
-    const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
+    const paidBySession =
+      payStatus === 'paid' || payStatus === 'no_payment_required';
     const paidByPI = pi?.status === 'succeeded';
     const isPaid = paidBySession || paidByPI;
 
-    // Carrito: delegar al webhook
+    // ─────────────────────────────
+    // 4️⃣ Modo carrito → delegar webhook
+    // ─────────────────────────────
     if (!sale && session?.metadata?.cart) {
-      if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
+      if (!isPaid) {
+        return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
+      }
 
       const already = await prisma.sale.findFirst({
         where: { stripeCheckoutSessionId: session.id }
       });
 
       if (already) {
-        return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
+        return res.json({
+          ok: true,
+          paid: already.status === 'PAID',
+          status: already.status
+        });
       }
 
       return res.json({ ok: true, paid: true, status: 'PAID' });
     }
 
-    if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
-    if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
+    if (!sale) {
+      return res.status(404).json({ error: 'Pedido no existe' });
+    }
+    if (!isPaid) {
+      return res.json({ ok: true, paid: false, status: sale.status });
+    }
+
+    // ─────────────────────────────
+    // 5️⃣ Transacción: PAID + stock + cupón
+    // ─────────────────────────────
+    let smsPayload = null;
 
     await prisma.$transaction(async (tx) => {
-      const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
+      const fresh = await tx.sale.findUnique({
+        where: { id: sale.id }
+      });
+
       if (fresh.status === 'PAID') return; // idempotente
 
       // ↓ bajar stock
@@ -1013,22 +1051,24 @@ router.post('/checkout/confirm', async (req, res) => {
               pizzaId: Number(p.pizzaId)
             }
           },
-          data: { stock: { decrement: Number(p.qty) } }
+          data: {
+            stock: { decrement: Number(p.qty) }
+          }
         });
       }
-
-      const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
 
       // ↓ marcar PAID
       await tx.sale.update({
         where: { id: fresh.id },
         data: {
           status: 'PAID',
-          stripePaymentIntentId: stripePiIdUpdate
+          stripePaymentIntentId:
+            stripePiId || fresh.stripePaymentIntentId || null,
+          paidAt: new Date()
         }
       });
 
-      // ↓🔥 QUEMA DE CUPÓN (NUEVO)
+      // ↓ quema de cupón
       const extrasArr = Array.isArray(fresh.extras)
         ? fresh.extras
         : (() => {
@@ -1046,20 +1086,40 @@ router.post('/checkout/confirm', async (req, res) => {
           saleId: fresh.id,
           storeId: fresh.storeId,
           customerId: fresh.customerId || null,
-          segmentAtRedeem: null,
-          kindSnapshot: null,
-          variantSnapshot: null,
           percentApplied: couponLine.percentApplied ?? null,
-          amountApplied: couponLine.amountApplied ?? null,
-          discountValue:
+          amountApplied : couponLine.amountApplied  ?? null,
+          discountValue :
             Math.abs(Number(couponLine.amount || 0)) ||
             Number(fresh.discounts || 0) ||
             null
         });
       }
+
+      // ↓ preparar SMS (FUERA de la tx se envía)
+      const phone = fresh.customerData?.phone || null;
+      if (phone) {
+        smsPayload = {
+          phone,
+          text: buildOrderPaidSMS({
+            name: fresh.customerData?.name || '',
+            orderCode: fresh.code
+          })
+        };
+      }
     });
 
+    // ─────────────────────────────
+    // 6️⃣ Enviar SMS (fuera de tx)
+    // ─────────────────────────────
+    if (smsPayload?.phone && smsPayload?.text) {
+      sendSMS(smsPayload.phone, smsPayload.text)
+        .catch(err =>
+          logE('[SMS PAID confirm] error', err)
+        );
+    }
+
     res.json({ ok: true, paid: true, status: 'PAID' });
+
   } catch (e) {
     logE('[POST /api/venta/checkout/confirm] error', e);
     res.status(400).json({ error: e.message });
@@ -1269,9 +1329,16 @@ if (!phone) throw new Error('Invalid phone');
 
               // Enviar SMS fuera de la transacción
               if (payOk && paidNotify?.phone) {
-                const body = buildPaidMsg(paidNotify);
+                const body = buildOrderPaidSMS({
+                  name: paidNotify.name,
+                  orderCode: paidNotify.code
+                });
+
                 sendSMS(paidNotify.phone, body).catch(err =>
-                  console.error('[Twilio SMS error PAID(cart)]', { err: err.message, code: paidNotify.code })
+                  console.error('[Twilio SMS error PAID(cart)]', {
+                    err: err.message,
+                    code: paidNotify.code
+                  })
                 );
               }
 
@@ -1362,12 +1429,19 @@ if (!phone) throw new Error('Invalid phone');
             logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
           });
 
-          if (payOk && paidNotify?.phone) {
-            const body = buildPaidMsg(paidNotify);
-            sendSMS(paidNotify.phone, body).catch(err =>
-              console.error('[Twilio SMS error PAID(update)]', { err: err.message, code: paidNotify.code })
-            );
-          }
+            if (payOk && paidNotify?.phone) {
+              const body = buildOrderPaidSMS({
+                name: paidNotify.name,
+                orderCode: paidNotify.code
+              });
+
+              sendSMS(paidNotify.phone, body).catch(err =>
+                console.error('[Twilio SMS error PAID(update)]', {
+                  err: err.message,
+                  code: paidNotify.code
+                })
+              );
+            }
 
         } catch (e) {
           logE('[webhook] error al procesar session.completed', e);
