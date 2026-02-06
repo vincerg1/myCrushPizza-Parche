@@ -1,6 +1,7 @@
 // src/components/OfferCreatePanelCustomer.jsx
 import React, { useState } from "react";
 import api from "../setupAxios";
+import "../styles/OfferCreatePanelCustomer.css";
 console.log("🔥🔥🔥 OfferCreatePanelCustomer FILE LOADED");
 const TYPE_LABELS = {
   RANDOM_PERCENT: "Random (%)",
@@ -73,7 +74,8 @@ export default function OfferCreatePanelCustomer({
 
   /* ───────────── Submit ───────────── */
 
-const submit = async () => {
+const submit = async (e) => {
+  e.preventDefault();
   setMsg("");
 
   const err = validate();
@@ -123,115 +125,117 @@ const submit = async () => {
 };
 
 
-  return (
-    <form onSubmit={submit} className="card" style={{ maxWidth: 760 }}>
+
+ return (
+  <form onSubmit={submit} className="offer-customer-card">
+    <div className="row">
+      <label>Tipo de cupón</label>
+      <select
+        className="input"
+        value={form.type}
+        onChange={(e) => onChange("type", e.target.value)}
+      >
+        <option value="RANDOM_PERCENT">{TYPE_LABELS.RANDOM_PERCENT}</option>
+        <option value="FIXED_PERCENT">{TYPE_LABELS.FIXED_PERCENT}</option>
+        <option value="FIXED_AMOUNT">{TYPE_LABELS.FIXED_AMOUNT}</option>
+      </select>
+    </div>
+
+    {isRandom && (
       <div className="row">
-        <label>Tipo de cupón</label>
-        <select
-          className="input"
-          value={form.type}
-          onChange={(e) => onChange("type", e.target.value)}
-        >
-          <option value="RANDOM_PERCENT">{TYPE_LABELS.RANDOM_PERCENT}</option>
-          <option value="FIXED_PERCENT">{TYPE_LABELS.FIXED_PERCENT}</option>
-          <option value="FIXED_AMOUNT">{TYPE_LABELS.FIXED_AMOUNT}</option>
-        </select>
-      </div>
-
-      {isRandom && (
-        <div className="row">
-          <label>% Descuento (mín–máx)</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              className="input"
-              type="number"
-              min="1"
-              max="90"
-              value={form.percentMin}
-              onChange={(e) => onChange("percentMin", +e.target.value || 0)}
-            />
-            <input
-              className="input"
-              type="number"
-              min="1"
-              max="90"
-              value={form.percentMax}
-              onChange={(e) => onChange("percentMax", +e.target.value || 0)}
-            />
-          </div>
-        </div>
-      )}
-
-      {isFixedPercent && (
-        <div className="row">
-          <label>% Descuento fijo</label>
+        <label>% Descuento (mín–máx)</label>
+        <div className="inline">
           <input
             className="input"
             type="number"
             min="1"
             max="90"
-            value={form.percent}
-            onChange={(e) => onChange("percent", +e.target.value || 0)}
+            value={form.percentMin}
+            onChange={(e) => onChange("percentMin", +e.target.value || 0)}
           />
-        </div>
-      )}
-
-      {isFixedAmount && (
-        <div className="row">
-          <label>Importe fijo (€)</label>
           <input
             className="input"
             type="number"
-            step="0.01"
-            min="0.01"
-            value={form.amount}
-            onChange={(e) => onChange("amount", +e.target.value || 0)}
+            min="1"
+            max="90"
+            value={form.percentMax}
+            onChange={(e) => onChange("percentMax", +e.target.value || 0)}
           />
         </div>
-      )}
+      </div>
+    )}
 
-      {(isRandom || isFixedPercent) && (
-        <div className="row">
-          <label>Max Amount (€ · opcional)</label>
-          <input
-            className="input"
-            type="number"
-            step="0.01"
-            min="0"
-            value={form.maxAmount}
-            onChange={(e) => onChange("maxAmount", e.target.value)}
-          />
-        </div>
-      )}
-
+    {isFixedPercent && (
       <div className="row">
-        <label>Vence</label>
+        <label>% Descuento fijo</label>
         <input
           className="input"
-          type="datetime-local"
-          required
-          value={form.expiresAt}
-          onChange={(e) => onChange("expiresAt", e.target.value)}
+          type="number"
+          min="1"
+          max="90"
+          value={form.percent}
+          onChange={(e) => onChange("percent", +e.target.value || 0)}
         />
       </div>
+    )}
 
+    {isFixedAmount && (
       <div className="row">
-        <label>Nota interna (opcional)</label>
-        <textarea
+        <label>Importe fijo (€)</label>
+        <input
           className="input"
-          rows={2}
-          value={form.notes}
-          onChange={(e) => onChange("notes", e.target.value)}
+          type="number"
+          step="0.01"
+          min="0.01"
+          value={form.amount}
+          onChange={(e) => onChange("amount", +e.target.value || 0)}
         />
       </div>
+    )}
 
-      <div className="actions">
-        <button className="btn primary" disabled={saving}>
-          {saving ? "Enviando…" : "Crear y enviar cupón"}
-        </button>
+    {(isRandom || isFixedPercent) && (
+      <div className="row">
+        <label>Max Amount (€ · opcional)</label>
+        <input
+          className="input"
+          type="number"
+          step="0.01"
+          min="0"
+          value={form.maxAmount}
+          onChange={(e) => onChange("maxAmount", e.target.value)}
+        />
       </div>
+    )}
 
-      {msg && <p className="note">{msg}</p>}
-    </form>
-  );
+    <div className="row">
+      <label>Vence</label>
+      <input
+        className="input"
+        type="datetime-local"
+        required
+        value={form.expiresAt}
+        onChange={(e) => onChange("expiresAt", e.target.value)}
+      />
+    </div>
+
+    <div className="row">
+      <label>Nota interna (opcional)</label>
+      <textarea
+        className="input"
+        rows={2}
+        value={form.notes}
+        onChange={(e) => onChange("notes", e.target.value)}
+      />
+    </div>
+
+    <div className="actions">
+      <button className="btn primary" disabled={saving}>
+        {saving ? "Enviando…" : "Crear y enviar cupón"}
+      </button>
+    </div>
+
+    {msg && <p className="note">{msg}</p>}
+  </form>
+);
+
 }

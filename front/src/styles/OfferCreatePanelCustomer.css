@@ -1,0 +1,72 @@
+/* OfferCreatePanelCustomer.css */
+
+.offer-customer-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+/* rows */
+
+.offer-customer-card .row {
+  display: grid;
+  gap: 6px;
+}
+
+.offer-customer-card label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* inputs */
+
+.offer-customer-card .input,
+.offer-customer-card select,
+.offer-customer-card textarea {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.offer-customer-card textarea {
+  resize: vertical;
+}
+
+/* grouped inputs (min / max) */
+
+.offer-customer-card .inline {
+  display: flex;
+  gap: 8px;
+}
+
+/* actions */
+
+.offer-customer-card .actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+
+.offer-customer-card .btn.primary {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* helper message */
+
+.offer-customer-card .note {
+  font-size: 13px;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 8px 10px;
+  border-radius: 10px;
+}

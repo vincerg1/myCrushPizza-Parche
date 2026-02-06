@@ -417,7 +417,7 @@ const startIncentive = (customer) => {
                 className="btn btn-sm"
                 onClick={() => startIncentive(c)}
               >
-                Push
+                 Boost
               </button>
 
               <button
