@@ -933,93 +933,137 @@ router.post('/checkout-session', async (req, res) => {
     }
 });
 router.post('/checkout/confirm', async (req, res) => {
-    if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
+  if (!stripeReady) return res.status(503).json({ error: 'Stripe no configurado' });
 
-    try {
-      const { sessionId, orderCode } = req.body || {};
-      if (!sessionId && !orderCode) {
-        return res.status(400).json({ error: 'sessionId u orderCode requerido' });
+  try {
+    const { sessionId, orderCode } = req.body || {};
+    if (!sessionId && !orderCode) {
+      return res.status(400).json({ error: 'sessionId u orderCode requerido' });
+    }
+
+    // Recuperar sesión
+    let session = null;
+    if (sessionId) {
+      session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
+    }
+
+    // Venta
+    let sale = null;
+    if (session?.metadata?.saleId) {
+      sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
+    }
+    if (!sale && session?.id) {
+      sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
+    }
+    if (!sale && orderCode) {
+      sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
+    }
+
+    // ¿Está pagado?
+    const payStatus = session?.payment_status || null;
+    let pi = null;
+    let stripePiId = null;
+
+    if (session?.payment_intent) {
+      if (typeof session.payment_intent === 'string') {
+        stripePiId = session.payment_intent;
+        pi = await stripe.paymentIntents.retrieve(session.payment_intent);
+      } else {
+        pi = session.payment_intent;
+        stripePiId = pi?.id ?? null;
       }
+    }
 
-      // Recuperar sesión
-      let session = null;
-      if (sessionId) {
-        session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ['payment_intent'] });
-      }
+    const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
+    const paidByPI = pi?.status === 'succeeded';
+    const isPaid = paidBySession || paidByPI;
 
-      // Venta
-      let sale = null;
-      if (session?.metadata?.saleId) {
-        sale = await prisma.sale.findUnique({ where: { id: Number(session.metadata.saleId) } });
-      }
-      if (!sale && session?.id) {
-        sale = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
-      }
-      if (!sale && orderCode) {
-        sale = await prisma.sale.findUnique({ where: { code: String(orderCode) } });
-      }
+    // Carrito: delegar al webhook
+    if (!sale && session?.metadata?.cart) {
+      if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
 
-      // ¿Está pagado?
-      const payStatus = session?.payment_status || null; // 'paid' | 'no_payment_required' | ...
-      let pi = null;
-      let stripePiId = null;
-      if (session?.payment_intent) {
-        if (typeof session.payment_intent === 'string') {
-          stripePiId = session.payment_intent;
-          pi = await stripe.paymentIntents.retrieve(session.payment_intent);
-        } else {
-          pi = session.payment_intent;
-          stripePiId = pi?.id ?? null;
-        }
-      }
-      const paidBySession = payStatus === 'paid' || payStatus === 'no_payment_required';
-      const paidByPI = pi?.status === 'succeeded';
-      const isPaid = paidBySession || paidByPI;
-
-      // Carrito: crear venta si pagado (sin canje; lo hará el webhook si llega)
-      if (!sale && session?.metadata?.cart) {
-        if (!isPaid) return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
-        // Idempotencia: si ya existe, devolver su estado
-        const already = await prisma.sale.findFirst({ where: { stripeCheckoutSessionId: session.id } });
-        if (already) {
-          return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
-        }
-        // Por simplicidad, delegamos completamente en el webhook para crear ventas en modo cart.
-        return res.json({ ok: true, paid: true, status: 'PAID' });
-      }
-
-      // Venta previa: si no pagó, informar; si pagó, marcar PAID (idempotente)
-      if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
-      if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
-
-      await prisma.$transaction(async (tx) => {
-        const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
-        if (fresh.status === 'PAID') return; // idempotente
-
-        const items = Array.isArray(fresh.products) ? fresh.products : JSON.parse(fresh.products || '[]');
-        for (const p of items) {
-          await tx.storePizzaStock.update({
-            where: { storeId_pizzaId: { storeId: fresh.storeId, pizzaId: Number(p.pizzaId) } },
-            data : { stock: { decrement: Number(p.qty) } }
-          });
-        }
-
-        const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
-
-        await tx.sale.update({
-          where: { id: fresh.id },
-          data : {
-            status: 'PAID',
-            stripePaymentIntentId: stripePiIdUpdate
-          }
-        });
+      const already = await prisma.sale.findFirst({
+        where: { stripeCheckoutSessionId: session.id }
       });
 
-      res.json({ ok: true, paid: true, status: 'PAID' });
-    } catch (e) {
-      logE('[POST /api/venta/checkout/confirm] error', e);
-      res.status(400).json({ error: e.message });
+      if (already) {
+        return res.json({ ok: true, paid: already.status === 'PAID', status: already.status });
+      }
+
+      return res.json({ ok: true, paid: true, status: 'PAID' });
     }
+
+    if (!sale) return res.status(404).json({ error: 'Pedido no existe' });
+    if (!isPaid) return res.json({ ok: true, paid: false, status: sale.status });
+
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.sale.findUnique({ where: { id: sale.id } });
+      if (fresh.status === 'PAID') return; // idempotente
+
+      // ↓ bajar stock
+      const items = Array.isArray(fresh.products)
+        ? fresh.products
+        : JSON.parse(fresh.products || '[]');
+
+      for (const p of items) {
+        await tx.storePizzaStock.update({
+          where: {
+            storeId_pizzaId: {
+              storeId: fresh.storeId,
+              pizzaId: Number(p.pizzaId)
+            }
+          },
+          data: { stock: { decrement: Number(p.qty) } }
+        });
+      }
+
+      const stripePiIdUpdate = stripePiId || fresh.stripePaymentIntentId || null;
+
+      // ↓ marcar PAID
+      await tx.sale.update({
+        where: { id: fresh.id },
+        data: {
+          status: 'PAID',
+          stripePaymentIntentId: stripePiIdUpdate
+        }
+      });
+
+      // ↓🔥 QUEMA DE CUPÓN (NUEVO)
+      const extrasArr = Array.isArray(fresh.extras)
+        ? fresh.extras
+        : (() => {
+            try { return JSON.parse(fresh.extras || '[]'); }
+            catch { return []; }
+          })();
+
+      const couponLine = extrasArr.find(
+        e => String(e?.code || '').toUpperCase() === 'COUPON' && e.couponCode
+      );
+
+      if (couponLine?.couponCode) {
+        await redeemCouponAtomic(tx, {
+          code: couponLine.couponCode,
+          saleId: fresh.id,
+          storeId: fresh.storeId,
+          customerId: fresh.customerId || null,
+          segmentAtRedeem: null,
+          kindSnapshot: null,
+          variantSnapshot: null,
+          percentApplied: couponLine.percentApplied ?? null,
+          amountApplied: couponLine.amountApplied ?? null,
+          discountValue:
+            Math.abs(Number(couponLine.amount || 0)) ||
+            Number(fresh.discounts || 0) ||
+            null
+        });
+      }
+    });
+
+    res.json({ ok: true, paid: true, status: 'PAID' });
+  } catch (e) {
+    logE('[POST /api/venta/checkout/confirm] error', e);
+    res.status(400).json({ error: e.message });
+  }
 });
 router.post(
     '/stripe/webhook',
