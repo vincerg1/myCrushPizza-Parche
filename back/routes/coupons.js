@@ -3,7 +3,8 @@
 
 const express = require('express');
 const router = express.Router();
-const sendSMS = require('../utils/sendSMS'); // usa Messaging Service SID
+const sendSMS = require('../utils/sendSMS'); 
+const { buildCouponSMS } = require("../utils/couponSMS");
 const { findOrCreateCustomerByPhone } = require('../lib/customers');
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const TZ = process.env.TIMEZONE || 'Europe/Madrid';
@@ -220,7 +221,7 @@ function couponPublicShape(row, expiresFallback) {
 
 
 module.exports = (prisma) => {
-router.post('/PushCustomer', requireApiKey, async (req, res) => {
+router.post("/PushCustomer", requireApiKey, async (req, res) => {
   try {
     const {
       type,
@@ -232,19 +233,29 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
       customerId,
       expiresAt,
       activeFrom = null,
-      observations = null
+      observations = null,
     } = req.body;
 
     if (!customerId || !expiresAt) {
-      return res.status(400).json({ error: 'missing_customer_or_expiry' });
+      return res.status(400).json({ error: "missing_customer_or_expiry" });
+    }
+
+    // ───── Obtener cliente (para phone + name) ─────
+    const customer = await prisma.customer.findUnique({
+      where: { id: Number(customerId) },
+      select: { id: true, name: true, phone: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({ error: "customer_not_found" });
     }
 
     // ───── Validación de tipo ─────
     let kind, variant;
 
-    if (type === 'RANDOM_PERCENT') {
-      kind = 'PERCENT';
-      variant = 'RANGE';
+    if (type === "RANDOM_PERCENT") {
+      kind = "PERCENT";
+      variant = "RANGE";
 
       if (
         !Number.isFinite(percentMin) ||
@@ -253,73 +264,99 @@ router.post('/PushCustomer', requireApiKey, async (req, res) => {
         percentMax > 90 ||
         percentMax < percentMin
       ) {
-        return res.status(400).json({ error: 'bad_range' });
+        return res.status(400).json({ error: "bad_range" });
       }
 
-    } else if (type === 'FIXED_PERCENT') {
-      kind = 'PERCENT';
-      variant = 'FIXED';
+    } else if (type === "FIXED_PERCENT") {
+      kind = "PERCENT";
+      variant = "FIXED";
 
       if (!Number.isFinite(percent) || percent < 1 || percent > 90) {
-        return res.status(400).json({ error: 'bad_percent' });
+        return res.status(400).json({ error: "bad_percent" });
       }
 
-    } else if (type === 'FIXED_AMOUNT') {
-      kind = 'AMOUNT';
-      variant = 'FIXED';
+    } else if (type === "FIXED_AMOUNT") {
+      kind = "AMOUNT";
+      variant = "FIXED";
 
       if (!Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ error: 'bad_amount' });
+        return res.status(400).json({ error: "bad_amount" });
       }
 
     } else {
-      return res.status(400).json({ error: 'bad_type' });
+      return res.status(400).json({ error: "bad_type" });
     }
 
     // ───── Código único ─────
     const prefix =
-      type === 'RANDOM_PERCENT' ? PREFIX.RANDOM_PERCENT :
-      type === 'FIXED_PERCENT'  ? PREFIX.FIXED_PERCENT  :
-                                  PREFIX.FIXED_AMOUNT;
+      type === "RANDOM_PERCENT"
+        ? PREFIX.RANDOM_PERCENT
+        : type === "FIXED_PERCENT"
+        ? PREFIX.FIXED_PERCENT
+        : PREFIX.FIXED_AMOUNT;
 
     const code = codePattern(prefix);
 
     // ───── Crear cupón ─────
-  const coupon = await prisma.coupon.create({
-  data: {
-    code,
-    kind,
-    variant,
+    const coupon = await prisma.coupon.create({
+      data: {
+        code,
+        kind,
+        variant,
 
-    percent     : kind === 'PERCENT' && variant === 'FIXED' ? percent : null,
-    percentMin  : kind === 'PERCENT' && variant === 'RANGE' ? percentMin : null,
-    percentMax  : kind === 'PERCENT' && variant === 'RANGE' ? percentMax : null,
-    amount      : kind === 'AMOUNT' ? String(amount) : null,
-    maxAmount   : maxAmount ? String(maxAmount) : null,
+        percent:
+          kind === "PERCENT" && variant === "FIXED" ? percent : null,
+        percentMin:
+          kind === "PERCENT" && variant === "RANGE" ? percentMin : null,
+        percentMax:
+          kind === "PERCENT" && variant === "RANGE" ? percentMax : null,
+        amount: kind === "AMOUNT" ? String(amount) : null,
+        maxAmount: maxAmount ? String(maxAmount) : null,
 
-    assignedToId: Number(customerId),
-    visibility  : 'RESERVED',
+        assignedToId: customer.id,
+        visibility: "RESERVED",
 
-    usageLimit  : 1,
-    usedCount   : 0,
-    status      : 'ACTIVE',
+        usageLimit: 1,
+        usedCount: 0,
+        status: "ACTIVE",
 
-    activeFrom  : activeFrom ? new Date(activeFrom) : null,
-    expiresAt   : new Date(expiresAt),
+        activeFrom: activeFrom ? new Date(activeFrom) : null,
+        expiresAt: new Date(expiresAt),
 
-    meta        : observations ? { observations } : null,
+        meta: observations ? { observations } : null,
 
-    acquisition : 'DIRECT', // 🔥 FIX
-    channel     : 'SMS'
-  }
-});
+        acquisition: "DIRECT",
+        channel: "SMS",
+      },
+    });
 
+    // ───── Side-effect: SMS ─────
+    try {
+      if (customer.phone) {
+        const smsBody = buildCouponSMS({
+            customerName: customer.name,
+             ...coupon,
+        });
+
+        await sendSMS(customer.phone, smsBody);
+
+        console.log(
+          `[SMS] Coupon ${coupon.code} sent to customer ${customer.id}`
+        );
+      }
+    } catch (smsErr) {
+      // ⚠️ no romper el flujo si falla Twilio
+      console.error(
+        `[SMS] Failed to send coupon ${coupon.code} to customer ${customer.id}`,
+        smsErr
+      );
+    }
 
     return res.json({ ok: true, coupon });
 
   } catch (e) {
-    console.error('[coupons.PushCustomer] error', e);
-    return res.status(500).json({ error: 'server' });
+    console.error("[coupons.PushCustomer] error", e);
+    return res.status(500).json({ error: "server" });
   }
 });
 router.post('/bulk-generate', requireApiKey, async (req, res) => {
@@ -458,9 +495,9 @@ router.post('/bulk-generate', requireApiKey, async (req, res) => {
 });
 router.post('/issue', requireApiKey, async (req, res) => {
   try {
-    // Por compat seguimos aceptando "prefix", pero forzamos AMOUNT/FIXED
     const prefix = String(req.body.prefix || PREFIX.FIXED_AMOUNT).toUpperCase();
     const hours  = Number(req.body.hours || 24);
+
     if (!Number.isFinite(hours) || hours <= 0) {
       return res.status(400).json({ error: 'bad_request' });
     }
@@ -468,18 +505,14 @@ router.post('/issue', requireApiKey, async (req, res) => {
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
-    // Traemos candidatos y filtramos stock “bien”
     const candidates = await prisma.coupon.findMany({
       where: {
-        code:    { startsWith: prefix },
-        status:  'ACTIVE',
-        kind:    'AMOUNT',
+        code: { startsWith: prefix },
+        status: 'ACTIVE',
+        kind: 'AMOUNT',
         variant: 'FIXED',
-
-        // 🔒 nunca tocar cupones de juegos
         gameId: null,
         NOT: { acquisition: 'GAME' },
-
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { id: 'asc' },
@@ -487,37 +520,37 @@ router.post('/issue', requireApiKey, async (req, res) => {
     });
 
     const row = candidates.find(r => {
-      const used = toNum(r.usedCount) ?? 0;
-      const limit = r.usageLimit == null ? null : toNum(r.usageLimit);
-      const hasStock = (limit == null) ? true : (used < limit);
-      return hasStock;
-    }) || null;
+      const used  = Number(r.usedCount || 0);
+      const limit = r.usageLimit == null ? null : Number(r.usageLimit);
+      return limit == null || used < limit;
+    });
 
     if (!row) return res.status(409).json({ error: 'out_of_stock' });
 
     await prisma.coupon.update({
       where: { code: row.code },
-      data : { expiresAt }
+      data: { expiresAt }
     });
 
-    // Notificaciones (opcionales)
-    const contact     = normPhone(req.body.contact || '');
-    const gameNumber  = req.body.gameNumber ?? null;
-    const siteUrl     = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
-    const adminPhone  = process.env.ADMIN_PHONE || '';
-    const whenTxt     = fmtExpiry(expiresAt);
-    const code        = row.code;
+    const contact    = normPhone(req.body.contact || '');
+    const adminPhone = process.env.ADMIN_PHONE || '';
     const notify = { user: { tried: false }, admin: { tried: false } };
 
+    // ───── SMS USUARIO (🔥 UNIFICADO 🔥) ─────
     if (contact) {
       notify.user.tried = true;
-      const userMsg =
-        `Felicidades 🎉 Has obtenido un cupón.\n` +
-        `Canjéalo en ${siteUrl} con el código: ${code}\n` +
-        `Vence ${whenTxt}.`;
       try {
-        const resp = await sendSMS(contact, userMsg);
-        notify.user.ok  = true;
+        const smsBody = buildCouponSMS({
+          customerName: null,
+          code: row.code,
+          expiresAt,
+          kind: row.kind,
+          variant: row.variant,
+          amount: row.amount,
+        });
+
+        const resp = await sendSMS(contact, smsBody);
+        notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
         notify.user.ok = false;
@@ -525,36 +558,30 @@ router.post('/issue', requireApiKey, async (req, res) => {
       }
     }
 
+    // ───── SMS ADMIN (sin tocar) ─────
     if (adminPhone) {
       notify.admin.tried = true;
-      const adminMsg =
-        `ALERTA MCP 🎯 Cupón emitido\n` +
-        `Code: ${code} (vence ${whenTxt})\n` +
-        `Tel cliente: ${contact || '-'}\n` +
-        `Game#: ${gameNumber ?? '-'}`;
       try {
-        const resp = await sendSMS(adminPhone, adminMsg);
-        notify.admin.ok  = true;
-        notify.admin.sid = resp.sid;
+        await sendSMS(
+          adminPhone,
+          `ALERTA MCP 🎯 Cupón emitido\nCode: ${row.code}\nVence: ${expiresAt.toISOString()}`
+        );
+        notify.admin.ok = true;
       } catch (err) {
         notify.admin.ok = false;
         notify.admin.error = err.message;
       }
     }
 
-    const legacyKind = row.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
-
     return res.json({
       ok: true,
-      code,
-      kindV2: row.kind,
+      code: row.code,
       amount: row.amount ? Number(row.amount) : null,
       percent: null,
       expiresAt,
-      kind: legacyKind,
-      value: row.amount ? Number(row.amount) : 0,
       notify
     });
+
   } catch (e) {
     console.error('[coupons.issue] error', e);
     return res.status(500).json({ error: 'server' });
@@ -1052,9 +1079,7 @@ router.post('/direct-claim', async (req, res) => {
       campaign = null
     } = req.body || {};
 
-    // 🔥 CANONICALIZACIÓN ÚNICA
     const phoneE164 = normalizeES(phone);
-
     if (!phoneE164) {
       return res.status(400).json({ ok: false, error: 'invalid_phone' });
     }
@@ -1070,22 +1095,18 @@ router.post('/direct-claim', async (req, res) => {
     // ---------- TYPE + KEY ----------
     stage = 'build_where_type_key';
     const whereTypeKey = buildWhereForTypeKey(type, key);
-    console.log('[VENTAS][direct-claim] whereTypeKey:', { type, key, whereTypeKey });
-
     if (!whereTypeKey) {
       return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
     }
 
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
-
-    const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
 
     // ---------- 1) Buscar / crear cliente ----------
     stage = 'customer_lookup';
     const customer = await findOrCreateCustomerByPhone(prisma, {
-      phone: phoneE164,     // 🔒 SIEMPRE +34...
+      phone: phoneE164,
       name: name || null,
       origin: 'QR',
     });
@@ -1102,18 +1123,24 @@ router.post('/direct-claim', async (req, res) => {
     });
 
     if (activeCoupon) {
-      const code = activeCoupon.code;
-      const title = titleForCouponRow(activeCoupon);
-      const whenTxt = fmtExpiry(activeCoupon.expiresAt || expiresAt);
-
       const notify = { user: { tried: false }, admin: { tried: false } };
 
-      // SMS usuario
+      // 📩 SMS usuario (REUTILIZA buildCouponSMS)
       notify.user.tried = true;
       try {
-        const resp = await sendSMS(phoneE164, 
-          `🎁 Tu cupón para MyCrushPizza: ${code}\nValor: ${title}\nCanjéalo en ${siteUrl} (hasta ${whenTxt}).`
-        );
+        const smsBody = buildCouponSMS({
+          customerName: customer.name,
+          code: activeCoupon.code,
+          expiresAt: activeCoupon.expiresAt,
+          kind: activeCoupon.kind,
+          variant: activeCoupon.variant,
+          percent: activeCoupon.percent,
+          percentMin: activeCoupon.percentMin,
+          percentMax: activeCoupon.percentMax,
+          amount: activeCoupon.amount,
+        });
+
+        const resp = await sendSMS(phoneE164, smsBody);
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
@@ -1121,12 +1148,13 @@ router.post('/direct-claim', async (req, res) => {
         notify.user.error = err.message;
       }
 
-      // SMS admin
+      // 📩 SMS admin (sin tocar formato)
       if (adminPhone) {
         notify.admin.tried = true;
         try {
-          await sendSMS(adminPhone,
-            `ALERTA MCP 🎯 Reenvío cupón\nCode: ${code} (${title})\nTel: ${phoneE164}\nVence: ${whenTxt}`
+          await sendSMS(
+            adminPhone,
+            `ALERTA MCP 🎯 Reenvío cupón\nCode: ${activeCoupon.code}\nTel: ${phoneE164}`
           );
           notify.admin.ok = true;
         } catch (err) {
@@ -1137,10 +1165,9 @@ router.post('/direct-claim', async (req, res) => {
 
       return res.json({
         ok: true,
-        code,
+        code: activeCoupon.code,
         type,
         key,
-        title,
         expiresAt: activeCoupon.expiresAt || expiresAt,
         customerId: customer.id,
         kind: activeCoupon.kind,
@@ -1189,33 +1216,41 @@ router.post('/direct-claim', async (req, res) => {
       }
     });
 
-    const finalCoupon = await prisma.coupon.findUnique({ where: { id: poolCoupon.id } });
-
-    const code = finalCoupon.code;
-    const title = titleForCouponRow(finalCoupon);
-    const whenTxt = fmtExpiry(finalCoupon.expiresAt || expiresAt);
+    const finalCoupon = await prisma.coupon.findUnique({
+      where: { id: poolCoupon.id }
+    });
 
     // ---------- 5) SMS ----------
     const notify = { user: { tried: false }, admin: { tried: false } };
 
     notify.user.tried = true;
-    await sendSMS(phoneE164,
-      `🎁 Tu cupón para MyCrushPizza: ${code}\nValor: ${title}\nCanjéalo en ${siteUrl} (hasta ${whenTxt}).`
-    );
+    const smsBody = buildCouponSMS({
+      customerName: customer.name,
+      code: finalCoupon.code,
+      expiresAt: finalCoupon.expiresAt,
+      kind: finalCoupon.kind,
+      variant: finalCoupon.variant,
+      percent: finalCoupon.percent,
+      percentMin: finalCoupon.percentMin,
+      percentMax: finalCoupon.percentMax,
+      amount: finalCoupon.amount,
+    });
+
+    await sendSMS(phoneE164, smsBody);
 
     if (adminPhone) {
       notify.admin.tried = true;
-      await sendSMS(adminPhone,
-        `ALERTA MCP 🎯 Cupón emitido\nCode: ${code} (${title})\nTel: ${phoneE164}\nVence: ${whenTxt}`
+      await sendSMS(
+        adminPhone,
+        `ALERTA MCP 🎯 Cupón emitido\nCode: ${finalCoupon.code}\nTel: ${phoneE164}`
       );
     }
 
     return res.json({
       ok: true,
-      code,
+      code: finalCoupon.code,
       type,
       key,
-      title,
       expiresAt: finalCoupon.expiresAt || expiresAt,
       customerId: customer.id,
       kind: finalCoupon.kind,
@@ -1229,7 +1264,12 @@ router.post('/direct-claim', async (req, res) => {
 
   } catch (e) {
     console.error('[coupons.direct-claim] FATAL error at stage', stage, e);
-    return res.status(500).json({ ok: false, error: 'server', stage, meta: { message: e.message } });
+    return res.status(500).json({
+      ok: false,
+      error: 'server',
+      stage,
+      meta: { message: e.message }
+    });
   }
 });
 router.get('/gallery', async (_req, res) => {

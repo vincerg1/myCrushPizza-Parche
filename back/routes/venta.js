@@ -507,19 +507,6 @@ if (customer?.phone?.trim()) {
           }
         });
       }
-      const shapeErr = assertGameCouponShapeExplain(coup, couponCode);
-      if (shapeErr){
-        return res.status(422).json({ error:'INVALID_COUPON', ...shapeErr, details:{ code: couponCode } });
-      }
-
-if (discount <= 0){
-  return res.status(422).json({
-    error:'INVALID_COUPON',
-    reason:'NO_DISCOUNT',
-    message:'El cupón no aplica a este carrito.'
-  });
-}
-
 
         // 🚦 Blindaje adicional: si es del juego (MCP-CD), exigir AMOUNT/FIXED
         assertGameCouponShape(coup, couponCode);
