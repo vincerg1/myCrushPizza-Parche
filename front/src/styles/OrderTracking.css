@@ -91,3 +91,16 @@
 .ot-error {
   color: #b00020;
 }
+.ot-banner {
+  margin: 16px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  max-height: 220px; /* control vertical */
+}
+
+.ot-banner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
