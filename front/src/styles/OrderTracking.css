@@ -92,15 +92,15 @@
   color: #b00020;
 }
 .ot-banner {
-  margin: 16px 0;
-  border-radius: 14px;
+  margin: 18px 0 8px;
+  border-radius: 16px;
   overflow: hidden;
-  max-height: 220px; /* control vertical */
+  background: #f7f7f7;
 }
 
 .ot-banner img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;          /* 🔥 clave */
   display: block;
+  border-radius: 16px;
 }
