@@ -12,12 +12,15 @@ import PaymentResult from "./components/PaymentResult";
 import PrivacyPage from "./components/PrivacyPage";
 import TermsPage from "./components/TermsPage";
 import DataDeletionPage from "./components/DataDeletionPage";
+import OrderTracking from "./components/OrderTracking";
+
 
 export default function App() {
   const { auth } = useAuth();
 
   return (
     <Routes>
+      
       {/* Páginas legales (IMPORTANTE: antes del catch-all) */}
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/terms" element={<TermsPage />} />
@@ -29,7 +32,7 @@ export default function App() {
       {/* Flujo público de compra */}
       <Route path="/venta" element={<PublicCheckout />} />
       <Route path="/venta/result" element={<PaymentResult />} />
-
+      <Route path="/seguimiento/:code" element={<OrderTracking />} />
       {/* Mini-página pública para repartidor */}
       <Route path="/customer/:code" element={<CustomerInfo />} />
 
