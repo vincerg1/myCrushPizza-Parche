@@ -410,6 +410,77 @@ r.post('/', auth(), async (req, res) => {
 });
 
 
+/* ─────────────── GET /api/sales/seguimiento/:code (PÚBLICO) ─────────────── */
+r.get('/seguimiento/:code', async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim().toUpperCase();
+    if (!code) {
+      return res.status(400).json({ error: 'Código inválido' });
+    }
+
+    const sale = await prisma.sale.findUnique({
+      where: { code },
+      select: {
+        code: true,
+        status: true,
+        processed: true,
+        type: true,
+        delivery: true,
+        date: true,
+        store: { select: { storeName: true } }
+      }
+    });
+
+    if (!sale) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: 'Pedido no encontrado'
+      });
+    }
+
+    // Solo permitimos seguimiento si está pagado
+    if (sale.status !== 'PAID') {
+      return res.status(422).json({
+        error: 'NOT_PAID',
+        message: 'El pedido aún no ha sido confirmado como pagado'
+      });
+    }
+
+    // ───── estado lógico del pedido ─────
+    let stage = 'PREPARING';
+    let message = 'Tu pedido está en preparación 🍕';
+
+    if (sale.processed) {
+      if (
+        String(sale.delivery).toUpperCase() === 'COURIER' ||
+        String(sale.type).toUpperCase() === 'DELIVERY'
+      ) {
+        stage = 'ON_THE_WAY';
+        message = 'Tu pedido va en camino 🛵';
+      } else {
+        stage = 'READY';
+        message = 'Tu pedido está listo para recoger 🍕';
+      }
+    }
+
+    return res.json({
+      code: sale.code,
+      stage,              // PREPARING | READY | ON_THE_WAY
+      message,            // copy listo para UI
+      processed: sale.processed,
+      type: sale.type,
+      delivery: sale.delivery,
+      storeName: sale.store?.storeName || 'myCrushPizza',
+      createdAt: sale.date
+    });
+
+  } catch (e) {
+    console.error('[GET /api/sales/seguimiento/:code]', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
+
   /* ─────────────── GET /api/sales/pending ─────────────── */
   r.get('/pending', auth(), async (_, res) => {
     try {
