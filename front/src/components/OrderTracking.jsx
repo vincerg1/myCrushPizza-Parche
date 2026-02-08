@@ -109,13 +109,14 @@ export default function OrderTracking() {
           🔄 Actualizar estado
         </button>
 
-        {/* BANNER PUBLICITARIO (imagen única) */}
+        {/* BANNER PUBLICITARIO */}
         <div className="ot-banner">
-            <img
+          <img
             src="https://res.cloudinary.com/djtswalha/image/upload/v1770542789/myCrushPizzaBannerCampa%C3%B1a1_s1qxmk.png"
             alt="MyCrushPizza"
             loading="lazy"
-            />
+          />
+        </div>
 
         <Link to="/venta" className="ot-btn">
           Volver a la tienda
