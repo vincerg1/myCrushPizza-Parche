@@ -23,7 +23,6 @@ function Toast({ msg, onClose }) {
     document.body
   );
 }
-
 function Modal({ open, title, onClose, children, className = "" }) {
   if (!open) return null;
   return ReactDOM.createPortal(
@@ -186,22 +185,51 @@ export default function LocalSaleForm({
   const [cartOpen, setCartOpen] = useState(false);
   const [flippedId, setFlippedId] = useState(null);
   const [categoriesDb, setCategoriesDb] = useState([]);
+  const [buildMode, setBuildMode] = useState("menu");
   const [extrasAvail, setExtrasAvail] = useState([]);
   const [showAllExtras, setShowAllExtras] = useState(false);
+  const [halfModalOpen, setHalfModalOpen] = useState(false);
+  const [halfAIndex, setHalfAIndex] = useState(0);
+  const [halfBIndex, setHalfBIndex] = useState(1);
+  const [halfQty, setHalfQty] = useState(1);
+  const [halfSize, setHalfSize] = useState("");
+  const [halfExtras, setHalfExtras] = useState({
+  A: {},
+  B: {}
+});
+  const [halfExtrasAvail, setHalfExtrasAvail] = useState([]);
+  const [showAllHalfExtrasA, setShowAllHalfExtrasA] = useState(false);
+  const [showAllHalfExtrasB, setShowAllHalfExtrasB] = useState(false);
+const [openHalfExtrasA, setOpenHalfExtrasA] = useState(false);
+const [openHalfExtrasB, setOpenHalfExtrasB] = useState(false);
   const [customer, setCustomer] = useState(null);
   const [dragX, setDragX] = useState(0);
   const dragActive = useRef(false);
- const [tick, setTick] = useState(false);
+  const [tick, setTick] = useState(false);
+  const touchStartY = useRef(0);
 
- useEffect(() => {
+const sortedHalfExtras = useMemo(() => {
+  return [...halfExtrasAvail].sort(
+    (a, b) => Number(b.price) - Number(a.price)
+  );
+}, [halfExtrasAvail]);
+
+const visibleHalfExtrasA = showAllHalfExtrasA
+  ? sortedHalfExtras
+  : sortedHalfExtras.slice(0, 3);
+
+const visibleHalfExtrasB = showAllHalfExtrasB
+  ? sortedHalfExtras
+  : sortedHalfExtras.slice(0, 3);
+
+useEffect(() => {
     const id = setInterval(() => {
       setTick(true);
       setTimeout(() => setTick(false), 600);
     }, 5000);
 
     return () => clearInterval(id);
-  }, []);
- 
+}, []);
 useEffect(() => {
   const incoming = Array.isArray(initialCart) ? initialCart : null;
   if (!incoming || incoming.length === 0) return;
@@ -234,9 +262,19 @@ useEffect(() => {
     .then(r => setCategoriesDb(Array.isArray(r.data) ? r.data : []))
     .catch(console.error);
 }, []);
-  const MAX_QTY_SELECT = 12;
 
-  /* effects */
+const HALF_CATEGORY_ID = 3; // ← SOLO PIZZAS
+
+useEffect(() => {
+  api
+    .get(`/api/ingredient-extras?categoryId=${HALF_CATEGORY_ID}`)
+    .then(r =>
+      setHalfExtrasAvail(Array.isArray(r.data) ? r.data : [])
+    )
+    .catch(() => setHalfExtrasAvail([]));
+}, []);
+
+  const MAX_QTY_SELECT = 12;
   useEffect(() => {
     if (forcedStoreId) return;
     if (isAdmin) {
@@ -267,6 +305,8 @@ useEffect(() => {
   const categories = useMemo(() => {
   if (!categoriesDb.length) return [];
 
+
+
   // categorías que realmente tienen productos en el menú
   const menuCats = new Set(
     menu
@@ -282,7 +322,6 @@ useEffect(() => {
 
 // ─── Swipe categorías ─────────────────────────────
 const swipeCatRef = useRef({ x: 0, y: 0 });
-
 const SWIPE_CAT_X = 60;
 const SWIPE_CAT_Y_MAX = 45;
 
@@ -313,7 +352,6 @@ const moveCategory = useCallback(
     if (!cat || !catExists) setCat(categories[0]);
   }, [categories, cat]);
 
-  // ✅ Items disponibles: categoría -> buscador -> orden precio
   const itemsAvail = useMemo(() => {
     if (!cat) return [];
 
@@ -348,8 +386,55 @@ const moveCategory = useCallback(
     });
   }, [menu, cat, ingredientQuery]);
 
+  const halfItems = useMemo(() => {
+    return menu
+      .filter(
+        m =>
+          !isExtraItem(m) &&
+          Number(categoriesDb.find(c =>
+            normalize(c.name) === normalize(m.category)
+          )?.id) === HALF_CATEGORY_ID
+      )
+      .sort((a, b) => {
+        const pa = priceForSize(a.priceBySize, a.selectSize?.[0] || "M");
+        const pb = priceForSize(b.priceBySize, b.selectSize?.[0] || "M");
+        return pb - pa;
+      });
+  }, [menu, categoriesDb]);
 
 
+const sizeOptions = useMemo(() => {
+  if (!halfItems.length) return [];
+  const a = halfItems[halfAIndex];
+  const b = halfItems[halfBIndex];
+  if (!a || !b) return [];
+  const sizesA = a.selectSize || [];
+  const sizesB = b.selectSize || [];
+
+  return sizesA.filter(sz => sizesB.includes(sz));
+}, [halfItems, halfAIndex, halfBIndex]);
+
+const halfBasePrice = useMemo(() => {
+  if (!halfSize) return 0;
+
+  const a = halfItems[halfAIndex];
+  const b = halfItems[halfBIndex];
+  if (!a || !b) return 0;
+
+  const priceA = priceForSize(a.priceBySize, halfSize);
+  const priceB = priceForSize(b.priceBySize, halfSize);
+
+  return (priceA / 2) + (priceB / 2);
+}, [halfSize, halfItems, halfAIndex, halfBIndex]);
+
+const halfTotal = halfBasePrice * halfQty;
+useEffect(() => {
+  if (sizeOptions.length === 1) {
+    setHalfSize(sizeOptions[0]);
+  } else if (!sizeOptions.includes(halfSize)) {
+    setHalfSize("");
+  }
+}, [sizeOptions]);
   const current = menu.find((m) => m.pizzaId === Number(sel.pizzaId));
   const currentCategoryId = useMemo(() => {
     if (!current || !categoriesDb.length) return null;
@@ -360,6 +445,28 @@ const moveCategory = useCallback(
 
     return found?.id || null;
   }, [current, categoriesDb]);
+
+const toggleHalfExtra = (side, ingredientId) => {
+  setHalfExtras(prev => ({
+    ...prev,
+    [side]: {
+      ...prev[side],
+      [ingredientId]: !prev[side][ingredientId]
+    }
+  }));
+};
+const halfExtrasTotal = useMemo(() => {
+  const calcSide = (side) =>
+    halfExtrasAvail
+      .filter(ex => halfExtras[side][ex.ingredientId])
+      .reduce((sum, ex) => sum + Number(ex.price || 0), 0);
+
+  return calcSide("A") + calcSide("B");
+}, [halfExtras, halfExtrasAvail]);
+
+const halfGrandTotal = (halfBasePrice + halfExtrasTotal) * halfQty;
+
+
   useEffect(() => {
   if (!currentCategoryId) {
     setExtrasAvail([]);
@@ -442,8 +549,6 @@ const onCatTouchEnd = (e) => {
     else moveCategory(-1);
   }
 };
-
-
   /* handlers */
   const toggleExtra = (id) => setSel((s) => ({ ...s, extras: { ...s.extras, [id]: !s.extras[id] } }));
   const pickSize = (sz) => setSel((s) => ({ ...s, size: sz }));
@@ -453,15 +558,20 @@ const onCatTouchEnd = (e) => {
     setSel((s) => ({ ...s, qty: Math.min(max, Number(s.qty || 1) + 1) }));
   };
 
+  const nextHalfA = () =>
+setHalfAIndex(i => (i + 1) % itemsAvail.length);
+const prevHalfA = () =>
+  setHalfAIndex(i => (i === 0 ? itemsAvail.length - 1 : i - 1));
+const nextHalfB = () =>
+  setHalfBIndex(i => (i + 1) % itemsAvail.length);
+const prevHalfB = () =>
+  setHalfBIndex(i => (i === 0 ? itemsAvail.length - 1 : i - 1));
   const toggleFlip = (id) => setFlippedId((prev) => (prev === id ? null : id));
-
   const baseUnitPrice = current && sel.size ? priceForSize(current.priceBySize, sel.size) : 0;
-
   const extrasUnitTotal = useMemo(() => {
     const selected = extrasAvail.filter((ex) => sel.extras[ex.ingredientId]);
     return selected.reduce((sum, ex) => sum + num(ex.price), 0);
   }, [sel.extras, extrasAvail]);
-
   const addLine = () => {
     if (!current) return;
 
@@ -503,14 +613,71 @@ const onCatTouchEnd = (e) => {
 
     setToast("Añadido al carrito");
   };
+const addHalfLine = () => {
+  if (!halfSize || !itemsAvail.length) return;
+
+  const a = itemsAvail[halfAIndex];
+  const b = itemsAvail[halfBIndex];
+
+  if (!a || !b) return;
+
+  const baseUnitPrice = halfBasePrice;
+
+  // 🔹 Construir extras seleccionados (A + B)
+  const selectedExtras = [
+    ...halfExtrasAvail
+      .filter(ex => halfExtras.A[ex.ingredientId])
+      .map(ex => ({
+        id: ex.ingredientId,
+        name: ex.name || ex.ingredientName,
+        price: Number(ex.price)
+      })),
+
+    ...halfExtrasAvail
+      .filter(ex => halfExtras.B[ex.ingredientId])
+      .map(ex => ({
+        id: ex.ingredientId,
+        name: ex.name || ex.ingredientName,
+        price: Number(ex.price)
+      })),
+
+    // 🔹 Mitad B como "extra estructural"
+    {
+      id: `HALF-${b.pizzaId}`,
+      name: `Mitad B: ${b.name}`,
+      price: 0
+    }
+  ];
+
+  const extrasPerUnit = selectedExtras.reduce(
+    (sum, ex) => sum + Number(ex.price || 0),
+    0
+  );
+
+  const subtotal = (baseUnitPrice + extrasPerUnit) * halfQty;
+
+  setCart(prev => [
+    ...prev,
+    {
+      pizzaId: a.pizzaId, // ✅ SOLO la mitad A es real
+      name: `${a.name} / ${b.name}`,
+      category: a.category,
+      size: halfSize,
+      qty: halfQty,
+      price: baseUnitPrice,
+      extras: selectedExtras,
+      subtotal
+    }
+  ]);
+
+  setToast("Añadido al carrito");
+};
+
 
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
-
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
-
   const getImg = (it) => it?.image || "";
-
   const modalUnit = baseUnitPrice + extrasUnitTotal;
   const modalTotal = modalUnit * Number(sel.qty || 1);
   const modalReady = !!current && !!sel.size;
@@ -533,10 +700,39 @@ const onCatTouchEnd = (e) => {
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
         </div>
+        <div className="lsf-buildmodes">
 
-      
-    
+          <button
+            type="button"
+            className={`lsf-buildmode ${buildMode === "menu" ? "is-active" : ""}`}
+            onClick={() => setBuildMode("menu")}
+          >
+            Menu
+          </button>
 
+          <button
+            type="button"
+            className={`lsf-buildmode ${buildMode === "half" ? "is-active" : ""}`}
+            onClick={() => {
+              setBuildMode("half");
+              setHalfModalOpen(true);
+            }}
+          >
+            Mitad / Mitad
+          </button>
+
+          <button
+            type="button"
+            className={`lsf-buildmode ${buildMode === "custom" ? "is-active" : ""}`}
+            onClick={() => {
+              setBuildMode("custom");
+              // futuro: setCustomModalOpen(true)
+            }}
+          >
+            Arma tu pizza
+          </button>
+
+        </div>
         {/* selector tienda (solo admin y no forced) */}
         {!forcedStoreId && isAdmin && (
           <div className="lsf-store">
@@ -550,7 +746,6 @@ const onCatTouchEnd = (e) => {
             </select>
           </div>
         )}
-
         {/* Tabs categorías */}
         <div className="lsf-tabs" role="tablist" aria-label="Categorías">
           {categories.map((c) => {
@@ -569,7 +764,6 @@ const onCatTouchEnd = (e) => {
             );
           })}
         </div>
-
         {/* Grid productos */}
         <div className="lsf-grid-wrap">
           <div
@@ -637,19 +831,18 @@ const onCatTouchEnd = (e) => {
 
                   {/* BACK (INFO ONLY) */}
           <div className="lsf-flip__back">
-  {(() => {
-    const { line, closer } = buildPizzaLine(it);
+              {(() => {
+                const { line, closer } = buildPizzaLine(it);
 
-    return (
-      <div className="lsf-flip-desc">
-        <div className="lsf-flip-title">Tu crush sin filtro</div>
-        <div className="lsf-flip-line">{line}</div>
-        <div className="lsf-flip-closer">{closer}</div>
-      </div>
-    );
-  })()}
-</div>
-
+                return (
+                  <div className="lsf-flip-desc">
+                    <div className="lsf-flip-title">Tu crush sin filtro</div>
+                    <div className="lsf-flip-line">{line}</div>
+                    <div className="lsf-flip-closer">{closer}</div>
+                  </div>
+                );
+              })()}
+            </div>
                 </div>
               </div>
             );
@@ -707,301 +900,599 @@ const onCatTouchEnd = (e) => {
         </div>
       )}
 
-      {/* PRODUCT MODAL */}
-      <Modal
-        open={productModalOpen}
-        title={current?.name || "Producto"}
-        onClose={() => setProductModalOpen(false)}
-        className="lsf-modal--center"
-      >
-        {!current ? null : (
-          <>
-            <div className="lsf-pm">
-              <div className="lsf-pm__hero">
-                {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
-              </div>
-
-              {/* DESCRIPCIÓN */}
-              <div className="lsf-pm__desc">
-                {(() => {
-                  const ingredients =
-                    Array.isArray(current.ingredients) && current.ingredients.length
-                      ? current.ingredients.map((i) => capWords(i.name))
-                      : [];
-
-                  const closer = seededPick(current.pizzaId + 13, CRUSH_CLOSERS);
-
-                  return (
-                    <>
-                      <div className="lsf-muted">
-                        <div><b>Tu crush sin filtro</b></div>
-
-                        {ingredients.length > 0 ? (
-                          <div>
-                            {joinWithY(ingredients)}.{" "}
-                            <span className="lsf-closer-inline">{closer}</span>
-                          </div>
-                        ) : (
-                          <div>Ingredientes seleccionados a mano.</div>
-                        )}
-                      </div>
-
-                      <div className="lsf-allergen">
-                        ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
-              {/* QTY */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Qty</div>
-                <div className="lsf-qty">
-                  <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
-                    –
-                  </button>
-                  <div className="lsf-qty__val">{sel.qty}</div>
-                  <button
-                    type="button"
-                    className="lsf-qty__btn"
-                    onClick={incQty}
-                    disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
-                  >
-                    +
-                  </button>
+        {/* PRODUCT MODAL */}
+        <Modal
+          open={productModalOpen}
+          title={current?.name || "Producto"}
+          onClose={() => setProductModalOpen(false)}
+          className="lsf-modal--center"
+        >
+          {!current ? null : (
+            <>
+              <div className="lsf-pm">
+                <div className="lsf-pm__hero">
+                  {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
                 </div>
-              </div>
 
-              {/* SIZES */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Size</div>
-                <div className="lsf-sizes">
-                  {(current.selectSize || []).map((sz) => {
-                    const a = sel.size === sz;
-                    const p = priceForSize(current.priceBySize, sz);
-                    return (
-                      <button
-                        key={sz}
-                        type="button"
-                        className={`lsf-chip ${a ? "is-active" : ""}`}
-                        onClick={() => pickSize(sz)}
-                      >
-                        <span className="lsf-chip__sz">{sz}</span>
-                        <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                {/* DESCRIPCIÓN */}
+                <div className="lsf-pm__desc">
+                  {(() => {
+                    const ingredients =
+                      Array.isArray(current.ingredients) && current.ingredients.length
+                        ? current.ingredients.map((i) => capWords(i.name))
+                        : [];
 
-              {/* EXTRAS */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Extras</div>
-                {extrasAvail.length === 0 ? (
-                  <div className="lsf-muted">No hay extras.</div>
-                ) : (
-                  <div className="lsf-extraslist">
-                    {visibleExtras.map((ex) => {
-                    const checked = !!sel.extras[ex.ingredientId];
+                    const closer = seededPick(current.pizzaId + 13, CRUSH_CLOSERS);
 
                     return (
-                      <label key={ex.ingredientId} className="lsf-extrasitem">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleExtra(ex.ingredientId)}
-                        />
+                      <>
+                        <div className="lsf-muted">
+                          <div><b>Tu crush sin filtro</b></div>
 
-                        <span className="lsf-extrasitem__name">
-                          {ex.name || ex.ingredientName}
-                        </span>
+                          {ingredients.length > 0 ? (
+                            <div>
+                              {joinWithY(ingredients)}.{" "}
+                              <span className="lsf-closer-inline">{closer}</span>
+                            </div>
+                          ) : (
+                            <div>Ingredientes seleccionados a mano.</div>
+                          )}
+                        </div>
 
-                        <span className="lsf-extrasitem__price">
-                          +€{Number(ex.price).toFixed(2)}
-                        </span>
-                      </label>
+                        <div className="lsf-allergen">
+                          ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
+                        </div>
+                      </>
                     );
-                  })}
-                  {sortedExtras.length > 3 && (
-                    <div
-                      className="lsf-extras-more"
-                      onClick={() => setShowAllExtras(v => !v)}
+                  })()}
+                </div>
+
+                {/* QTY */}
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Qty</div>
+                  <div className="lsf-qty">
+                    <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
+                      –
+                    </button>
+                    <div className="lsf-qty__val">{sel.qty}</div>
+                    <button
+                      type="button"
+                      className="lsf-qty__btn"
+                      onClick={incQty}
+                      disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
                     >
-                      {showAllExtras ? "Mostrar menos ▲" : `Mostrar ${sortedExtras.length - 3} más ↓`}
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* SIZES */}
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Size</div>
+                  <div className="lsf-sizes">
+                    {(current.selectSize || []).map((sz) => {
+                      const a = sel.size === sz;
+                      const p = priceForSize(current.priceBySize, sz);
+                      return (
+                        <button
+                          key={sz}
+                          type="button"
+                          className={`lsf-chip ${a ? "is-active" : ""}`}
+                          onClick={() => pickSize(sz)}
+                        >
+                          <span className="lsf-chip__sz">{sz}</span>
+                          <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* EXTRAS */}
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Extras</div>
+                  {extrasAvail.length === 0 ? (
+                    <div className="lsf-muted">No hay extras.</div>
+                  ) : (
+                    <div className="lsf-extraslist">
+                      {visibleExtras.map((ex) => {
+                      const checked = !!sel.extras[ex.ingredientId];
+
+                      return (
+                        <label key={ex.ingredientId} className="lsf-extrasitem">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleExtra(ex.ingredientId)}
+                          />
+
+                          <span className="lsf-extrasitem__name">
+                            {ex.name || ex.ingredientName}
+                          </span>
+
+                          <span className="lsf-extrasitem__price">
+                            +€{Number(ex.price).toFixed(2)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {sortedExtras.length > 3 && (
+                      <div
+                        className="lsf-extras-more"
+                        onClick={() => setShowAllExtras(v => !v)}
+                      >
+                        {showAllExtras ? "Mostrar menos ▲" : `Mostrar ${sortedExtras.length - 3} más ↓`}
+                      </div>
+                    )}
+
                     </div>
                   )}
+                </div>
 
+                {/* ACTIONS */}
+                <div className="lsf-pm__actions">
+                  <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setProductModalOpen(false)}>
+                    Continue
+                  </button>
+
+                  <button
+                    type="button"
+                    className="lsf-btn lsf-btn--primary"
+                    disabled={!modalReady}
+                    onClick={() => {
+                      addLine();
+                      setProductModalOpen(false);
+                    }}
+                  >
+                    {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </Modal>
+        {/* CART MODAL */}
+        <Modal
+          open={cartOpen}
+          title={`Carrito • €${total.toFixed(2)}`}
+          onClose={() => setCartOpen(false)}
+          className="lsf-modal--center"
+        >
+          {cart.length === 0 ? (
+            <div className="lsf-muted">Carrito vacío.</div>
+          ) : (
+            <>
+              <div className="lsf-cartlist">
+                {cart.map((l, i) => (
+                  <div key={i} className="lsf-cartrow">
+                    <div className="lsf-cartrow__main">
+                      <div className="lsf-cartrow__name">
+                        {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
+                      </div>
+                      {l.extras?.length ? (
+                        <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
+                      ) : null}
+                    </div>
+                    <div className="lsf-cartrow__right">
+                      <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
+                      <button
+                        type="button"
+                        className="lsf-iconbtn"
+                        onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}
+                        aria-label="Eliminar línea"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
 
-              {/* ACTIONS */}
-              <div className="lsf-pm__actions">
-                <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setProductModalOpen(false)}>
-                  Continue
-                </button>
+              <div className="lsf-cartfoot">
+                <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
 
                 <button
                   type="button"
                   className="lsf-btn lsf-btn--primary"
-                  disabled={!modalReady}
-                  onClick={() => {
-                    addLine();
-                    setProductModalOpen(false);
+                  onClick={async () => {
+                    const extrasArrayForItem = (line) =>
+                      (line.extras || []).map((e) => ({
+                        id: e.id,
+                        code: "EXTRA",
+                        label: e.name,
+                        amount: Number(e.price) || 0,
+                      }));
+
+                    const extrasMapForItem = (line) =>
+                      Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
+
+                    if (onConfirmCart) {
+                      if (!storeId) return alert("Select store");
+                      onConfirmCart({
+                        storeId: Number(storeId),
+                        items: cart.map((c) => ({
+                          pizzaId: c.pizzaId,
+                          name: c.name,
+                          size: c.size,
+                          qty: c.qty,
+                          price: c.price,
+                          subtotal: c.subtotal,
+                          extras: extrasArrayForItem(c),
+                          extrasMap: extrasMapForItem(c),
+                        })),
+                        total,
+                      });
+                      return;
+                    }
+
+                    try {
+                      const aggregatedExtras = cart.flatMap((c) =>
+                        (c.extras || []).map((e) => ({
+                          code: "EXTRA",
+                          label: e.name,
+                          amount: (Number(e.price) || 0) * Number(c.qty || 1),
+                        }))
+                      );
+
+      const payload = {
+    storeId,
+    type: forcedStoreId ? "DELIVERY" : "LOCAL",
+    delivery: forcedStoreId ? "COURIER" : "PICKUP",
+
+    // 🔥 FUENTE DE VERDAD (link directo)
+    customerId: customerId ?? null,
+
+    // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
+    customer: customer
+      ? {
+          id: customer.id ?? null,
+          name: customer.name ?? null,
+          phone: customer.phone ?? null,
+          address_1: customer.address_1 ?? customer.address ?? null,
+          observations: customer.observations ?? null,
+          lat: customer.lat ?? null,
+          lng: customer.lng ?? null,
+        }
+      : null,
+
+    products: cart.map((c) => ({
+      pizzaId: c.pizzaId,
+      size: c.size,
+      qty: c.qty,
+      price: c.price,
+      extras: extrasArrayForItem(c),
+    })),
+
+    totalProducts: cart.reduce(
+      (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
+      0
+    ),
+
+    discounts: 0,
+    total,
+    extras: aggregatedExtras,
+  };
+
+
+                      console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
+
+                      await api.post("/api/sales", payload);
+                      setToast("Sale saved ✓");
+                      setCart([]);
+                      setCartOpen(false);
+                      setTimeout(() => onDone(), 600);
+                    } catch (e) {
+                      console.error(e);
+                      alert(e.response?.data?.error || "Error");
+                    }
                   }}
                 >
-                  {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
+                  {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
                 </button>
               </div>
-            </div>
-          </>
-        )}
-      </Modal>
+            </>
+          )}
+        </Modal>
+        {/* MITADES MODAL */}
+          <Modal
+            open={halfModalOpen}
+            title="Pizza mitad / mitad"
+            onClose={() => {
+              setHalfModalOpen(false);
+              setBuildMode("menu");
+            }}
+            className="lsf-modal--center"
+          >
+            {halfItems.length === 0 ? (
+              <div className="lsf-muted">No hay pizzas disponibles</div>
+            ) : (
+              <div className="lsf-half">
 
-      {/* CART MODAL */}
-      <Modal
-        open={cartOpen}
-        title={`Carrito • €${total.toFixed(2)}`}
-        onClose={() => setCartOpen(false)}
-        className="lsf-modal--center"
-      >
-        {cart.length === 0 ? (
-          <div className="lsf-muted">Carrito vacío.</div>
-        ) : (
-          <>
-            <div className="lsf-cartlist">
-              {cart.map((l, i) => (
-                <div key={i} className="lsf-cartrow">
-                  <div className="lsf-cartrow__main">
-                    <div className="lsf-cartrow__name">
-                      {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
+                {/* ───────── MITADES ───────── */}
+                <div className="lsf-half__slots">
+
+                  {/* MITAD A */}
+                  <div className="lsf-half__slot">
+                    <div className="lsf-half__label">Mitad A</div>
+
+                    <div className="lsf-half__nav lsf-half__nav--top">
+                      <button onClick={prevHalfA}>▲</button>
                     </div>
-                    {l.extras?.length ? (
-                      <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
-                    ) : null}
+
+                    <div
+                      className="lsf-half__img"
+                      onTouchStart={(e) => {
+                        touchStartY.current = e.touches[0].clientY;
+                      }}
+                      onTouchEnd={(e) => {
+                        const diff = e.changedTouches[0].clientY - touchStartY.current;
+                        if (Math.abs(diff) > 40) {
+                          diff < 0 ? nextHalfA() : prevHalfA();
+                        }
+                      }}
+                    >
+                      {halfItems[halfAIndex]?.image ? (
+                        <img
+                          src={halfItems[halfAIndex].image}
+                          alt={halfItems[halfAIndex].name}
+                        />
+                      ) : (
+                        <div className="lsf-half__img--ph">🍕</div>
+                      )}
+                    </div>
+
+                    <div className="lsf-half__name">
+                      {halfItems[halfAIndex]?.name}
+                    </div>
+
+                    <div className="lsf-half__price">
+                      €{(
+                        priceForSize(
+                          halfItems[halfAIndex]?.priceBySize,
+                          halfItems[halfAIndex]?.selectSize?.[0] || "M"
+                        ) / 2
+                      ).toFixed(2)}
+                    </div>
+
+                    <div className="lsf-half__nav lsf-half__nav--bottom">
+                      <button onClick={nextHalfA}>▼</button>
+                    </div>
                   </div>
-                  <div className="lsf-cartrow__right">
-                    <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
+
+                  {/* MITAD B */}
+                  <div className="lsf-half__slot">
+                    <div className="lsf-half__label">Mitad B</div>
+
+                    <div className="lsf-half__nav lsf-half__nav--top">
+                      <button onClick={prevHalfB}>▲</button>
+                    </div>
+
+                    <div
+                      className="lsf-half__img"
+                      onTouchStart={(e) => {
+                        touchStartY.current = e.touches[0].clientY;
+                      }}
+                      onTouchEnd={(e) => {
+                        const diff = e.changedTouches[0].clientY - touchStartY.current;
+                        if (Math.abs(diff) > 40) {
+                          diff < 0 ? nextHalfB() : prevHalfB();
+                        }
+                      }}
+                    >
+                      {halfItems[halfBIndex]?.image ? (
+                        <img
+                          src={halfItems[halfBIndex].image}
+                          alt={halfItems[halfBIndex].name}
+                        />
+                      ) : (
+                        <div className="lsf-half__img--ph">🍕</div>
+                      )}
+                    </div>
+
+                    <div className="lsf-half__name">
+                      {halfItems[halfBIndex]?.name}
+                    </div>
+
+                    <div className="lsf-half__price">
+                      €{(
+                        priceForSize(
+                          halfItems[halfBIndex]?.priceBySize,
+                          halfItems[halfBIndex]?.selectSize?.[0] || "M"
+                        ) / 2
+                      ).toFixed(2)}
+                    </div>
+
+                    <div className="lsf-half__nav lsf-half__nav--bottom">
+                      <button onClick={nextHalfB}>▼</button>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* ───────── QTY ───────── */}
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Qty</div>
+                  <div className="lsf-qty">
                     <button
                       type="button"
-                      className="lsf-iconbtn"
-                      onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}
-                      aria-label="Eliminar línea"
+                      className="lsf-qty__btn"
+                      onClick={() => setHalfQty(q => Math.max(1, q - 1))}
                     >
-                      ✕
+                      –
+                    </button>
+                    <div className="lsf-qty__val">{halfQty}</div>
+                    <button
+                      type="button"
+                      className="lsf-qty__btn"
+                      onClick={() => setHalfQty(q => q + 1)}
+                    >
+                      +
                     </button>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="lsf-cartfoot">
-              <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
+                {/* ───────── SIZE ───────── */}
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Size</div>
 
-              <button
-                type="button"
-                className="lsf-btn lsf-btn--primary"
-                onClick={async () => {
-                  const extrasArrayForItem = (line) =>
-                    (line.extras || []).map((e) => ({
-                      id: e.id,
-                      code: "EXTRA",
-                      label: e.name,
-                      amount: Number(e.price) || 0,
-                    }));
+                  {sizeOptions.length === 0 ? (
+                    <div className="lsf-muted">No hay tamaños compatibles</div>
+                  ) : (
+                    <div className="lsf-sizes">
+                      {sizeOptions.map(sz => {
+                        const a = halfItems[halfAIndex];
+                        const b = halfItems[halfBIndex];
 
-                  const extrasMapForItem = (line) =>
-                    Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
+                        const dynamicPrice =
+                          priceForSize(a.priceBySize, sz) / 2 +
+                          priceForSize(b.priceBySize, sz) / 2;
 
-                  if (onConfirmCart) {
-                    if (!storeId) return alert("Select store");
-                    onConfirmCart({
-                      storeId: Number(storeId),
-                      items: cart.map((c) => ({
-                        pizzaId: c.pizzaId,
-                        name: c.name,
-                        size: c.size,
-                        qty: c.qty,
-                        price: c.price,
-                        subtotal: c.subtotal,
-                        extras: extrasArrayForItem(c),
-                        extrasMap: extrasMapForItem(c),
-                      })),
-                      total,
-                    });
-                    return;
-                  }
+                        return (
+                          <button
+                            key={sz}
+                            type="button"
+                            className={`lsf-chip ${halfSize === sz ? "is-active" : ""}`}
+                            onClick={() => setHalfSize(sz)}
+                          >
+                            <span className="lsf-chip__sz">{sz}</span>
+                            <span className="lsf-chip__pr">
+                              €{dynamicPrice.toFixed(2)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
-                  try {
-                    const aggregatedExtras = cart.flatMap((c) =>
-                      (c.extras || []).map((e) => ({
-                        code: "EXTRA",
-                        label: e.name,
-                        amount: (Number(e.price) || 0) * Number(c.qty || 1),
-                      }))
-                    );
+                {/* ───────── ALÉRGENOS ───────── */}
+                <div className="lsf-allergen">
+                  ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
+                </div>
 
-    const payload = {
-  storeId,
-  type: forcedStoreId ? "DELIVERY" : "LOCAL",
-  delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                {/* ───────── EXTRAS MITAD A (ACORDEÓN) ───────── */}
+                <div className="lsf-pm__row">
+                  <div
+                    className="lsf-pm__label"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setOpenHalfExtrasA(v => !v)}
+                  >
+                    Extras Mitad A {openHalfExtrasA ? "▲" : "▼"}
+                  </div>
 
-  // 🔥 FUENTE DE VERDAD (link directo)
-  customerId: customerId ?? null,
+                  {openHalfExtrasA && (
+                    sortedHalfExtras.length === 0 ? (
+                      <div className="lsf-muted">No hay extras.</div>
+                    ) : (
+                      <div className="lsf-extraslist">
+                        {sortedHalfExtras.map(ex => {
+                          const checked = !!halfExtras.A[ex.ingredientId];
 
-  // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
-  customer: customer
-    ? {
-        id: customer.id ?? null,
-        name: customer.name ?? null,
-        phone: customer.phone ?? null,
-        address_1: customer.address_1 ?? customer.address ?? null,
-        observations: customer.observations ?? null,
-        lat: customer.lat ?? null,
-        lng: customer.lng ?? null,
-      }
-    : null,
+                      return (
+                          <label key={`A-${ex.ingredientId}`} className="lsf-extrasitem">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleHalfExtra("A", ex.ingredientId)}
+                            />
+                            <span className="lsf-extrasitem__name">
+                              {ex.name || ex.ingredientName}
+                            </span>
+                            <span className="lsf-extrasitem__price">
+                              +€{Number(ex.price).toFixed(2)}
+                            </span>
+                          </label>
+                        );
+                      })}
 
-  products: cart.map((c) => ({
-    pizzaId: c.pizzaId,
-    size: c.size,
-    qty: c.qty,
-    price: c.price,
-    extras: extrasArrayForItem(c),
-  })),
+                      {sortedHalfExtras.length > 3 && (
+                        <div
+                          className="lsf-extras-more"
+                          onClick={() =>
+                            setShowAllHalfExtrasA(v => !v)
+                          }
+                        >
+                          {showAllHalfExtrasA
+                            ? "Mostrar menos ▲"
+                            : `Mostrar ${sortedHalfExtras.length - 3} más ↓`}
+                        </div>
+                      )}
+                     
+                      </div>
+                    )
+                  )}
+                </div>
 
-  totalProducts: cart.reduce(
-    (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
-    0
-  ),
+                {/* ───────── EXTRAS MITAD B (ACORDEÓN) ───────── */}
+                <div className="lsf-pm__row">
+                  <div
+                    className="lsf-pm__label"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setOpenHalfExtrasB(v => !v)}
+                  >
+                    Extras Mitad B {openHalfExtrasB ? "▲" : "▼"}
+                  </div>
 
-  discounts: 0,
-  total,
-  extras: aggregatedExtras,
-};
+                  {openHalfExtrasB && (
+                    sortedHalfExtras.length === 0 ? (
+                      <div className="lsf-muted">No hay extras.</div>
+                    ) : (
+                      <div className="lsf-extraslist">
+                        {sortedHalfExtras.map(ex => {
+                          const checked = !!halfExtras.B[ex.ingredientId];
 
+                          return (
+                            <label key={`B-${ex.ingredientId}`} className="lsf-extrasitem">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleHalfExtra("B", ex.ingredientId)}
+                              />
+                              <span className="lsf-extrasitem__name">
+                                {ex.name || ex.ingredientName}
+                              </span>
+                              <span className="lsf-extrasitem__price">
+                                +€{Number(ex.price).toFixed(2)}
+                              </span>
+                            </label>
+                          );
+                        })}
 
-                    console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
+                        {sortedHalfExtras.length > 3 && (
+                          <div
+                            className="lsf-extras-more"
+                            onClick={() =>
+                              setShowAllHalfExtrasB(v => !v)
+                            }
+                          >
+                            {showAllHalfExtrasB
+                              ? "Mostrar menos ▲"
+                              : `Mostrar ${sortedHalfExtras.length - 3} más ↓`}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
 
-                    await api.post("/api/sales", payload);
-                    setToast("Sale saved ✓");
-                    setCart([]);
-                    setCartOpen(false);
-                    setTimeout(() => onDone(), 600);
-                  } catch (e) {
-                    console.error(e);
-                    alert(e.response?.data?.error || "Error");
-                  }
-                }}
-              >
-                {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
+                {/* ───────── CTA ───────── */}
+                <button
+                  type="button"
+                  className="lsf-btn lsf-btn--primary lsf-half__cta"
+                  disabled={!halfSize}
+                  onClick={() => {
+                    addHalfLine();
+                    setHalfModalOpen(false);
+                  }}
+                >
+                  {halfSize
+                    ? `Añadir al carrito · €${halfGrandTotal.toFixed(2)}`
+                    : "Selecciona tamaño"}
+                </button>
 
+              </div>
+            )}
+          </Modal>
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>
   );
