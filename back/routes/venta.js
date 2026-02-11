@@ -152,45 +152,71 @@ async function normalizeItems(db, items){
   const src = Array.isArray(items) ? items : [];
   if (!src.length) throw new Error('items vacío');
 
-  const direct = [];
+  const normalized = [];
   const namesNeeded = new Set();
-  const originalKinds = [];
 
   for (const i of src){
-    const raw = i.pizzaId ?? i.id ?? i.name ?? i.pizzaName;
-    const key = String(raw ?? '').trim();
     const size = upper(i.size || 'M');
     const qty  = Math.max(1, Number(i.qty || 1));
-    if (!key) throw new Error('Ítem inválido: id/nombre vacío');
 
-    if (/^\d+$/.test(key)){
-      direct.push({ pizzaId: Number(key), size, qty });
-      originalKinds.push({ kind:'id', key, size, qty });
-    } else {
-      namesNeeded.add(key);
-      originalKinds.push({ kind:'name', key, size, qty });
+    // 🔥 PRIORIDAD ABSOLUTA: pizzaId
+    if (Number.isFinite(Number(i.pizzaId)) && Number(i.pizzaId) > 0){
+      normalized.push({
+        pizzaId: Number(i.pizzaId),
+        size,
+        qty
+      });
+      continue;
     }
+
+    // 🔥 fallback solo si NO viene id
+    const rawName = i.name ?? i.pizzaName ?? null;
+    const key = String(rawName || '').trim();
+
+    if (!key){
+      throw new Error('Ítem inválido: falta pizzaId o nombre');
+    }
+
+    // 🚫 proteger contra nombres compuestos (mitad/mitad)
+    if (key.includes('/')){
+      throw new Error(
+        `Ítem inválido: "${key}" no es una pizza válida. Enviar pizzaId real.`
+      );
+    }
+
+    namesNeeded.add(key);
+
+    normalized.push({
+      _lookupName: key,
+      size,
+      qty
+    });
   }
 
-  let nameToId = new Map();
+  // 🔎 Resolver nombres a ids
   if (namesNeeded.size){
     const rows = await db.menuPizza.findMany({
       where: { name: { in: Array.from(namesNeeded) } },
       select: { id:true, name:true }
     });
-    nameToId = new Map(rows.map(r => [r.name, r.id]));
-  }
 
-  const byName = [];
-  for (const k of originalKinds){
-    if (k.kind === 'name'){
-      const pid = nameToId.get(k.key);
-      if (!pid) throw new Error(`Ítem inválido: nombre "${k.key}" no encontrado en MenuPizza`);
-      byName.push({ pizzaId: Number(pid), size: k.size, qty: k.qty });
+    const nameToId = new Map(rows.map(r => [r.name, r.id]));
+
+    for (const item of normalized){
+      if (item._lookupName){
+        const pid = nameToId.get(item._lookupName);
+        if (!pid){
+          throw new Error(
+            `Ítem inválido: nombre "${item._lookupName}" no encontrado en MenuPizza`
+          );
+        }
+        item.pizzaId = Number(pid);
+        delete item._lookupName;
+      }
     }
   }
 
-  return [...direct, ...byName];
+  return normalized;
 }
 async function assertStock(tx, storeId, items){
   for (const it of items){
