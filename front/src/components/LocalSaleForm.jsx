@@ -700,7 +700,7 @@ const addHalfLine = () => {
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
         </div>
-        <div className="lsf-buildmodes">
+        {/* <div className="lsf-buildmodes">
 
           <button
             type="button"
@@ -732,7 +732,7 @@ const addHalfLine = () => {
             Arma tu pizza
           </button>
 
-        </div>
+        </div> */}
         {/* selector tienda (solo admin y no forced) */}
         {!forcedStoreId && isAdmin && (
           <div className="lsf-store">
