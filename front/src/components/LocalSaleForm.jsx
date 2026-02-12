@@ -623,7 +623,7 @@ const addHalfLine = () => {
   const priceA = priceForSize(A.priceBySize, halfSize);
   const priceB = priceForSize(B.priceBySize, halfSize);
 
-  // ✅ La más cara manda
+  // ✅ La más cara manda (stock real)
   const main = priceA >= priceB ? A : B;
   const baseUnitPrice = Math.max(priceA, priceB);
 
@@ -656,19 +656,23 @@ const addHalfLine = () => {
   setCart(prev => [
     ...prev,
     {
-      pizzaId: main.pizzaId,                // stock real
-      name: `${A.name} / ${B.name}`,        // operativo
+      type: "HALF_HALF",               // 🔥 clave estructural
+      pizzaId: main.pizzaId,           // stock real
+      leftPizzaId: A.pizzaId,          // mitad A real
+      rightPizzaId: B.pizzaId,         // mitad B real
+      name: `${A.name} / ${B.name}`,   // fallback visual
       category: main.category,
       size: halfSize,
       qty: halfQty,
       price: baseUnitPrice,
-      extras: selectedExtras,               // MISMO SHAPE QUE addLine
+      extras: selectedExtras,
       subtotal
     }
   ]);
 
   setToast("Añadido al carrito");
 };
+
 
 
 

@@ -231,40 +231,67 @@ export default function PendingTable() {
   };
 
   const extraText = (e) => (e?.label ?? e?.name ?? e?.code ?? "extra").toString();
+  const getBaseName = (p) => {
+  // Caso nuevo: estructura correcta con ids separados
+  if (p?.leftPizzaId && p?.rightPizzaId) {
+    const left = nameById[p.leftPizzaId] || `#${p.leftPizzaId}`;
+    const right = nameById[p.rightPizzaId] || `#${p.rightPizzaId}`;
+    return `${left} / ${right}`;
+  }
+
+  // Fallback clásico
+  return (
+    (p?.name && String(p.name).trim()) ||
+    (p?.pizzaName && String(p.pizzaName).trim()) ||
+    (p?.pizzaId ? nameById[p.pizzaId] || `#${p.pizzaId}` : "Producto")
+  );
+};
 
   // ---- JSX helper: Items por línea (solo cards POS) ----
-  const renderItemsLines = (sale) => {
-    const list = arrFrom(sale?.products);
+const renderItemsLines = (sale) => {
+  const list = arrFrom(sale?.products);
 
-    if (!list.length) return <span>-</span>;
+  if (!list.length) return <span>-</span>;
 
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {list.map((p, i) => {
-          const baseName =
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {list.map((p, i) => {
+        // 🔥 Detecta mitad / mitad si existen ambos ids
+        let baseName;
+
+        if (p?.leftPizzaId && p?.rightPizzaId) {
+          const left = nameById[p.leftPizzaId] || `#${p.leftPizzaId}`;
+          const right = nameById[p.rightPizzaId] || `#${p.rightPizzaId}`;
+          baseName = `${left} / ${right}`;
+        } else {
+          baseName =
             (p?.name && String(p.name).trim()) ||
             (p?.pizzaName && String(p.pizzaName).trim()) ||
             (p?.pizzaId ? nameById[p.pizzaId] || `#${p.pizzaId}` : "Producto");
+        }
 
-          const size = p?.size || "";
-          const qty = Number(p?.qty ?? p?.cantidad ?? 1);
+        const size = p?.size || "";
+        const qty = Number(p?.qty ?? p?.cantidad ?? 1);
 
-          const extras = Array.from(new Set(arrFrom(p?.extras).map(extraText)));
+        const extras = Array.from(
+          new Set(arrFrom(p?.extras).map(extraText))
+        );
 
-          return (
-            <span key={i}>
-              {baseName} {size}×{qty}
-              {extras.length > 0 && (
-                <small style={{ display: "block", color: "#666" }}>
-                  + {extras.join(", ")}
-                </small>
-              )}
-            </span>
-          );
-        })}
-      </div>
-    );
-  };
+        return (
+          <span key={i}>
+            {baseName} {size}×{qty}
+            {extras.length > 0 && (
+              <small style={{ display: "block", color: "#666" }}>
+                + {extras.join(", ")}
+              </small>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
+
 
   // ---- TOTAL helper (defensivo POS) ----
   const getTotal = (sale) => {
@@ -279,26 +306,43 @@ export default function PendingTable() {
       currency: "EUR",
     });
 
-  const fmtProducts = (sale) => {
-    const list = arrFrom(sale?.products);
-    return list
-      .map((p) => {
-        const baseName =
+ const fmtProducts = (sale) => {
+  const list = arrFrom(sale?.products);
+
+  return list
+    .map((p) => {
+      let baseName;
+
+      // 🔥 Detectar pizza mitad / mitad
+      if (p?.leftPizzaId && p?.rightPizzaId) {
+        const left = nameById[p.leftPizzaId] || `#${p.leftPizzaId}`;
+        const right = nameById[p.rightPizzaId] || `#${p.rightPizzaId}`;
+        baseName = `${left} / ${right}`;
+      } else {
+        baseName =
           (p?.name && String(p.name).trim()) ||
           (p?.pizzaName && String(p.pizzaName).trim()) ||
-          (p?.pizzaId ? nameById[p.pizzaId] || `#${p.pizzaId}` : "Producto");
+          (p?.pizzaId
+            ? nameById[p.pizzaId] || `#${p.pizzaId}`
+            : "Producto");
+      }
 
-        const size = p?.size || "";
-        const qty = Number(p?.qty ?? p?.cantidad ?? 1);
+      const size = p?.size || "";
+      const qty = Number(p?.qty ?? p?.cantidad ?? 1);
 
-        const extras = Array.from(new Set(arrFrom(p?.extras).map(extraText)));
-        const base = `${baseName} ${size}×${qty}`;
+      const extras = Array.from(
+        new Set(arrFrom(p?.extras).map(extraText))
+      );
 
-        // Mantengo el mismo formato que ya estabas usando (con extras inline)
-        return extras.length ? `${base} [+ ${extras.join(", ")}]` : base;
-      })
-      .join(", ");
-  };
+      const base = `${baseName} ${size}×${qty}`;
+
+      return extras.length
+        ? `${base} [+ ${extras.join(", ")}]`
+        : base;
+    })
+    .join(", ");
+};
+
 
   const markReady = async (id) => {
     try {
