@@ -532,42 +532,48 @@ router.post('/pedido', async (req, res) => {
 
       /* ===== EXTRAS POR ITEM ===== */
 
-      const lineItemsWithExtras = lineItems.map((li, idx) => {
+const lineItemsWithExtras = lineItems.map((li, idx) => {
+  const rawItem = items[idx] || {};
+  const qty = Math.max(1, Number(rawItem.qty || 1));
 
-        const rawItem = items[idx] || {};
-        const qty = Math.max(1, Number(rawItem.qty || 1));
+  const pools = []
+    .concat(rawItem?.extras || [])
+    .concat(rawItem?.toppings || [])
+    .concat(rawItem?.addOns || rawItem?.addons || [])
+    .concat(rawItem?.options || [])
+    .concat(rawItem?.modifiers || [])
+    .concat(rawItem?.ingredients || [])
+    .concat(rawItem?.complements || [])
+    .concat(rawItem?.sides || []);
 
-        const pools = []
-          .concat(rawItem?.extras || [])
-          .concat(rawItem?.toppings || [])
-          .concat(rawItem?.addOns || rawItem?.addons || [])
-          .concat(rawItem?.options || [])
-          .concat(rawItem?.modifiers || [])
-          .concat(rawItem?.ingredients || [])
-          .concat(rawItem?.complements || [])
-          .concat(rawItem?.sides || []);
+  const parsedExtras = pools
+    .map(ex => {
+      const parsed = [ex?.amount, ex?.price, ex?.delta]
+        .map(toPrice)
+        .find(Number.isFinite);
 
-        const parsedExtras = pools
-          .map(ex => {
-            const parsed = [ex?.amount, ex?.price, ex?.delta]
-              .map(toPrice)
-              .find(Number.isFinite);
+      if (!Number.isFinite(parsed) || parsed < 0) return null;
 
-            if (!Number.isFinite(parsed) || parsed < 0) return null;
+      return {
+        code: 'EXTRA',
+        label: String(ex?.label || ex?.name || 'Extra'),
+        amount: round2(parsed)
+      };
+    })
+    .filter(Boolean);
 
-            return {
-              code: 'EXTRA',
-              label: String(ex?.label || ex?.name || 'Extra'),
-              amount: round2(parsed)
-            };
-          })
-          .filter(Boolean);
+  const leftPizzaId = Number(rawItem?.leftPizzaId);
+  const rightPizzaId = Number(rawItem?.rightPizzaId);
 
-        return {
-          ...li,
-          extras: parsedExtras
-        };
-      });
+  return {
+    ...li,
+    ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
+      ? { leftPizzaId, rightPizzaId }
+      : {}),
+    extras: parsedExtras
+  };
+});
+
 
       /* ===== EXTRAS GLOBALES ===== */
 
@@ -1059,7 +1065,6 @@ router.post('/checkout-session', async (req, res) => {
     res.status(400).json({ error:e.message });
   }
 });
-
 router.post('/checkout/confirm', async (req, res) => {
   if (!stripeReady) {
     return res.status(503).json({ error: 'Stripe no configurado' });
@@ -1375,7 +1380,19 @@ if (!phone) throw new Error('Invalid phone');
                     }
                   }
                 }
+const lineItemsWithMeta = lineItems.map((li, idx) => {
+  const rawItem = (cart.items || [])[idx] || {};
 
+  const leftPizzaId = Number(rawItem?.leftPizzaId);
+  const rightPizzaId = Number(rawItem?.rightPizzaId);
+
+  return {
+    ...li,
+    ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
+      ? { leftPizzaId, rightPizzaId }
+      : {})
+  };
+});
                 const sale = await tx.sale.create({
                   data: {
                     code: await genOrderCode(tx),
@@ -1384,7 +1401,7 @@ if (!phone) throw new Error('Invalid phone');
                     type: cart.type || 'LOCAL',
                     delivery: cart.delivery || 'PICKUP',
                     customerData: snapshot || cart.customer || {},
-                    products: lineItems,
+                    products: lineItemsWithMeta,
                     totalProducts,
                     discounts,
                     total:
