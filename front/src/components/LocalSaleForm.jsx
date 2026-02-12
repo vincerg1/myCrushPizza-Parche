@@ -673,10 +673,6 @@ const addHalfLine = () => {
   setToast("Añadido al carrito");
 };
 
-
-
-
-
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
@@ -703,7 +699,9 @@ const addHalfLine = () => {
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
         </div>
-        <div className="lsf-buildmodes">
+
+
+        {/* <div className="lsf-buildmodes">
 
           <button
             type="button"
@@ -735,7 +733,10 @@ const addHalfLine = () => {
             Arma tu pizza
           </button>
 
-        </div>
+        </div> */}
+
+
+
         {/* selector tienda (solo admin y no forced) */}
         {!forcedStoreId && isAdmin && (
           <div className="lsf-store">
