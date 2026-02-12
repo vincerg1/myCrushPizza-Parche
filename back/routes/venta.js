@@ -359,6 +359,7 @@ router.post('/direct-pay', async (req, res) => {
 });
 router.post('/pedido', async (req, res) => {
   const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
+
   if (appMeta && appMeta.acceptingOrders === false) {
     const msg = appMeta.closedMessage || 'Ahora mismo estamos cerrados. Volvemos pronto 🙂';
     return res.status(503).json({ error: msg });
@@ -387,18 +388,29 @@ router.post('/pedido', async (req, res) => {
   });
 
   try {
-    if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+    if (!storeId) {
+      return res.status(400).json({ error: 'storeId requerido' });
+    }
 
-    // Cobertura (solo delivery)
+    /* ───────── RESTRICCIONES ───────── */
+
     if (customer?.phone?.trim()) {
       const r = await getRestrictionByPhone(prisma, customer.phone);
       if (r.restricted) {
-        return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+        return res.status(403).json({
+          error: 'restricted',
+          code: r.code,
+          reason: r.reason
+        });
       }
     }
 
+    /* ───────── COBERTURA DELIVERY ───────── */
+
     if (String(delivery).toUpperCase() === 'COURIER') {
-      const lat = Number(customer?.lat), lng = Number(customer?.lng);
+      const lat = Number(customer?.lat);
+      const lng = Number(customer?.lng);
+
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         return res.status(400).json({
           error: 'Faltan coordenadas del cliente (lat/lng) para calcular cobertura.'
@@ -406,16 +418,29 @@ router.post('/pedido', async (req, res) => {
       }
 
       const activeStores = await prisma.store.findMany({
-        where: { active: true, latitude: { not: null }, longitude: { not: null } },
+        where: {
+          active: true,
+          latitude: { not: null },
+          longitude: { not: null }
+        },
         select: { id: true, latitude: true, longitude: true }
       });
+
       if (!activeStores.length) {
-        return res.status(400).json({ error: 'No hay tiendas activas configuradas con ubicación.' });
+        return res.status(400).json({
+          error: 'No hay tiendas activas configuradas con ubicación.'
+        });
       }
 
       let nearest = { id: null, km: Infinity };
+
       for (const s of activeStores) {
-        const km = haversineKm(lat, lng, Number(s.latitude), Number(s.longitude));
+        const km = haversineKm(
+          lat,
+          lng,
+          Number(s.latitude),
+          Number(s.longitude)
+        );
         if (km < nearest.km) nearest = { id: s.id, km };
       }
 
@@ -427,21 +452,27 @@ router.post('/pedido', async (req, res) => {
           limitKm: DELIVERY_MAX_KM,
           nearestStoreId: nearest?.id || null
         });
+
         return res.status(400).json({
           error: `Esta dirección está fuera de la zona de servicio (máx ${DELIVERY_MAX_KM} km).`
         });
       }
     }
 
-    // Cliente
-    let customerId = null, snapshot = null;
+    /* ───────── CLIENTE ───────── */
+
+    let customerId = null;
+    let snapshot = null;
+
     const isDelivery =
       String(type).toUpperCase() === 'DELIVERY' ||
       String(delivery).toUpperCase() === 'COURIER';
 
     if (customer?.phone?.trim()) {
       const phone = normPhone(customer.phone);
-      if (!phone) return res.status(400).json({ error: 'Teléfono inválido' });
+      if (!phone) {
+        return res.status(400).json({ error: 'Teléfono inválido' });
+      }
 
       const name = (customer.name || '').trim();
 
@@ -450,7 +481,7 @@ router.post('/pedido', async (req, res) => {
         : `(PICKUP) ${phone}`;
 
       const c = await prisma.customer.upsert({
-        where: { phone }, // 🔐 clave canónica
+        where: { phone },
         update: {
           name,
           ...(isDelivery && {
@@ -463,7 +494,7 @@ router.post('/pedido', async (req, res) => {
         },
         create: {
           code: await genCustomerCode(prisma),
-          phone, // 🔥 siempre +34...
+          phone,
           name,
           address_1: createAddress,
           portal: clean(customer.portal),
@@ -474,6 +505,7 @@ router.post('/pedido', async (req, res) => {
       });
 
       customerId = c.id;
+
       snapshot = {
         phone: c.phone,
         name: c.name,
@@ -485,183 +517,123 @@ router.post('/pedido', async (req, res) => {
       };
     }
 
-    // Ítems (solo pizzas base/size/qty/precio)
+    /* ───────── NORMALIZAR ITEMS ───────── */
+
     const normItems = await normalizeItems(prisma, items);
 
-    // Extras desde ítems (aplanados) + embebidos para cada línea
-    const collectExtrasFromItems = (rawItems = []) => {
-      const out = [];
-      for (const it of (Array.isArray(rawItems) ? rawItems : [])) {
-        const qty = Math.max(1, Number(it?.qty || 1));
-        const pools = []
-          .concat(it?.extras || [])
-          .concat(it?.toppings || [])
-          .concat(it?.addOns || it?.addons || [])
-          .concat(it?.options || [])
-          .concat(it?.modifiers || [])
-          .concat(it?.ingredients || [])
-          .concat(it?.complements || [])
-          .concat(it?.sides || []);
-
-        for (const ex of pools) {
-          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-          if (!Number.isFinite(parsed) || parsed < 0) continue;
-          const code = upper(ex?.code || ex?.id || ex?.key || ex?.name || 'EXTRA');
-          const label = String(ex?.label || ex?.name || ex?.title || code);
-          out.push({ code, label, amount: round2(parsed * qty) });
-        }
-      }
-      return out;
-    };
-
-    const unitExtrasForItem = (it = {}) => {
-      const pools = []
-        .concat(it?.extras || [])
-        .concat(it?.toppings || [])
-        .concat(it?.addOns || it?.addons || [])
-        .concat(it?.options || [])
-        .concat(it?.modifiers || [])
-        .concat(it?.ingredients || [])
-        .concat(it?.complements || [])
-        .concat(it?.sides || []);
-
-      return pools
-        .map((ex) => {
-          const parsed = [ex?.amount, ex?.price, ex?.delta].map(toPrice).find(Number.isFinite);
-          if (!Number.isFinite(parsed) || parsed < 0) return null;
-          const id = Number(ex?.id ?? ex?.pizzaId ?? ex?.productId ?? 0) || undefined;
-          const label = String(ex?.label || ex?.name || ex?.title || 'Extra');
-          return { id, code: 'EXTRA', label, amount: round2(parsed) };
-        })
-        .filter(Boolean);
-    };
+    /* ───────── TRANSACCIÓN ───────── */
 
     const created = await prisma.$transaction(async (tx) => {
-      await assertStock(tx, Number(storeId), normItems);
-      const { lineItems, totalProducts } = await recalcTotals(tx, Number(storeId), normItems);
 
-      const itemExtras = collectExtrasFromItems(items);
-      const lineItemsWithExtras = (Array.isArray(lineItems) ? lineItems : []).map((li, idx) => ({
-        ...li,
-        extras: unitExtrasForItem(items[idx]) || []
-      }));
+      await assertStock(tx, Number(storeId), normItems);
+
+      const { lineItems, totalProducts } =
+        await recalcTotals(tx, Number(storeId), normItems);
+
+      /* ===== EXTRAS POR ITEM ===== */
+
+      const lineItemsWithExtras = lineItems.map((li, idx) => {
+
+        const rawItem = items[idx] || {};
+        const qty = Math.max(1, Number(rawItem.qty || 1));
+
+        const pools = []
+          .concat(rawItem?.extras || [])
+          .concat(rawItem?.toppings || [])
+          .concat(rawItem?.addOns || rawItem?.addons || [])
+          .concat(rawItem?.options || [])
+          .concat(rawItem?.modifiers || [])
+          .concat(rawItem?.ingredients || [])
+          .concat(rawItem?.complements || [])
+          .concat(rawItem?.sides || []);
+
+        const parsedExtras = pools
+          .map(ex => {
+            const parsed = [ex?.amount, ex?.price, ex?.delta]
+              .map(toPrice)
+              .find(Number.isFinite);
+
+            if (!Number.isFinite(parsed) || parsed < 0) return null;
+
+            return {
+              code: 'EXTRA',
+              label: String(ex?.label || ex?.name || 'Extra'),
+              amount: round2(parsed)
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          ...li,
+          extras: parsedExtras
+        };
+      });
+
+      /* ===== EXTRAS GLOBALES ===== */
 
       const orderLevelExtras = (Array.isArray(extras) ? extras : [])
         .map(ex => {
           const amountNum = toPrice(ex?.amount);
-          const amount = Number.isFinite(amountNum) ? round2(amountNum) : NaN;
-          if (!Number.isFinite(amount)) return null;
+          if (!Number.isFinite(amountNum)) return null;
           return {
             code: String(ex?.code || 'EXTRA'),
             label: String(ex?.label || 'Extra'),
-            amount
+            amount: round2(amountNum)
           };
         })
         .filter(Boolean);
 
-      const extrasSanitized = [...itemExtras, ...orderLevelExtras];
+      /* ===== CALCULAR TOTAL EXTRAS REALES ===== */
 
-      // Cupón (preview) — sin canjear
+      const extrasFromItemsTotal = lineItemsWithExtras.reduce((sum, li) => {
+        return sum + (li.extras || []).reduce((s, e) => s + Number(e.amount || 0), 0);
+      }, 0);
+
+      const extrasFromOrderTotal = orderLevelExtras.reduce(
+        (s, e) => s + Number(e.amount || 0),
+        0
+      );
+
+      const extrasTotal = round2(extrasFromItemsTotal + extrasFromOrderTotal);
+
+      /* ===== CUPÓN ===== */
+
       let discounts = 0;
       let couponEntry = null;
 
       const couponCode = upper(rawCoupon || rawCouponCode || '');
+
       if (couponCode) {
         const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
         const nowRef = nowInTZ();
 
-        // ✅ Validación profesional: SOLO ACTIVE pasa. Todo lo demás devuelve motivo.
-        if (!coup) {
+        if (!coup || coup.status !== 'ACTIVE') {
           return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'NOT_FOUND',
-            message: 'El cupón no existe.',
-            details: { code: couponCode }
+            error: 'INVALID_COUPON'
           });
         }
 
-        if (String(coup.status).toUpperCase() === 'USED') {
+        if (!isActiveByDate(coup, nowRef) || !isWithinWindow(coup, nowRef)) {
           return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'ALREADY_USED',
-            message: 'Cupón ya utilizado.',
-            details: { code: couponCode, usedAt: coup.usedAt ?? null }
-          });
-        }
-
-        if (String(coup.status).toUpperCase() === 'DISABLED') {
-          return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'DISABLED',
-            message: 'Cupón deshabilitado.',
-            details: { code: couponCode }
-          });
-        }
-
-        if (String(coup.status).toUpperCase() !== 'ACTIVE') {
-          return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'INVALID_STATUS',
-            message: 'Cupón inválido.',
-            details: { code: couponCode, status: coup.status }
-          });
-        }
-
-        if (!isActiveByDate(coup, nowRef)) {
-          // Esta razón la interpreta tu explainCouponRejection (expirado / no activo aún)
-          return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'EXPIRED_OR_NOT_YET_ACTIVE',
-            details: {
-              code: couponCode,
-              activeFrom: coup.activeFrom ?? null,
-              expiresAt: coup.expiresAt ?? null
-            }
-          });
-        }
-
-        if (!isWithinWindow(coup, nowRef)) {
-          return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'OUT_OF_WINDOW',
-            details: {
-              code: couponCode,
-              daysActive: normalizeDaysActive(coup.daysActive),
-              windowStart: coup.windowStart ?? null,
-              windowEnd: coup.windowEnd ?? null
-            }
+            error: 'INVALID_COUPON'
           });
         }
 
         if ((coup.usageLimit ?? 1) <= (coup.usedCount ?? 0)) {
-          // si tiene usedAt, tu frontend lo puede mostrar con ALREADY_USED (pero aquí es límite)
           return res.status(422).json({
-            error: 'INVALID_COUPON',
-            reason: 'USAGE_LIMIT',
-            message: 'Se alcanzó el límite de usos del cupón.',
-            details: {
-              code: couponCode,
-              usageLimit: coup.usageLimit ?? 1,
-              usedCount: coup.usedCount ?? 0,
-              usedAt: coup.usedAt ?? null
-            }
+            error: 'INVALID_COUPON'
           });
         }
 
-        // 🚦 Blindaje adicional: si es del juego (MCP-CD), exigir AMOUNT/FIXED
-        assertGameCouponShape(coup, couponCode);
-
-        // ✅ Calcular descuento
         const { discount, percentApplied, amountApplied, label } =
           computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
 
-        // ✅ Importante: si no aplica, NO bloqueamos el pedido; simplemente no añadimos cupón
         if (discount > 0) {
           discounts = discount;
           couponEntry = {
             code: 'COUPON',
             label,
-            amount: -discounts,
+            amount: -discount,
             couponCode,
             percentApplied,
             amountApplied
@@ -669,19 +641,22 @@ router.post('/pedido', async (req, res) => {
         }
       }
 
-      const extrasFinal = couponEntry ? [...extrasSanitized, couponEntry] : extrasSanitized;
+      const extrasFinal = couponEntry
+        ? [...orderLevelExtras, couponEntry]
+        : orderLevelExtras;
 
-      const extrasChargeableTotal = round2(
-        extrasSanitized.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+      /* ===== TOTAL FINAL CORRECTO ===== */
+
+      const saleTotal = round2(
+        totalProducts - discounts + extrasTotal
       );
 
       logI('PRODUCTS & TOTALS', {
         totalProducts,
-        discountsPreview: discounts,
-        saleTotalPreview: round2(totalProducts - discounts + extrasChargeableTotal)
+        extrasTotal,
+        discounts,
+        saleTotal
       });
-
-      const saleTotal = round2(totalProducts - discounts + extrasChargeableTotal);
 
       const sale = await tx.sale.create({
         data: {
@@ -702,293 +677,389 @@ router.post('/pedido', async (req, res) => {
           address_1: snapshot?.address_1 ?? null,
           lat: snapshot?.lat ?? null,
           lng: snapshot?.lng ?? null
-        },
-        select: { id: true, code: true, total: true, currency: true, discounts: true }
+        }
       });
 
       return sale;
     });
 
-    const storeRow = await prisma.store.findUnique({
-      where: { id: Number(storeId) },
-      select: { id: true, acceptingOrders: true, storeName: true }
+    logI('→ pedido creado', {
+      id: created.id,
+      code: created.code,
+      total: created.total
     });
 
-    if (!storeRow) return res.status(400).json({ error: 'storeId inválido' });
-    if (!storeRow.acceptingOrders) {
-      return res.status(403).json({ error: 'La tienda no está aceptando pedidos ahora mismo.' });
-    }
-
-    logI('→ pedido creado', created);
     res.json(created);
+
   } catch (e) {
     logE('[POST /api/venta/pedido] error', e);
     res.status(400).json({ error: e.message });
   }
 });
+
 router.post('/checkout-session', async (req, res) => {
-    if (!stripeReady){
-      logW('checkout-session llamado sin Stripe listo');
-      return res.status(503).json({ error:'Stripe no configurado' });
-    }
+  if (!stripeReady){
+    logW('checkout-session llamado sin Stripe listo');
+    return res.status(503).json({ error:'Stripe no configurado' });
+  }
 
-    try{
-      const { orderId, code, cart } = req.body || {};
+  try{
+    const { orderId, code, cart } = req.body || {};
 
-      /* ---------- B1) Venta previa ---------- */
-      if (orderId || code){
-        const where = orderId ? { id:Number(orderId) } : { code:String(code) };
-        const sale = await prisma.sale.findUnique({ where });
-        if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
-        if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
+    /* ---------- B1) Venta previa ---------- */
+    if (orderId || code){
+      const where = orderId ? { id:Number(orderId) } : { code:String(code) };
+      const sale = await prisma.sale.findUnique({ where });
+      if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
+      if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
 
-        // restricción por teléfono (anti-abuso)
-        let restrictedInfo = { restricted:false };
-        const snapPhone = sale?.customerData?.phone || null;
-        if (snapPhone) {
-          restrictedInfo = await getRestrictionByPhone(prisma, snapPhone);
-        } else if (sale.customerId) {
-          const c = await prisma.customer.findUnique({
-            where: { id: sale.customerId },
-            select: { phone:true, isRestricted:true, restrictionReason:true, code:true }
+      // restricción por teléfono (anti-abuso)
+      let restrictedInfo = { restricted:false };
+      const snapPhone = sale?.customerData?.phone || null;
+      if (snapPhone) {
+        restrictedInfo = await getRestrictionByPhone(prisma, snapPhone);
+      } else if (sale.customerId) {
+        const c = await prisma.customer.findUnique({
+          where: { id: sale.customerId },
+          select: { phone:true, isRestricted:true, restrictionReason:true, code:true }
+        });
+        restrictedInfo = {
+          restricted: !!c?.isRestricted,
+          reason: c?.restrictionReason || null,
+          code: c?.code || null
+        };
+      }
+      if (restrictedInfo.restricted) {
+        return res.status(403).json({ error:'restricted', code: restrictedInfo.code, reason: restrictedInfo.reason });
+      }
+
+      const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
+      const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : parseMaybe(sale.extras,   []);
+
+      let sessionUrl = null;
+
+      await prisma.$transaction(async (tx) => {
+        await assertStock(tx, sale.storeId, productsJson);
+
+        // OJO: recalcTotals calcula SOLO pizzas (no incluye products[].extras)
+        const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
+
+        // nombres por id
+        const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
+        let nameById = new Map();
+        if (ids.length){
+          const pizzas = await tx.menuPizza.findMany({
+            where:{ id:{ in: ids } },
+            select:{ id:true, name:true }
           });
-          restrictedInfo = {
-            restricted: !!c?.isRestricted,
-            reason: c?.restrictionReason || null,
-            code: c?.code || null
+          nameById = new Map(pizzas.map(p => [p.id, p.name]));
+        }
+
+        const currency = String(sale.currency || 'EUR').toLowerCase();
+
+        // prorrateo de descuento SOLO sobre productos
+        const totalProductsOriginal = Number(total);
+        const discountAmount = Number(sale.discounts || 0);
+        const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
+          ? (discountAmount / totalProductsOriginal)
+          : 0;
+
+        const productLines = lineItems.map(li => {
+          const qty = Math.max(1, Number(li.qty || 1));
+          const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
+          const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
+          const unitCents = Math.round(Number(li.price) * 100);
+
+          const discountedCents = discountFraction > 0
+            ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
+            : unitCents;
+
+          return {
+            quantity: qty,
+            price_data: {
+              currency,
+              unit_amount: discountedCents,
+              product_data: {
+                name: displayName,
+                metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
+              }
+            }
           };
-        }
-        if (restrictedInfo.restricted) {
-          return res.status(403).json({ error:'restricted', code: restrictedInfo.code, reason: restrictedInfo.reason });
-        }
-
-        const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
-        const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : parseMaybe(sale.extras,   []);
-
-        let sessionUrl = null;
-
-        await prisma.$transaction(async (tx) => {
-          await assertStock(tx, sale.storeId, productsJson);
-          const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
-
-          // nombres por id
-          const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
-          let nameById = new Map();
-          if (ids.length){
-            const pizzas = await tx.menuPizza.findMany({ where:{ id:{ in: ids } }, select:{ id:true, name:true } });
-            nameById = new Map(pizzas.map(p => [p.id, p.name]));
-          }
-
-          const currency = String(sale.currency || 'EUR').toLowerCase();
-
-          // prorrateo de descuento SOLO sobre productos
-          const totalProductsOriginal = Number(total);
-          const discountAmount = Number(sale.discounts || 0);
-          const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
-            ? (discountAmount / totalProductsOriginal)
-            : 0;
-
-          const productLines = lineItems.map(li => {
-            const qty = Math.max(1, Number(li.qty || 1));
-            const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
-            const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
-            const unitCents = Math.round(Number(li.price) * 100);
-            const discountedCents = discountFraction > 0
-              ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
-              : unitCents;
-
-            return {
-              quantity: qty,
-              price_data: {
-                currency,
-                unit_amount: discountedCents,
-                product_data: {
-                  name: displayName,
-                  metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
-                }
-              }
-            };
-          });
-
-          // --- EXTRAS ---
-          const extrasArray = Array.isArray(extrasJson) ? extrasJson : [];
-          const deliveryFeeExtras = extrasArray.filter(ex => String(ex?.code || '').toUpperCase() === 'DELIVERY_FEE');
-          const shippingAmountCentsFromExtras = deliveryFeeExtras.length
-            ? Math.round(deliveryFeeExtras.reduce((s,e)=> s + (toPrice(e?.amount) || 0), 0) * 100)
-            : 0;
-
-          // Envío
-          let shippingAmountCents = 0;
-          if (String(sale.delivery).toUpperCase() === 'COURIER'){
-            if (shippingAmountCentsFromExtras > 0){
-              shippingAmountCents = shippingAmountCentsFromExtras;
-            } else {
-              const totalQty = productLines.reduce((s,li)=> s + Number(li.quantity||0), 0);
-              const blocks = Math.ceil(totalQty / 5);
-              shippingAmountCents = blocks * 250; // 2.50 €
-            }
-          }
-
-          // Otros extras cobrables como line_items (excluye COUPON y DELIVERY_FEE)
-          const extrasLineItems = [];
-          let extrasOtherCents = 0;
-          for (const ex of extrasArray){
-            const code = String(ex?.code || '').toUpperCase();
-            if (code === 'COUPON' || code === 'DELIVERY_FEE') continue;
-            const amt = toPrice(ex?.amount);
-            if (!Number.isFinite(amt)) continue;
-            const cents = Math.round(amt * 100);
-            if (cents <= 0) continue;
-
-            extrasOtherCents += cents;
-            extrasLineItems.push({
-              quantity: 1,
-              price_data: {
-                currency,
-                unit_amount: cents,
-                product_data: {
-                  name: String(ex?.label || ex?.code || 'Extra'),
-                  metadata: { extraCode: String(ex?.code || '') }
-                }
-              }
-            });
-          }
-
-          const pmTypes = ['card'];
-          if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
-          if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
-
-          const shippingOptions =
-            shippingAmountCents > 0
-              ? [{
-                  shipping_rate_data:{
-                    display_name:'Gastos de envío',
-                    type:'fixed_amount',
-                    fixed_amount:{ amount:shippingAmountCents, currency }
-                  }
-                }]
-              : undefined;
-
-          // Fallback
-          const productsCentsSent = productLines.reduce((s,li) => s + (Number(li.price_data?.unit_amount||0) * Number(li.quantity||0)), 0);
-          const itemsAlreadyCentsNoShipping = productsCentsSent + extrasOtherCents;
-          const declaredSaleCents = Math.round(Number(sale.total || 0) * 100);
-          const declaredNoShippingCents = Math.max(0, declaredSaleCents - shippingAmountCentsFromExtras);
-          let missingExtrasCents = declaredNoShippingCents - itemsAlreadyCentsNoShipping;
-
-          if (missingExtrasCents >= 1) {
-            extrasLineItems.push({
-              quantity: 1,
-              price_data: {
-                currency,
-                unit_amount: missingExtrasCents,
-                product_data: {
-                  name: 'Extras',
-                  metadata: { kind: 'FALLBACK_EXTRAS_FROM_SALE_TOTAL' }
-                }
-              }
-            });
-            extrasOtherCents += missingExtrasCents;
-            logW('Añadido fallback de extras', { missingExtrasCents, declaredNoShippingCents, itemsAlreadyCentsNoShipping });
-          }
-
-          // Sesión Stripe
-          const session = await stripe.checkout.sessions.create({
-            mode: 'payment',
-            payment_method_types: pmTypes,
-            line_items: [
-              ...productLines,
-              ...extrasLineItems,
-            ],
-            customer_email: sale.customerData?.email || undefined,
-            billing_address_collection: 'auto',
-            locale: 'es',
-            ...(shippingOptions ? { shipping_options: shippingOptions } : {}),
-            success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-            metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
-          });
-
-          // total real enviado a Stripe
-          const totalForDb = (productsCentsSent + extrasOtherCents + (shippingOptions ? shippingAmountCents : 0)) / 100;
-          await tx.sale.update({
-            where:{ id:sale.id },
-            data : {
-              total: round2(totalForDb),
-              stripeCheckoutSessionId: session.id,
-              status:'AWAITING_PAYMENT'
-            }
-          });
-
-          logI('→ Stripe session creada (venta previa) con extras', {
-            id: session.id,
-            saleId: sale.id,
-            declaredSaleCents,
-            productsCentsSent,
-            extrasOtherCents,
-            shippingAmountCentsSent: shippingOptions ? shippingAmountCents : 0
-          });
-
-          sessionUrl = session.url;
         });
 
-        return res.json({ url: sessionUrl });
-      }
+        // --- EXTRAS (DE sale.extras) ---
+        const extrasArray = Array.isArray(extrasJson) ? extrasJson : [];
 
-      /* ---------- B2) Modo carrito (pagar primero) ---------- */
-      if (cart?.customer?.phone) {
-        const r = await getRestrictionByPhone(prisma, cart.customer.phone);
-        if (r.restricted) {
-          return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+        const deliveryFeeExtras = extrasArray.filter(ex =>
+          String(ex?.code || '').toUpperCase() === 'DELIVERY_FEE'
+        );
+
+        const shippingAmountCentsFromExtras = deliveryFeeExtras.length
+          ? Math.round(deliveryFeeExtras.reduce((s,e)=> s + (toPrice(e?.amount) || 0), 0) * 100)
+          : 0;
+
+        // Envío
+        let shippingAmountCents = 0;
+        if (String(sale.delivery).toUpperCase() === 'COURIER'){
+          if (shippingAmountCentsFromExtras > 0){
+            shippingAmountCents = shippingAmountCentsFromExtras;
+          } else {
+            const totalQty = productLines.reduce((s,li)=> s + Number(li.quantity||0), 0);
+            const blocks = Math.ceil(totalQty / 5);
+            shippingAmountCents = blocks * 250; // 2.50 €
+          }
         }
-      }
-      if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
-      if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
-        return res.status(400).json({ error: 'cart inválido' });
-      }
 
-      const totalCents = Math.round(Number(cart?.totals?.total) * 100);
-      if (!Number.isFinite(totalCents) || totalCents <= 0){
-        return res.status(400).json({ error: 'total inválido' });
-      }
+        // Otros extras cobrables como line_items (excluye COUPON y DELIVERY_FEE)
+        const extrasLineItems = [];
+        let extrasOtherCents = 0;
 
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'eur',
-            product_data: { name: 'Pedido MyCrushPizza' },
-            unit_amount: totalCents
-          },
-          quantity: 1
-        }],
-        success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
-        locale:'es',
-        metadata: {
-          cart: JSON.stringify({
-            storeId: cart.storeId,
-            type   : cart.type,
-            delivery: cart.delivery,
-            channel: cart.channel || 'WEB',
-            customer: cart.customer || null,
-            items: cart.items,
-            extras: cart.extras || [],
-            coupon: cart.coupon || null,
-            totals: cart.totals || null
-          })
+        for (const ex of extrasArray){
+          const exCode = String(ex?.code || '').toUpperCase();
+          if (exCode === 'COUPON' || exCode === 'DELIVERY_FEE') continue;
+
+          const amt = toPrice(ex?.amount);
+          if (!Number.isFinite(amt)) continue;
+
+          const cents = Math.round(amt * 100);
+          if (cents <= 0) continue;
+
+          extrasOtherCents += cents;
+          extrasLineItems.push({
+            quantity: 1,
+            price_data: {
+              currency,
+              unit_amount: cents,
+              product_data: {
+                name: String(ex?.label || ex?.code || 'Extra'),
+                metadata: { extraCode: String(ex?.code || '') }
+              }
+            }
+          });
         }
+
+        /* ============================================================
+           ✅ FIX PRINCIPAL:
+           Incluir también los extras EMBEBIDOS en productsJson[].extras
+           (estos son los extras por pizza/mitad-y-mitad que NO están en sale.extras)
+           - Los agregamos por label para no disparar line_items (límite Stripe)
+           - Respetamos qty: si amount es por unidad, se multiplica por qty
+           ============================================================ */
+
+        const safeArr = (v) => Array.isArray(v) ? v : [];
+        const safeNum = (v) => {
+          const n = toPrice(v);
+          return Number.isFinite(n) ? n : (Number.isFinite(Number(v)) ? Number(v) : NaN);
+        };
+
+        // Mapa label -> cents acumulados
+        const embeddedMap = new Map();
+
+        for (const p of safeArr(productsJson)){
+          const qty = Math.max(1, Number(p?.qty || 1));
+          const emb = safeArr(p?.extras);
+
+          for (const ex of emb){
+            const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
+            const amtUnit = safeNum(ex?.amount);
+
+            if (!label) continue;
+            if (!Number.isFinite(amtUnit) || amtUnit <= 0) continue;
+
+            // Interpretación robusta:
+            // - si alguien guardó amount ya * qty, esto lo inflaría
+            //   PERO en tu /pedido corregido amount es por unidad.
+            //   Aun así, si detectas qty>1 y amount parece "total", esto lo ajustarías,
+            //   pero aquí mantenemos lógica simple y consistente: unit * qty.
+            const cents = Math.round(amtUnit * 100) * qty;
+
+            const prev = embeddedMap.get(label) || 0;
+            embeddedMap.set(label, prev + cents);
+          }
+        }
+
+        let embeddedExtrasCents = 0;
+
+        for (const [label, cents] of embeddedMap.entries()){
+          const c = Number(cents) || 0;
+          if (c <= 0) continue;
+
+          embeddedExtrasCents += c;
+
+          // Se agrega como un único line_item por label
+          extrasLineItems.push({
+            quantity: 1,
+            price_data: {
+              currency,
+              unit_amount: c,
+              product_data: {
+                name: `+ ${label}`,
+                metadata: { kind: 'EMBEDDED_ITEM_EXTRA' }
+              }
+            }
+          });
+        }
+
+        // Suma final de extras (sale.extras + embedded)
+        extrasOtherCents += embeddedExtrasCents;
+
+        const pmTypes = ['card'];
+        if (process.env.STRIPE_ENABLE_LINK   === '1') pmTypes.push('link');
+        if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
+
+        const shippingOptions =
+          shippingAmountCents > 0
+            ? [{
+                shipping_rate_data:{
+                  display_name:'Gastos de envío',
+                  type:'fixed_amount',
+                  fixed_amount:{ amount:shippingAmountCents, currency }
+                }
+              }]
+            : undefined;
+
+        // Fallback
+        const productsCentsSent = productLines.reduce(
+          (s,li) => s + (Number(li.price_data?.unit_amount||0) * Number(li.quantity||0)),
+          0
+        );
+
+        const itemsAlreadyCentsNoShipping = productsCentsSent + extrasOtherCents;
+
+        const declaredSaleCents = Math.round(Number(sale.total || 0) * 100);
+        const declaredNoShippingCents = Math.max(0, declaredSaleCents - shippingAmountCentsFromExtras);
+
+        let missingExtrasCents = declaredNoShippingCents - itemsAlreadyCentsNoShipping;
+
+        // Si por redondeos queda un poquito negativo, lo anulamos
+        if (missingExtrasCents < 0 && missingExtrasCents > -2) missingExtrasCents = 0;
+
+        if (missingExtrasCents >= 1) {
+          extrasLineItems.push({
+            quantity: 1,
+            price_data: {
+              currency,
+              unit_amount: missingExtrasCents,
+              product_data: {
+                name: 'Extras',
+                metadata: { kind: 'FALLBACK_EXTRAS_FROM_SALE_TOTAL' }
+              }
+            }
+          });
+          extrasOtherCents += missingExtrasCents;
+
+          logW('Añadido fallback de extras', {
+            missingExtrasCents,
+            declaredNoShippingCents,
+            itemsAlreadyCentsNoShipping
+          });
+        }
+
+        // Sesión Stripe
+        const session = await stripe.checkout.sessions.create({
+          mode: 'payment',
+          payment_method_types: pmTypes,
+          line_items: [
+            ...productLines,
+            ...extrasLineItems,
+          ],
+          customer_email: sale.customerData?.email || undefined,
+          billing_address_collection: 'auto',
+          locale: 'es',
+          ...(shippingOptions ? { shipping_options: shippingOptions } : {}),
+          success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+          metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
+        });
+
+        // total real enviado a Stripe
+        const totalForDb =
+          (productsCentsSent + extrasOtherCents + (shippingOptions ? shippingAmountCents : 0)) / 100;
+
+        await tx.sale.update({
+          where:{ id:sale.id },
+          data : {
+            total: round2(totalForDb),
+            stripeCheckoutSessionId: session.id,
+            status:'AWAITING_PAYMENT'
+          }
+        });
+
+        logI('→ Stripe session creada (venta previa) con extras', {
+          id: session.id,
+          saleId: sale.id,
+          declaredSaleCents,
+          productsCentsSent,
+          extrasOtherCents,
+          embeddedExtrasCents,
+          shippingAmountCentsSent: shippingOptions ? shippingAmountCents : 0
+        });
+
+        sessionUrl = session.url;
       });
 
-      logI('→ Stripe session creada (modo cart)', { id:session.id });
-      return res.json({ url: session.url });
-
-    } catch (e) {
-      logE('[POST /api/venta/checkout-session] error', e);
-      res.status(400).json({ error:e.message });
+      return res.json({ url: sessionUrl });
     }
+
+    /* ---------- B2) Modo carrito (pagar primero) ---------- */
+    if (cart?.customer?.phone) {
+      const r = await getRestrictionByPhone(prisma, cart.customer.phone);
+      if (r.restricted) {
+        return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+      }
+    }
+
+    if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
+
+    if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
+      return res.status(400).json({ error: 'cart inválido' });
+    }
+
+    const totalCents = Math.round(Number(cart?.totals?.total) * 100);
+
+    if (!Number.isFinite(totalCents) || totalCents <= 0){
+      return res.status(400).json({ error: 'total inválido' });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'eur',
+          product_data: { name: 'Pedido MyCrushPizza' },
+          unit_amount: totalCents
+        },
+        quantity: 1
+      }],
+      success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+      locale:'es',
+      metadata: {
+        cart: JSON.stringify({
+          storeId: cart.storeId,
+          type   : cart.type,
+          delivery: cart.delivery,
+          channel: cart.channel || 'WEB',
+          customer: cart.customer || null,
+          items: cart.items,
+          extras: cart.extras || [],
+          coupon: cart.coupon || null,
+          totals: cart.totals || null
+        })
+      }
+    });
+
+    logI('→ Stripe session creada (modo cart)', { id:session.id });
+
+    return res.json({ url: session.url });
+
+  } catch (e) {
+    logE('[POST /api/venta/checkout-session] error', e);
+    res.status(400).json({ error:e.message });
+  }
 });
+
 router.post('/checkout/confirm', async (req, res) => {
   if (!stripeReady) {
     return res.status(503).json({ error: 'Stripe no configurado' });
