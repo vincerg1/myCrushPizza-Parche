@@ -166,7 +166,8 @@ module.exports = (prisma) => {
         extras = [],
         notes = '',
       } = req.body;
-
+console.log('🟡 INCOMING PRODUCTS:', JSON.stringify(products, null, 2));
+console.log('🟡 INCOMING EXTRAS (top-level):', JSON.stringify(extras, null, 2));
       /* ───────── utilidades ───────── */
       const trimOrNull = (v) => {
         if (v == null) return null;
@@ -339,7 +340,9 @@ module.exports = (prisma) => {
 
       const topLevelExtras = extras.map(sanitizeExtra).filter(Boolean);
       let extrasAll = [...nestedExtras, ...topLevelExtras];
-
+console.log('🟠 NESTED EXTRAS:', JSON.stringify(nestedExtras, null, 2));
+console.log('🟠 TOP LEVEL EXTRAS:', JSON.stringify(topLevelExtras, null, 2));
+console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
       const totalProducts = round2(
         products.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
       );
@@ -373,7 +376,10 @@ module.exports = (prisma) => {
         }
 
         const publicCode = await genOrderCode(tx);
-
+console.log('🔴 FINAL PRODUCTS TO SAVE:', JSON.stringify(products, null, 2));
+console.log('🔴 FINAL EXTRAS TO SAVE:', JSON.stringify(extrasAll, null, 2));
+console.log('🔴 TOTAL PRODUCTS:', totalProducts);
+console.log('🔴 TOTAL FINAL:', total);
         const newSale = await tx.sale.create({
           data: {
             code: publicCode,
@@ -401,7 +407,7 @@ module.exports = (prisma) => {
 
         return newSale;
       });
-
+console.log('🟢 SALE SAVED:', JSON.stringify(sale, null, 2));
       res.json(sale);
     } catch (err) {
       console.error('[POST /api/sales]', err);
