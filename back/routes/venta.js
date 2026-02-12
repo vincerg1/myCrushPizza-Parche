@@ -229,25 +229,55 @@ async function assertStock(tx, storeId, items){
     }
   }
 }
-async function recalcTotals(tx, storeId, items){
+async function recalcTotals(tx, storeId, items) {
   const ids = [...new Set(items.map(i => Number(i.pizzaId)))];
-  const pizzas = await tx.menuPizza.findMany({ where: { id: { in: ids } } });
+
+  const pizzas = await tx.menuPizza.findMany({
+    where: { id: { in: ids } }
+  });
 
   let totalProducts = 0;
+
   const lineItems = items.map(it => {
     const mp = pizzas.find(p => p.id === Number(it.pizzaId));
     if (!mp) throw new Error(`Pizza ${it.pizzaId} no existe`);
+
     const sizeKey = upper(it.size || 'M');
-    const priceMap = parseMaybe(mp.priceBySize, {});
-    const price = toPrice(priceMap[sizeKey]);
-    if (!Number.isFinite(price)) throw new Error(`Precio no definido para ${mp.name} (${sizeKey})`);
+
+    let price;
+
+    // 🔥 Si el frontend ya decidió el precio (ej: mitad y mitad),
+    // lo respetamos.
+    if (Number.isFinite(Number(it.price)) && Number(it.price) > 0) {
+      price = Number(it.price);
+    } else {
+      const priceMap = parseMaybe(mp.priceBySize, {});
+      price = toPrice(priceMap[sizeKey]);
+    }
+
+    if (!Number.isFinite(price)) {
+      throw new Error(`Precio no definido para ${mp.name} (${sizeKey})`);
+    }
+
     const qty = Math.max(1, Number(it.qty || 1));
+
     totalProducts += price * qty;
-    return { pizzaId: mp.id, size: sizeKey, qty, price };
+
+    return {
+      pizzaId: mp.id,
+      size: sizeKey,
+      qty,
+      price
+    };
   });
 
-  return { lineItems, totalProducts, total: totalProducts };
+  return {
+    lineItems,
+    totalProducts,
+    total: totalProducts
+  };
 }
+
 
 const GAME_AMOUNT_PREFIXES = ['MCP-CD']; // cupones emitidos por el juego
 const isGameCoupon = (code) =>

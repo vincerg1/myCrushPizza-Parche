@@ -153,334 +153,330 @@ module.exports = (prisma) => {
     return code;
   }
 
-  /* ───────────────────────── POST /api/sales ───────────────────────── */
-r.post('/', auth(), async (req, res) => {
-  try {
-    const {
-      storeId: storeIdBody,
-      type,
-      delivery,
-      customer,
-      customerId: customerIdBody,
-      products,
-      extras = [],
-      notes = '',
-    } = req.body;
+    /* ───────────────────────── POST /api/sales ───────────────────────── */
+  r.post('/', auth(), async (req, res) => {
+    try {
+      const {
+        storeId: storeIdBody,
+        type,
+        delivery,
+        customer,
+        customerId: customerIdBody,
+        products,
+        extras = [],
+        notes = '',
+      } = req.body;
 
-    /* ───────── utilidades ───────── */
-    const trimOrNull = (v) => {
-      if (v == null) return null;
-      const s = String(v).trim();
-      return s ? s : null;
-    };
-    const hasText = (v) => {
-      if (v == null) return false;
-      return String(v).trim().length > 0;
-    };
-
-    const toPriceHard = (v) => {
-      if (v == null || v === '') return NaN;
-      const cleaned = String(v).trim().replace(/[^0-9,.\-]/g, '').replace(',', '.');
-      const parts = cleaned.split('.');
-      const normalized =
-        parts.length > 2
-          ? parts.slice(0, -1).join('') + '.' + parts.slice(-1)
-          : cleaned;
-      const n = Number(normalized);
-      return Number.isFinite(n) ? n : NaN;
-    };
-
-    const sanitizeExtra = (e) => {
-      const amountNum = toPriceHard(e?.amount);
-      if (!Number.isFinite(amountNum)) return null;
-      return {
-        code: String(e?.code || 'EXTRA'),
-        label: String(e?.label || 'Extra'),
-        amount: round2(amountNum),
-        couponCode: e?.couponCode ? upper(e.couponCode) : undefined,
-        percentApplied: e?.percentApplied != null ? Number(e.percentApplied) : undefined,
-        amountApplied: e?.amountApplied != null ? Number(e.amountApplied) : undefined,
+      /* ───────── utilidades ───────── */
+      const trimOrNull = (v) => {
+        if (v == null) return null;
+        const s = String(v).trim();
+        return s ? s : null;
       };
-    };
+      const hasText = (v) => {
+        if (v == null) return false;
+        return String(v).trim().length > 0;
+      };
 
-    const isCoupon = (e) => upper(e.code) === 'COUPON';
-    const isDeliveryFee = (e) => upper(e.code) === 'DELIVERY_FEE';
+      const toPriceHard = (v) => {
+        if (v == null || v === '') return NaN;
+        const cleaned = String(v).trim().replace(/[^0-9,.\-]/g, '').replace(',', '.');
+        const parts = cleaned.split('.');
+        const normalized =
+          parts.length > 2
+            ? parts.slice(0, -1).join('') + '.' + parts.slice(-1)
+            : cleaned;
+        const n = Number(normalized);
+        return Number.isFinite(n) ? n : NaN;
+      };
 
-    /* ───────── storeId según rol ───────── */
-    let storeId;
-    if (req.user.role === 'store') {
-      const s = await prisma.store.findFirst({
-        where: { storeName: req.user.storeName },
-      });
-      if (!s) return res.status(403).json({ error: 'Tienda no válida' });
-      storeId = s.id;
-    } else {
-      storeId = Number(storeIdBody);
-      if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
-    }
+      const sanitizeExtra = (e) => {
+        const amountNum = toPriceHard(e?.amount);
+        if (!Number.isFinite(amountNum)) return null;
+        return {
+          code: String(e?.code || 'EXTRA'),
+          label: String(e?.label || 'Extra'),
+          amount: round2(amountNum),
+          couponCode: e?.couponCode ? upper(e.couponCode) : undefined,
+          percentApplied: e?.percentApplied != null ? Number(e.percentApplied) : undefined,
+          amountApplied: e?.amountApplied != null ? Number(e.amountApplied) : undefined,
+        };
+      };
 
-    /* ───────── validar productos ───────── */
-    if (!Array.isArray(products) || !products.length)
-      return res.status(400).json({ error: 'products vacío' });
+      const isCoupon = (e) => upper(e.code) === 'COUPON';
+      const isDeliveryFee = (e) => upper(e.code) === 'DELIVERY_FEE';
 
-    for (const p of products) {
-      if (![p.pizzaId, p.qty, p.price].every((n) => Number(n) > 0) || !p.size)
-        return res.status(400).json({ error: 'Producto mal formado' });
-    }
+      /* ───────── storeId según rol ───────── */
+      let storeId;
+      if (req.user.role === 'store') {
+        const s = await prisma.store.findFirst({
+          where: { storeName: req.user.storeName },
+        });
+        if (!s) return res.status(403).json({ error: 'Tienda no válida' });
+        storeId = s.id;
+      } else {
+        storeId = Number(storeIdBody);
+        if (!storeId) return res.status(400).json({ error: 'storeId requerido' });
+      }
 
-    /* ───────── resolver cliente (DENTRO TX) ───────── */
-    let customerId = null;
-    let snapshot = null;
+      /* ───────── validar productos ───────── */
+      if (!Array.isArray(products) || !products.length)
+        return res.status(400).json({ error: 'products vacío' });
 
-    const resolveCustomer = async (tx) => {
-      // 1) customerId explícito
-      if (customerIdBody) {
-        const cid = Number(customerIdBody);
-        if (Number.isFinite(cid) && cid > 0) {
-          const dbCustomer = await tx.customer.findUnique({ where: { id: cid } });
-          if (dbCustomer) {
-            customerId = dbCustomer.id;
+      for (const p of products) {
+        if (![p.pizzaId, p.qty, p.price].every((n) => Number(n) > 0) || !p.size)
+          return res.status(400).json({ error: 'Producto mal formado' });
+      }
 
-            snapshot = {
-              phone: dbCustomer.phone ?? null,
-              name: dbCustomer.name ?? null,
-              address_1: dbCustomer.address_1 ?? null,
-              portal: dbCustomer.portal ?? null,
-              observations: dbCustomer.observations ?? null,
-              lat: dbCustomer.lat ?? null,
-              lng: dbCustomer.lng ?? null,
-            };
+      /* ───────── resolver cliente (DENTRO TX) ───────── */
+      let customerId = null;
+      let snapshot = null;
 
-            if (customer && typeof customer === 'object') {
-              const patch = {};
+      const resolveCustomer = async (tx) => {
+        // 1) customerId explícito
+        if (customerIdBody) {
+          const cid = Number(customerIdBody);
+          if (Number.isFinite(cid) && cid > 0) {
+            const dbCustomer = await tx.customer.findUnique({ where: { id: cid } });
+            if (dbCustomer) {
+              customerId = dbCustomer.id;
 
-              if (hasText(customer.name)) patch.name = trimOrNull(customer.name);
-              if (hasText(customer.address_1) || hasText(customer.address))
-                patch.address_1 = trimOrNull(customer.address_1 ?? customer.address);
+              snapshot = {
+                phone: dbCustomer.phone ?? null,
+                name: dbCustomer.name ?? null,
+                address_1: dbCustomer.address_1 ?? null,
+                portal: dbCustomer.portal ?? null,
+                observations: dbCustomer.observations ?? null,
+                lat: dbCustomer.lat ?? null,
+                lng: dbCustomer.lng ?? null,
+              };
 
-              if (hasText(customer.observations))
-                patch.observations = trimOrNull(customer.observations);
+              if (customer && typeof customer === 'object') {
+                const patch = {};
 
-              if (customer.lat != null) patch.lat = customer.lat;
-              if (customer.lng != null) patch.lng = customer.lng;
+                if (hasText(customer.name)) patch.name = trimOrNull(customer.name);
+                if (hasText(customer.address_1) || hasText(customer.address))
+                  patch.address_1 = trimOrNull(customer.address_1 ?? customer.address);
 
-              if (Object.keys(patch).length) {
-                const updated = await tx.customer.update({
-                  where: { id: dbCustomer.id },
-                  data: patch,
-                });
+                if (hasText(customer.observations))
+                  patch.observations = trimOrNull(customer.observations);
 
-                snapshot = {
-                  phone: updated.phone ?? null,
-                  name: updated.name ?? null,
-                  address_1: updated.address_1 ?? null,
-                  portal: updated.portal ?? null,
-                  observations: updated.observations ?? null,
-                  lat: updated.lat ?? null,
-                  lng: updated.lng ?? null,
-                };
+                if (customer.lat != null) patch.lat = customer.lat;
+                if (customer.lng != null) patch.lng = customer.lng;
+
+                if (Object.keys(patch).length) {
+                  const updated = await tx.customer.update({
+                    where: { id: dbCustomer.id },
+                    data: patch,
+                  });
+
+                  snapshot = {
+                    phone: updated.phone ?? null,
+                    name: updated.name ?? null,
+                    address_1: updated.address_1 ?? null,
+                    portal: updated.portal ?? null,
+                    observations: updated.observations ?? null,
+                    lat: updated.lat ?? null,
+                    lng: updated.lng ?? null,
+                  };
+                }
               }
+              return;
             }
-            return;
           }
+        }
+
+        // 2) upsert por phone
+        if (hasText(customer?.phone)) {
+          const phone = String(customer.phone).trim();
+
+          const createData = {
+            phone,
+            name: trimOrNull(customer.name),
+            address_1: trimOrNull(customer.address_1 ?? customer.address),
+            observations: trimOrNull(customer.observations),
+            lat: customer.lat ?? null,
+            lng: customer.lng ?? null,
+          };
+
+          const updateData = {
+            name: trimOrNull(customer.name),
+            address_1: trimOrNull(customer.address_1 ?? customer.address),
+            lat: customer.lat ?? null,
+            lng: customer.lng ?? null,
+          };
+
+          if (hasText(customer.observations))
+            updateData.observations = trimOrNull(customer.observations);
+
+          const c = await tx.customer.upsert({
+            where: { phone },
+            update: updateData,
+            create: { code: await genCustomerCode(tx), ...createData },
+          });
+
+          customerId = c.id;
+          snapshot = {
+            phone: c.phone ?? null,
+            name: c.name ?? null,
+            address_1: c.address_1 ?? null,
+            portal: c.portal ?? null,
+            observations: c.observations ?? null,
+            lat: c.lat ?? null,
+            lng: c.lng ?? null,
+          };
+        }
+      };
+
+      /* ───────── extras ───────── */
+      const nestedExtras = products.flatMap((p) => {
+        const qty = Math.max(1, Number(p.qty || 1));
+        return (p.extras || [])
+          .map(sanitizeExtra)
+          .filter(Boolean)
+          .map((e) => ({ ...e, amount: round2(e.amount * qty) }));
+      });
+
+      const topLevelExtras = extras.map(sanitizeExtra).filter(Boolean);
+      let extrasAll = [...nestedExtras, ...topLevelExtras];
+
+      const totalProducts = round2(
+        products.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
+      );
+
+      let discounts = 0;
+
+      const extrasChargeableTotal = round2(
+        extrasAll
+          .filter((e) => !isCoupon(e) && !isDeliveryFee(e))
+          .reduce((s, e) => s + Number(e.amount || 0), 0)
+      );
+
+      const deliveryFeeTotal = round2(
+        extrasAll.filter(isDeliveryFee).reduce((s, e) => s + Number(e.amount || 0), 0)
+      );
+
+      const total = round2(
+        totalProducts - discounts + extrasChargeableTotal + deliveryFeeTotal
+      );
+
+      /* ───────── transacción ───────── */
+      const sale = await prisma.$transaction(async (tx) => {
+        await resolveCustomer(tx);
+
+        for (const p of products) {
+          const stk = await tx.storePizzaStock.findUnique({
+            where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
+          });
+          if (!stk || stk.stock < p.qty)
+            throw new Error(`Stock insuficiente para pizza ${p.pizzaId}`);
+        }
+
+        const publicCode = await genOrderCode(tx);
+
+        const newSale = await tx.sale.create({
+          data: {
+            code: publicCode,
+            storeId,
+            customerId,
+            type,
+            delivery,
+            customerData: snapshot,
+            processed: false,
+            products,
+            extras: extrasAll,
+            totalProducts,
+            discounts,
+            total,
+            notes,
+          },
+        });
+
+        for (const p of products) {
+          await tx.storePizzaStock.update({
+            where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
+            data: { stock: { decrement: p.qty } },
+          });
+        }
+
+        return newSale;
+      });
+
+      res.json(sale);
+    } catch (err) {
+      console.error('[POST /api/sales]', err);
+      res.status(400).json({ error: err.message });
+    }
+  });
+  /* ─────────────── GET /api/sales/seguimiento/:code (PÚBLICO) ─────────────── */
+  r.get('/seguimiento/:code', async (req, res) => {
+    try {
+      const code = String(req.params.code || '').trim().toUpperCase();
+      if (!code) {
+        return res.status(400).json({ error: 'Código inválido' });
+      }
+
+      const sale = await prisma.sale.findUnique({
+        where: { code },
+        select: {
+          code: true,
+          status: true,
+          processed: true,
+          type: true,
+          delivery: true,
+          date: true,
+          store: { select: { storeName: true } }
+        }
+      });
+
+      if (!sale) {
+        return res.status(404).json({
+          error: 'NOT_FOUND',
+          message: 'Pedido no encontrado'
+        });
+      }
+
+      // Solo permitimos seguimiento si está pagado
+      if (sale.status !== 'PAID') {
+        return res.status(422).json({
+          error: 'NOT_PAID',
+          message: 'El pedido aún no ha sido confirmado como pagado'
+        });
+      }
+
+      // ───── estado lógico del pedido ─────
+      let stage = 'PREPARING';
+      let message = 'Tu pedido está en preparación 🍕';
+
+      if (sale.processed) {
+        if (
+          String(sale.delivery).toUpperCase() === 'COURIER' ||
+          String(sale.type).toUpperCase() === 'DELIVERY'
+        ) {
+          stage = 'ON_THE_WAY';
+          message = 'Tu pedido va en camino 🛵';
+        } else {
+          stage = 'READY';
+          message = 'Tu pedido está listo para recoger 🍕';
         }
       }
 
-      // 2) upsert por phone
-      if (hasText(customer?.phone)) {
-        const phone = String(customer.phone).trim();
-
-        const createData = {
-          phone,
-          name: trimOrNull(customer.name),
-          address_1: trimOrNull(customer.address_1 ?? customer.address),
-          observations: trimOrNull(customer.observations),
-          lat: customer.lat ?? null,
-          lng: customer.lng ?? null,
-        };
-
-        const updateData = {
-          name: trimOrNull(customer.name),
-          address_1: trimOrNull(customer.address_1 ?? customer.address),
-          lat: customer.lat ?? null,
-          lng: customer.lng ?? null,
-        };
-
-        if (hasText(customer.observations))
-          updateData.observations = trimOrNull(customer.observations);
-
-        const c = await tx.customer.upsert({
-          where: { phone },
-          update: updateData,
-          create: { code: await genCustomerCode(tx), ...createData },
-        });
-
-        customerId = c.id;
-        snapshot = {
-          phone: c.phone ?? null,
-          name: c.name ?? null,
-          address_1: c.address_1 ?? null,
-          portal: c.portal ?? null,
-          observations: c.observations ?? null,
-          lat: c.lat ?? null,
-          lng: c.lng ?? null,
-        };
-      }
-    };
-
-    /* ───────── extras ───────── */
-    const nestedExtras = products.flatMap((p) => {
-      const qty = Math.max(1, Number(p.qty || 1));
-      return (p.extras || [])
-        .map(sanitizeExtra)
-        .filter(Boolean)
-        .map((e) => ({ ...e, amount: round2(e.amount * qty) }));
-    });
-
-    const topLevelExtras = extras.map(sanitizeExtra).filter(Boolean);
-    let extrasAll = [...nestedExtras, ...topLevelExtras];
-
-    const totalProducts = round2(
-      products.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
-    );
-
-    let discounts = 0;
-
-    const extrasChargeableTotal = round2(
-      extrasAll
-        .filter((e) => !isCoupon(e) && !isDeliveryFee(e))
-        .reduce((s, e) => s + Number(e.amount || 0), 0)
-    );
-
-    const deliveryFeeTotal = round2(
-      extrasAll.filter(isDeliveryFee).reduce((s, e) => s + Number(e.amount || 0), 0)
-    );
-
-    const total = round2(
-      totalProducts - discounts + extrasChargeableTotal + deliveryFeeTotal
-    );
-
-    /* ───────── transacción ───────── */
-    const sale = await prisma.$transaction(async (tx) => {
-      await resolveCustomer(tx);
-
-      for (const p of products) {
-        const stk = await tx.storePizzaStock.findUnique({
-          where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
-        });
-        if (!stk || stk.stock < p.qty)
-          throw new Error(`Stock insuficiente para pizza ${p.pizzaId}`);
-      }
-
-      const publicCode = await genOrderCode(tx);
-
-      const newSale = await tx.sale.create({
-        data: {
-          code: publicCode,
-          storeId,
-          customerId,
-          type,
-          delivery,
-          customerData: snapshot,
-          processed: false,
-          products,
-          extras: extrasAll,
-          totalProducts,
-          discounts,
-          total,
-          notes,
-        },
+      return res.json({
+        code: sale.code,
+        stage,              // PREPARING | READY | ON_THE_WAY
+        message,            // copy listo para UI
+        processed: sale.processed,
+        type: sale.type,
+        delivery: sale.delivery,
+        storeName: sale.store?.storeName || 'myCrushPizza',
+        createdAt: sale.date
       });
 
-      for (const p of products) {
-        await tx.storePizzaStock.update({
-          where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
-          data: { stock: { decrement: p.qty } },
-        });
-      }
-
-      return newSale;
-    });
-
-    res.json(sale);
-  } catch (err) {
-    console.error('[POST /api/sales]', err);
-    res.status(400).json({ error: err.message });
-  }
-});
-
-
-/* ─────────────── GET /api/sales/seguimiento/:code (PÚBLICO) ─────────────── */
-r.get('/seguimiento/:code', async (req, res) => {
-  try {
-    const code = String(req.params.code || '').trim().toUpperCase();
-    if (!code) {
-      return res.status(400).json({ error: 'Código inválido' });
+    } catch (e) {
+      console.error('[GET /api/sales/seguimiento/:code]', e);
+      res.status(500).json({ error: 'internal' });
     }
-
-    const sale = await prisma.sale.findUnique({
-      where: { code },
-      select: {
-        code: true,
-        status: true,
-        processed: true,
-        type: true,
-        delivery: true,
-        date: true,
-        store: { select: { storeName: true } }
-      }
-    });
-
-    if (!sale) {
-      return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: 'Pedido no encontrado'
-      });
-    }
-
-    // Solo permitimos seguimiento si está pagado
-    if (sale.status !== 'PAID') {
-      return res.status(422).json({
-        error: 'NOT_PAID',
-        message: 'El pedido aún no ha sido confirmado como pagado'
-      });
-    }
-
-    // ───── estado lógico del pedido ─────
-    let stage = 'PREPARING';
-    let message = 'Tu pedido está en preparación 🍕';
-
-    if (sale.processed) {
-      if (
-        String(sale.delivery).toUpperCase() === 'COURIER' ||
-        String(sale.type).toUpperCase() === 'DELIVERY'
-      ) {
-        stage = 'ON_THE_WAY';
-        message = 'Tu pedido va en camino 🛵';
-      } else {
-        stage = 'READY';
-        message = 'Tu pedido está listo para recoger 🍕';
-      }
-    }
-
-    return res.json({
-      code: sale.code,
-      stage,              // PREPARING | READY | ON_THE_WAY
-      message,            // copy listo para UI
-      processed: sale.processed,
-      type: sale.type,
-      delivery: sale.delivery,
-      storeName: sale.store?.storeName || 'myCrushPizza',
-      createdAt: sale.date
-    });
-
-  } catch (e) {
-    console.error('[GET /api/sales/seguimiento/:code]', e);
-    res.status(500).json({ error: 'internal' });
-  }
-});
-
-
+  });
   /* ─────────────── GET /api/sales/pending ─────────────── */
   r.get('/pending', auth(), async (_, res) => {
     try {
@@ -550,7 +546,6 @@ r.get('/seguimiento/:code', async (req, res) => {
       res.status(500).json({ error: 'internal' });
     }
   });
-
   /* ─────────────── PATCH /api/sales/:id/ready ─────────────── */
  r.patch('/:id/ready', auth(), async (req, res) => {
   try {
