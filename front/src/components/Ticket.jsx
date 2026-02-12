@@ -40,11 +40,23 @@ export default function Ticket({ order, autoPrint = false }) {
     }
   }, [order.products]);
 
+  const globalExtras = useMemo(() => {
+    try {
+      return Array.isArray(order.extras)
+        ? order.extras
+        : JSON.parse(order.extras || "[]");
+    } catch {
+      return [];
+    }
+  }, [order.extras]);
+
   useEffect(() => {
     if (autoPrint) setTimeout(() => window.print(), 300);
   }, [autoPrint]);
 
   const f = moment(order.date).locale("es");
+
+  const safeExtras = (arr) => Array.isArray(arr) ? arr : [];
 
   return (
     <div className="ticket">
@@ -58,12 +70,57 @@ export default function Ticket({ order, autoPrint = false }) {
       <div className="ticket-items">
         <table>
           <tbody>
+
+            {/* 🔹 PRODUCTOS */}
             {products.map((p, i) => (
-              <tr key={i}>
-                <td>{p.name || nameById[p.pizzaId]}</td>
-                <td className="right">{p.size} ×{p.qty ?? 1}</td>
-              </tr>
+              <React.Fragment key={i}>
+                <tr>
+                  <td>
+                    {p.name || nameById[p.pizzaId]}
+                  </td>
+                  <td className="right">
+                    {p.size} ×{p.qty ?? 1}
+                  </td>
+                </tr>
+
+                {/* 🔹 EXTRAS POR PRODUCTO */}
+                {safeExtras(p.extras).map((ex, j) => {
+                  const amount = Number(ex.amount || 0);
+                  return (
+                    <tr key={`ex-${i}-${j}`} className="ticket-extra">
+                      <td style={{ paddingLeft: "12px" }}>
+                        + {ex.label || ex.name}
+                      </td>
+                      <td className="right">
+                        {amount > 0 ? `${amount.toFixed(2)} €` : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </React.Fragment>
             ))}
+
+            {/* 🔹 EXTRAS GLOBALES (delivery, etc.) */}
+            {safeExtras(globalExtras)
+              .filter(ex => String(ex.code || "").toUpperCase() !== "COUPON")
+              .map((ex, i) => {
+                const amount = Number(ex.amount || 0);
+                if (!Number.isFinite(amount) || amount === 0) return null;
+
+                return (
+                  <tr key={`gex-${i}`} className="ticket-extra-global">
+                    <td>
+                      {ex.label || ex.code}
+                    </td>
+                    <td className="right">
+                      {amount > 0
+                        ? `${amount.toFixed(2)} €`
+                        : `-${Math.abs(amount).toFixed(2)} €`}
+                    </td>
+                  </tr>
+                );
+              })}
+
           </tbody>
         </table>
       </div>
