@@ -616,41 +616,38 @@ const prevHalfB = () =>
 const addHalfLine = () => {
   if (!halfSize || !itemsAvail.length) return;
 
-  const a = itemsAvail[halfAIndex];
-  const b = itemsAvail[halfBIndex];
+  const A = itemsAvail[halfAIndex];
+  const B = itemsAvail[halfBIndex];
+  if (!A || !B) return;
 
-  if (!a || !b) return;
+  const priceA = priceForSize(A.priceBySize, halfSize);
+  const priceB = priceForSize(B.priceBySize, halfSize);
 
-  const baseUnitPrice = halfBasePrice;
+  // ✅ La más cara manda
+  const main = priceA >= priceB ? A : B;
+  const baseUnitPrice = Math.max(priceA, priceB);
 
-  // 🔹 Construir extras seleccionados (A + B)
-  const selectedExtras = [
-    ...halfExtrasAvail
-      .filter(ex => halfExtras.A[ex.ingredientId])
-      .map(ex => ({
-        id: ex.ingredientId,
-        name: ex.name || ex.ingredientName,
-        price: Number(ex.price)
-      })),
+  // ✅ Extras EXACTAMENTE igual que addLine()
+  const extrasA = halfExtrasAvail
+    .filter(ex => halfExtras.A[ex.ingredientId])
+    .map(ex => ({
+      id: ex.ingredientId,
+      name: ex.name || ex.ingredientName,
+      price: num(ex.price),
+    }));
 
-    ...halfExtrasAvail
-      .filter(ex => halfExtras.B[ex.ingredientId])
-      .map(ex => ({
-        id: ex.ingredientId,
-        name: ex.name || ex.ingredientName,
-        price: Number(ex.price)
-      })),
+  const extrasB = halfExtrasAvail
+    .filter(ex => halfExtras.B[ex.ingredientId])
+    .map(ex => ({
+      id: ex.ingredientId,
+      name: ex.name || ex.ingredientName,
+      price: num(ex.price),
+    }));
 
-    // 🔹 Mitad B como "extra estructural"
-    {
-      id: `HALF-${b.pizzaId}`,
-      name: `Mitad B: ${b.name}`,
-      price: 0
-    }
-  ];
+  const selectedExtras = [...extrasA, ...extrasB];
 
   const extrasPerUnit = selectedExtras.reduce(
-    (sum, ex) => sum + Number(ex.price || 0),
+    (sum, ex) => sum + num(ex.price),
     0
   );
 
@@ -659,19 +656,21 @@ const addHalfLine = () => {
   setCart(prev => [
     ...prev,
     {
-      pizzaId: a.pizzaId, // ✅ SOLO la mitad A es real
-      name: `${a.name} / ${b.name}`,
-      category: a.category,
+      pizzaId: main.pizzaId,                // stock real
+      name: `${A.name} / ${B.name}`,        // operativo
+      category: main.category,
       size: halfSize,
       qty: halfQty,
       price: baseUnitPrice,
-      extras: selectedExtras,
+      extras: selectedExtras,               // MISMO SHAPE QUE addLine
       subtotal
     }
   ]);
 
   setToast("Añadido al carrito");
 };
+
+
 
 
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
@@ -700,7 +699,7 @@ const addHalfLine = () => {
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
         </div>
-        {/* <div className="lsf-buildmodes">
+        <div className="lsf-buildmodes">
 
           <button
             type="button"
@@ -732,7 +731,7 @@ const addHalfLine = () => {
             Arma tu pizza
           </button>
 
-        </div> */}
+        </div>
         {/* selector tienda (solo admin y no forced) */}
         {!forcedStoreId && isAdmin && (
           <div className="lsf-store">
@@ -869,12 +868,19 @@ const addHalfLine = () => {
               if (!storeId) return alert("Select store");
 
               const extrasArrayForItem = (line) =>
-                (line.extras || []).map((e) => ({
-                  id: e.id,
-                  code: "EXTRA",
-                  label: e.name,
-                  amount: Number(e.price) || 0,
-                }));
+                (line.extras || []).map((e) => {
+                  const name = e?.name ?? e?.label ?? "Extra";
+                  const amount = Number(e?.amount ?? e?.price ?? 0) || 0;
+
+                  return {
+                    id: e.id,
+                    code: e.code || "EXTRA",
+                    name,         // ✅ compat
+                    label: name,  // ✅ compat
+                    amount
+                  };
+                });
+
 
               const extrasMapForItem = (line) =>
                 Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
