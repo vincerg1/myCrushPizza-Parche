@@ -72,33 +72,46 @@ export default function Ticket({ order, autoPrint = false }) {
           <tbody>
 
             {/* 🔹 PRODUCTOS */}
-            {products.map((p, i) => (
-              <React.Fragment key={i}>
-                <tr>
-                  <td>
-                    {p.name || nameById[p.pizzaId]}
-                  </td>
-                  <td className="right">
-                    {p.size} ×{p.qty ?? 1}
-                  </td>
-                </tr>
+            {products.map((p, i) => {
+              const leftId = Number(p?.leftPizzaId);
+              const rightId = Number(p?.rightPizzaId);
 
-                {/* 🔹 EXTRAS POR PRODUCTO */}
-                {safeExtras(p.extras).map((ex, j) => {
-                  const amount = Number(ex.amount || 0);
-                  return (
-                    <tr key={`ex-${i}-${j}`} className="ticket-extra">
-                      <td style={{ paddingLeft: "12px" }}>
-                        + {ex.label || ex.name}
-                      </td>
-                      <td className="right">
-                        {amount > 0 ? `${amount.toFixed(2)} €` : ""}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </React.Fragment>
-            ))}
+              const baseName =
+                Number.isFinite(leftId) && Number.isFinite(rightId)
+                  ? `${nameById[leftId] || `#${leftId}`} / ${nameById[rightId] || `#${rightId}`}`
+                  : (
+                      (p?.name && String(p.name).trim()) ||
+                      nameById[p?.pizzaId] ||
+                      "Producto"
+                    );
+
+              return (
+                <React.Fragment key={i}>
+                  <tr>
+                    <td>{baseName}</td>
+                    <td className="right">
+                      {p?.size} ×{p?.qty ?? 1}
+                    </td>
+                  </tr>
+
+                  {/* 🔹 EXTRAS POR PRODUCTO */}
+                  {safeExtras(p?.extras).map((ex, j) => {
+                    const amount = Number(ex?.amount || 0);
+                    return (
+                      <tr key={`ex-${i}-${j}`} className="ticket-extra">
+                        <td style={{ paddingLeft: "12px" }}>
+                          + {ex?.label || ex?.name || "Extra"}
+                        </td>
+                        <td className="right">
+                          {amount > 0 ? `${amount.toFixed(2)} €` : ""}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+
 
             {/* 🔹 EXTRAS GLOBALES (delivery, etc.) */}
             {safeExtras(globalExtras)
