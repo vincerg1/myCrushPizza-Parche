@@ -894,7 +894,7 @@ const addHalfLine = () => {
               storeId: Number(storeId),
 
               items: cart.map((c) => ({
-                ...c, // 🔥 conserva type, leftPizzaId, rightPizzaId, etc.
+                ...c, 
 
                 extras: extrasArrayForItem(c),
 
