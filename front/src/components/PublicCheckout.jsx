@@ -65,6 +65,17 @@ export default function PublicCheckout() {
     phone: ""
   });
 
+useEffect(() => {
+  if (pending?.items?.length) {
+    console.log(
+      "🧪 PENDING STRUCTURE →",
+      JSON.stringify(pending.items, null, 2)
+    );
+  }
+}, [pending]);
+
+
+
   const checkRestriction = useCallback(async (rawPhone) => {
     const phone = (rawPhone || "").replace(/\D/g, "");
     if (!phone || phone.length < 7) {
@@ -1196,78 +1207,71 @@ const chooseMode = (
       )}
     </div>
   );
+  const orderView = (
+    <div className="pc-fullscreen">
+
+      {/* 🔍 ORDER BAR */}
+      <div className="lsf-searchRow">
+        <input
+          className="pc-input"
+          placeholder="🔍 Buscar ingrediente…"
+          value={ingredientQuery}
+          onChange={(e) => setIngredientQuery(e.target.value)}
+          autoComplete="off"
+          spellCheck={false}
+          style={{ flex: 1 }}
+        />
+
+        <button
+          className="pc-btn pc-btn-ghost"
+          onClick={() => {
+            setIngredientQuery("");
+            setStep("locate");
+          }}
+        >
+          ← volver
+        </button>
+      </div>
+
+      {/* 🧠 LOCAL SALE FORM */}
+  <LocalSaleForm
+    forcedStoreId={
+      mode === "deliveryLocate"
+        ? Number(nearest?.storeId)
+        : Number(selectedStoreId) || undefined
+    }
+    compact
+    customer={customer}
+    ingredientQuery={ingredientQuery}
+    onClearIngredientQuery={() => setIngredientQuery("")}
+    initialCart={step === "order" ? pending?.items : null}
+  onConfirmCart={(data) => {
+    const sid =
+      mode === "deliveryLocate"
+        ? Number(nearest?.storeId)
+        : Number(selectedStoreId);
+
+    const sel = sid ? getStoreById(sid) : null;
+    const addr = sid ? storeAddrById[sid] : undefined;
+
+    setPending(prev => ({
+      ...(prev || {}),          // ⬅️ conserva lo anterior si existe
+      ...data,                  // ⬅️ items, total, etc
+      customer,
+      storeId: sid ?? data.storeId,
+      storeName: sel?.storeName || sel?.name || "",
+      storeAddress: addr,
+    }));
+
+    setStep("review");
+  }}
+
+    onDone={() => {}}
+  />
 
 
-const orderView = (
-  <div className="pc-fullscreen">
-
-    {/* 🔍 ORDER BAR */}
-    <div className="lsf-searchRow">
-      <input
-        className="pc-input"
-        placeholder="🔍 Buscar ingrediente…"
-        value={ingredientQuery}
-        onChange={(e) => setIngredientQuery(e.target.value)}
-        autoComplete="off"
-        spellCheck={false}
-        style={{ flex: 1 }}
-      />
-
-      <button
-        className="pc-btn pc-btn-ghost"
-        onClick={() => {
-          setIngredientQuery("");
-          setStep("locate");
-        }}
-      >
-        ← volver
-      </button>
     </div>
-
-    {/* 🧠 LOCAL SALE FORM */}
-<LocalSaleForm
-  forcedStoreId={
-    mode === "deliveryLocate"
-      ? Number(nearest?.storeId)
-      : Number(selectedStoreId) || undefined
-  }
-  compact
-  customer={customer}
-  ingredientQuery={ingredientQuery}
-  onClearIngredientQuery={() => setIngredientQuery("")}
-  initialCart={step === "order" ? pending?.items : null}
-onConfirmCart={(data) => {
-  const sid =
-    mode === "deliveryLocate"
-      ? Number(nearest?.storeId)
-      : Number(selectedStoreId);
-
-  const sel = sid ? getStoreById(sid) : null;
-  const addr = sid ? storeAddrById[sid] : undefined;
-
-  setPending(prev => ({
-    ...(prev || {}),          // ⬅️ conserva lo anterior si existe
-    ...data,                  // ⬅️ items, total, etc
-    customer,
-    storeId: sid ?? data.storeId,
-    storeName: sel?.storeName || sel?.name || "",
-    storeAddress: addr,
-  }));
-
-  setStep("review");
-}}
-
-  onDone={() => {}}
-/>
-
-
-  </div>
-);
-
-
-
-
-
+  );
   const parseJsonMaybe = (v) => {
     if (typeof v === "string") { try { return JSON.parse(v); } catch { return v; } }
     return v;
@@ -1285,25 +1289,67 @@ onConfirmCart={(data) => {
     label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
     amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
   });
-  const buildItemsForApi = (lines = []) =>
-    (Array.isArray(lines) ? lines : [])
-      .map((x) => {
-        const pizzaId = Number(x?.pizzaId ?? x?.id ?? x?.productId);
-        const name = String(x?.name ?? x?.pizzaName ?? "").trim();
-        const size = String(x?.size ?? x?.tamano ?? "").trim();
-        const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
-        const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
-        const rawExtras = x?.extras ?? x?.extra ?? x?.toppings ?? x?.addons ?? x?.adiciones ?? [];
-        const extras = toArray(rawExtras).map((e, i) => normalizeExtra(e, i));
+const buildItemsForApi = (lines = []) =>
+  (Array.isArray(lines) ? lines : [])
+    .map((x) => {
+      const pizzaId = Number(x?.pizzaId ?? x?.id ?? x?.productId);
+      const leftPizzaId = Number(x?.leftPizzaId);
+      const rightPizzaId = Number(x?.rightPizzaId);
 
-        const item = { size, qty, extras };
-        if (Number.isFinite(pizzaId) && pizzaId > 0) item.pizzaId = pizzaId;
-        else if (name) item.name = name;
-        if (Number.isFinite(price)) item.price = price;
+      const name = String(x?.name ?? x?.pizzaName ?? "").trim();
+      const size = String(x?.size ?? x?.tamano ?? "").trim();
+      const qty = Number(x?.qty ?? x?.quantity ?? 1) || 1;
+      const price = Number(x?.price ?? x?.unitPrice ?? x?.unit_price);
 
-        return (item.pizzaId || item.name) ? item : null;
-      })
-      .filter(Boolean);
+      const rawExtras =
+        x?.extras ??
+        x?.extra ??
+        x?.toppings ??
+        x?.addons ??
+        x?.adiciones ??
+        [];
+
+      const extras = toArray(rawExtras).map((e, i) =>
+        normalizeExtra(e, i)
+      );
+
+      const item = {
+        size,
+        qty,
+        extras,
+      };
+
+      // 🔥 Mantener tipo si existe (HALF_HALF, CUSTOM, etc.)
+      if (x?.type) {
+        item.type = String(x.type);
+      }
+
+      // 🔥 Si es mitad y mitad, preservar ambas mitades
+      if (
+        x?.type === "HALF_HALF" &&
+        Number.isFinite(leftPizzaId) &&
+        Number.isFinite(rightPizzaId)
+      ) {
+        item.pizzaId = pizzaId; // la principal (la más cara)
+        item.leftPizzaId = leftPizzaId;
+        item.rightPizzaId = rightPizzaId;
+      } else {
+        // comportamiento normal
+        if (Number.isFinite(pizzaId) && pizzaId > 0) {
+          item.pizzaId = pizzaId;
+        } else if (name) {
+          item.name = name;
+        }
+      }
+
+      if (Number.isFinite(price)) {
+        item.price = price;
+      }
+
+      return item.pizzaId || item.name ? item : null;
+    })
+    .filter(Boolean);
+
 const safeNumber = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 const parseOnceLocal = (v) => {
@@ -1830,6 +1876,7 @@ if (couponOk && coupon?.code) {
       </div>
     );
   }
+
 
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>

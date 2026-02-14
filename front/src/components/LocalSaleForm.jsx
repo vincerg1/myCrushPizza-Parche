@@ -701,7 +701,7 @@ const addHalfLine = () => {
         </div>
 
 
-        {/* <div className="lsf-buildmodes">
+        <div className="lsf-buildmodes">
 
           <button
             type="button"
@@ -733,7 +733,7 @@ const addHalfLine = () => {
             Arma tu pizza
           </button>
 
-        </div> */}
+        </div>
 
 
 
