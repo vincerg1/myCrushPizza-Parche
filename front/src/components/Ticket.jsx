@@ -76,14 +76,30 @@ export default function Ticket({ order, autoPrint = false }) {
               const leftId = Number(p?.leftPizzaId);
               const rightId = Number(p?.rightPizzaId);
 
-              const baseName =
-                Number.isFinite(leftId) && Number.isFinite(rightId)
-                  ? `${nameById[leftId] || `#${leftId}`} / ${nameById[rightId] || `#${rightId}`}`
-                  : (
-                      (p?.name && String(p.name).trim()) ||
-                      nameById[p?.pizzaId] ||
-                      "Producto"
-                    );
+              const hasHalves =
+                Number.isFinite(leftId) &&
+                leftId > 0 &&
+                Number.isFinite(rightId) &&
+                rightId > 0;
+
+              let baseName;
+
+              if (hasHalves) {
+                const leftName =
+                  nameById[leftId] ||
+                  `#${leftId}`;
+
+                const rightName =
+                  nameById[rightId] ||
+                  `#${rightId}`;
+
+                baseName = `${leftName} / ${rightName}`;
+              } else {
+                baseName =
+                  (p?.name && String(p.name).trim()) ||
+                  nameById[p?.pizzaId] ||
+                  "Producto";
+              }
 
               return (
                 <React.Fragment key={i}>
@@ -97,6 +113,7 @@ export default function Ticket({ order, autoPrint = false }) {
                   {/* 🔹 EXTRAS POR PRODUCTO */}
                   {safeExtras(p?.extras).map((ex, j) => {
                     const amount = Number(ex?.amount || 0);
+
                     return (
                       <tr key={`ex-${i}-${j}`} className="ticket-extra">
                         <td style={{ paddingLeft: "12px" }}>
@@ -111,6 +128,7 @@ export default function Ticket({ order, autoPrint = false }) {
                 </React.Fragment>
               );
             })}
+
 
 
             {/* 🔹 EXTRAS GLOBALES (delivery, etc.) */}
