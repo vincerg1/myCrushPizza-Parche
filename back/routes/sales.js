@@ -376,10 +376,7 @@ console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
         }
 
         const publicCode = await genOrderCode(tx);
-console.log('🔴 FINAL PRODUCTS TO SAVE:', JSON.stringify(products, null, 2));
-console.log('🔴 FINAL EXTRAS TO SAVE:', JSON.stringify(extrasAll, null, 2));
-console.log('🔴 TOTAL PRODUCTS:', totalProducts);
-console.log('🔴 TOTAL FINAL:', total);
+
         const newSale = await tx.sale.create({
           data: {
             code: publicCode,
@@ -413,7 +410,7 @@ console.log('🟢 SALE SAVED:', JSON.stringify(sale, null, 2));
       console.error('[POST /api/sales]', err);
       res.status(400).json({ error: err.message });
     }
-  });
+  }); console.log('🟡 INCOMING PRODUCTS:', JSON.stringify(products, null, 2));
   /* ─────────────── GET /api/sales/seguimiento/:code (PÚBLICO) ─────────────── */
   r.get('/seguimiento/:code', async (req, res) => {
     try {
