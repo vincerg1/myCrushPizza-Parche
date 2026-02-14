@@ -564,15 +564,18 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
 
   const leftPizzaId = Number(rawItem?.leftPizzaId);
   const rightPizzaId = Number(rawItem?.rightPizzaId);
+  const itemType = rawItem?.type;   // 🔥 ESTA LÍNEA FALTABA
 
   return {
     ...li,
+    ...(itemType ? { type: itemType } : {}),   // 🔥 ahora sí existe
     ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
       ? { leftPizzaId, rightPizzaId }
       : {}),
     extras: parsedExtras
   };
 });
+
 
 
       /* ===== EXTRAS GLOBALES ===== */
