@@ -890,20 +890,21 @@ const addHalfLine = () => {
               const extrasMapForItem = (line) =>
                 Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
 
-              onConfirmCart({
-                storeId: Number(storeId),
-                items: cart.map((c) => ({
-                  pizzaId: c.pizzaId,
-                  name: c.name,
-                  size: c.size,
-                  qty: c.qty,
-                  price: c.price,
-                  subtotal: c.subtotal,
-                  extras: extrasArrayForItem(c),
-                  extrasMap: extrasMapForItem(c),
-                })),
-                total,
-              });
+            onConfirmCart({
+              storeId: Number(storeId),
+
+              items: cart.map((c) => ({
+                ...c, // 🔥 conserva type, leftPizzaId, rightPizzaId, etc.
+
+                extras: extrasArrayForItem(c),
+
+                extrasMap: Object.fromEntries(
+                  (c.extras || []).map((e) => [e.id, true])
+                ),
+              })),
+
+              total,
+            });
             }}
           >
             PAY NOW
@@ -1119,22 +1120,26 @@ const addHalfLine = () => {
 
                     if (onConfirmCart) {
                       if (!storeId) return alert("Select store");
+
                       onConfirmCart({
                         storeId: Number(storeId),
+
                         items: cart.map((c) => ({
-                          pizzaId: c.pizzaId,
-                          name: c.name,
-                          size: c.size,
-                          qty: c.qty,
-                          price: c.price,
-                          subtotal: c.subtotal,
+                          ...c, // 🔥 conserva estructura completa (HALF_HALF incluido)
+
                           extras: extrasArrayForItem(c),
-                          extrasMap: extrasMapForItem(c),
+
+                          extrasMap: Object.fromEntries(
+                            (c.extras || []).map((e) => [e.id, true])
+                          ),
                         })),
+
                         total,
                       });
+
                       return;
                     }
+
 
                     try {
                       const aggregatedExtras = cart.flatMap((c) =>

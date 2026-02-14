@@ -1289,6 +1289,11 @@ const chooseMode = (
     label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
     amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
   });
+useEffect(() => {
+  if (pending?.items) {
+    console.log("🧠 CART RAW →", JSON.stringify(pending.items, null, 2));
+  }
+}, [pending]);
 const buildItemsForApi = (lines = []) =>
   (Array.isArray(lines) ? lines : [])
     .map((x) => {
