@@ -167,7 +167,6 @@ module.exports = (prisma) => {
         notes = '',
       } = req.body;
 console.log('🟡 INCOMING PRODUCTS:', JSON.stringify(products, null, 2));
-console.log('🟡 INCOMING EXTRAS (top-level):', JSON.stringify(extras, null, 2));
       /* ───────── utilidades ───────── */
       const trimOrNull = (v) => {
         if (v == null) return null;
@@ -410,7 +409,7 @@ console.log('🟢 SALE SAVED:', JSON.stringify(sale, null, 2));
       console.error('[POST /api/sales]', err);
       res.status(400).json({ error: err.message });
     }
-  }); console.log('🟡 INCOMING PRODUCTS:', JSON.stringify(products, null, 2));
+  }); 
   /* ─────────────── GET /api/sales/seguimiento/:code (PÚBLICO) ─────────────── */
   r.get('/seguimiento/:code', async (req, res) => {
     try {
