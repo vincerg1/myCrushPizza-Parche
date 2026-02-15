@@ -166,7 +166,7 @@ module.exports = (prisma) => {
         extras = [],
         notes = '',
       } = req.body;
-console.log('🟡 INCOMING PRODUCTS:', JSON.stringify(products, null, 2));
+
       /* ───────── utilidades ───────── */
       const trimOrNull = (v) => {
         if (v == null) return null;

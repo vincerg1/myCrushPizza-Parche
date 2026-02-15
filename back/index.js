@@ -33,22 +33,15 @@ app.use(cors({
   credentials: true
 }));
 
-/* ========= Body parsing =========
- * ⚠️ MUY IMPORTANTE: NO parsear JSON de webhooks que requieren RAW body.
- * Este bypass debe ir ANTES de cualquier express.json()
- */
-app.use((req, res, next) => {
-  if (
-    req.originalUrl &&
-    (
-      req.originalUrl.startsWith('/api/venta/stripe/webhook') ||
-      req.originalUrl.startsWith('/api/whatsapp/webhook')
-    )
-  ) {
-    return next();
-  }
-  return express.json({ limit: '1mb' })(req, res, next);
-});
+
+/* ========= Stripe webhook RAW body ========= */
+app.use(
+  '/api/venta/stripe/webhook',
+  express.raw({ type: 'application/json' })
+);
+
+/* ========= Body parser normal ========= */
+app.use(express.json({ limit: '1mb' }));
 
 /* ========= Routers ========= */
 const pizzasRouter          = require('./routes/pizzas')(prisma);
