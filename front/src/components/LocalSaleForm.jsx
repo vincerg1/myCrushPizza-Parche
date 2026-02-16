@@ -1717,8 +1717,65 @@ const addHalfLine = () => {
                       <div className="lsf-custom-cat__content">
                         {ingredients.map(ing => {
                           const selected = customIngredients[ing.id];
+
+                          const calculatedPrice = selected
+                            ? getCustomIngredientPrice(selected)
+                            : 0;
+
                           return (
-                            // aquí va el bloque de ingrediente anterior
+                            <div key={ing.id} className="lsf-custom-item">
+
+                              {/* NOMBRE */}
+                              <div className="lsf-custom-item__header">
+                                {ing.name}
+                              </div>
+
+                              {/* UBICACIÓN */}
+                              <div className="lsf-custom-item__placement">
+                                {["FULL", "LEFT", "RIGHT"].map(pos => (
+                                  <label key={pos} className="lsf-custom-radio">
+                                    <input
+                                      type="radio"
+                                      name={`place-${ing.id}`}
+                                      checked={selected?.placement === pos}
+                                      onChange={() =>
+                                        updateCustomIngredient(ing, { placement: pos })
+                                      }
+                                    />
+                                    {pos}
+                                  </label>
+                                ))}
+                              </div>
+
+                              {/* CANTIDAD (TOGGLE) */}
+                              <div className="lsf-custom-item__quantity">
+                                <button
+                                  type="button"
+                                  className={`lsf-toggle ${selected?.quantity === "SIMPLE" ? "is-active" : ""}`}
+                                  onClick={() =>
+                                    updateCustomIngredient(ing, { quantity: "SIMPLE" })
+                                  }
+                                >
+                                  SIMPLE
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className={`lsf-toggle ${selected?.quantity === "DOUBLE" ? "is-active" : ""}`}
+                                  onClick={() =>
+                                    updateCustomIngredient(ing, { quantity: "DOUBLE" })
+                                  }
+                                >
+                                  DOBLE
+                                </button>
+                              </div>
+
+                              {/* PRECIO DINÁMICO */}
+                              <div className="lsf-custom-item__price">
+                                €{calculatedPrice.toFixed(2)}
+                              </div>
+
+                            </div>
                           );
                         })}
                       </div>
@@ -1727,7 +1784,6 @@ const addHalfLine = () => {
                   </div>
                 );
               })}
-
 
               {/* ───────── CTA ───────── */}
               <div className="lsf-custom-sticky">
