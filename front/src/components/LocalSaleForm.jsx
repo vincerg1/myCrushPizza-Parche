@@ -1632,42 +1632,57 @@ const addHalfLine = () => {
               </div>
             )}
           </Modal>
-          {/* CUSTOM MODAL */}
-          <Modal
-            open={customModalOpen}
-            title="Arma tu pizza"
-            onClose={() => {
-              setCustomModalOpen(false);
-              setBuildMode("menu");
-            }}
-            className="lsf-modal--center"
-          >
-            <div className="lsf-custom">
+        {/* CUSTOM MODAL */}
+        <Modal
+          open={customModalOpen}
+          title="Arma tu pizza"
+          onClose={() => {
+            setCustomModalOpen(false);
+            setBuildMode("menu");
+          }}
+          className="lsf-modal--center"
+        >
+          <div className="lsf-custom">
 
-              {/* ───────── BASE ───────── */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Base</div>
-                <div className="lsf-sizes">
-                  {customBases.map(base => (
-                    <button
-                      key={base.pizzaId}
-                      type="button"
-                      className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
-                      onClick={() => {
-                        setCustomBaseId(base.pizzaId);
-                        setCustomSize("");
-                      }}
-                    >
-                      {base.name}
-                    </button>
-                  ))}
-                </div>
+            {/* ───────── BASE (ACORDEÓN) ───────── */}
+            <div className="lsf-custom-accordion">
+              <div
+                className="lsf-custom-accordion__title"
+                onClick={() =>
+                  setCustomOpenSection(customOpenSection === "BASE" ? null : "BASE")
+                }
+              >
+                Base {customOpenSection === "BASE" ? "▲" : "▼"}
               </div>
 
-              {/* ───────── SIZE ───────── */}
-              {selectedCustomBase && (
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Size</div>
+              {customOpenSection === "BASE" && (
+                <div className="lsf-custom-accordion__content">
+                  <div className="lsf-sizes">
+                    {customBases.map(base => (
+                      <button
+                        key={base.pizzaId}
+                        type="button"
+                        className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
+                        onClick={() => {
+                          setCustomBaseId(base.pizzaId);
+                          setCustomSize("");
+                          setCustomOpenSection("SIZE");
+                        }}
+                      >
+                        {base.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ───────── SIZE + QTY (MISMA FILA) ───────── */}
+            {selectedCustomBase && (
+              <div className="lsf-custom-row-inline">
+
+                <div className="lsf-custom-size">
+                  <div className="lsf-custom-inline-label">Size</div>
                   <div className="lsf-sizes">
                     {(selectedCustomBase.selectSize || []).map(sz => {
                       const price = priceForSize(selectedCustomBase.priceBySize, sz);
@@ -1685,53 +1700,57 @@ const addHalfLine = () => {
                     })}
                   </div>
                 </div>
-              )}
 
-              {/* ───────── QTY ───────── */}
-              <div className="lsf-pm__row">
-                <div className="lsf-pm__label">Qty</div>
-                <div className="lsf-qty">
-                  <button onClick={() => setCustomQty(q => Math.max(1, q - 1))}>–</button>
-                  <div className="lsf-qty__val">{customQty}</div>
-                  <button onClick={() => setCustomQty(q => q + 1)}>+</button>
+                <div className="lsf-custom-qty">
+                  <div className="lsf-custom-inline-label">Qty</div>
+                  <div className="lsf-qty">
+                    <button onClick={() => setCustomQty(q => Math.max(1, q - 1))}>–</button>
+                    <div className="lsf-qty__val">{customQty}</div>
+                    <button onClick={() => setCustomQty(q => q + 1)}>+</button>
+                  </div>
                 </div>
+
               </div>
+            )}
 
-              {/* ───────── INGREDIENTES ───────── */}
-              {Object.entries(customIngredientsByCategory).map(([catName, ingredients]) => {
-                const isOpen = customOpenSection === catName;
+            {/* ───────── INGREDIENTES POR CATEGORÍA ───────── */}
+            {Object.entries(customIngredientsByCategory).map(([catName, ingredients]) => {
+              const isOpen = customOpenSection === catName;
 
-                return (
-                  <div key={catName} className="lsf-custom-cat">
+              return (
+                <div key={catName} className="lsf-custom-accordion">
 
-                    <div
-                      className="lsf-custom-cat__title"
-                      onClick={() =>
-                        setCustomOpenSection(isOpen ? null : catName)
-                      }
-                    >
-                      {catName} {isOpen ? "▲" : "▼"}
-                    </div>
+                  <div
+                    className="lsf-custom-accordion__title"
+                    onClick={() =>
+                      setCustomOpenSection(isOpen ? null : catName)
+                    }
+                  >
+                    {catName} {isOpen ? "▲" : "▼"}
+                  </div>
 
-                    {isOpen && (
-                      <div className="lsf-custom-cat__content">
-                        {ingredients.map(ing => {
-                          const selected = customIngredients[ing.id];
+                  {isOpen && (
+                    <div className="lsf-custom-accordion__content">
 
-                          const calculatedPrice = selected
-                            ? getCustomIngredientPrice(selected)
-                            : 0;
+                      {ingredients.map(ing => {
+                        const selected = customIngredients[ing.id];
+                        const calculatedPrice = selected
+                          ? getCustomIngredientPrice(selected)
+                          : 0;
 
-                          return (
-                            <div key={ing.id} className="lsf-custom-item">
+                        return (
+                          <div key={ing.id} className="lsf-custom-item">
 
-                              {/* NOMBRE */}
-                              <div className="lsf-custom-item__header">
-                                {ing.name}
-                              </div>
+                            {/* NOMBRE */}
+                            <div className="lsf-custom-item__name">
+                              {ing.name}
+                            </div>
 
-                              {/* UBICACIÓN */}
-                              <div className="lsf-custom-item__placement">
+                            {/* FILA HORIZONTAL DE OPCIONES */}
+                            <div className="lsf-custom-item__controls">
+
+                              {/* PLACEMENT */}
+                              <div className="lsf-custom-placement">
                                 {["FULL", "LEFT", "RIGHT"].map(pos => (
                                   <label key={pos} className="lsf-custom-radio">
                                     <input
@@ -1747,8 +1766,8 @@ const addHalfLine = () => {
                                 ))}
                               </div>
 
-                              {/* CANTIDAD (TOGGLE) */}
-                              <div className="lsf-custom-item__quantity">
+                              {/* TOGGLE SIMPLE / DOBLE */}
+                              <div className="lsf-custom-toggle">
                                 <button
                                   type="button"
                                   className={`lsf-toggle ${selected?.quantity === "SIMPLE" ? "is-active" : ""}`}
@@ -1770,39 +1789,42 @@ const addHalfLine = () => {
                                 </button>
                               </div>
 
-                              {/* PRECIO DINÁMICO */}
+                              {/* PRECIO */}
                               <div className="lsf-custom-item__price">
                                 €{calculatedPrice.toFixed(2)}
                               </div>
 
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
 
-                  </div>
-                );
-              })}
+                          </div>
+                        );
+                      })}
 
-              {/* ───────── CTA ───────── */}
-              <div className="lsf-custom-sticky">
-                <button
-                  type="button"
-                  className="lsf-btn lsf-btn--primary"
-                  disabled={!customBaseId || !customSize}
-                  onClick={() => {
-                    addCustomLine();
-                    setCustomModalOpen(false);
-                  }}
-                >
-                  Add to cart · €{customGrandTotal.toFixed(2)}
-                </button>
-              </div>
+                    </div>
+                  )}
 
+                </div>
+              );
+            })}
 
+            {/* ───────── CTA STICKY ───────── */}
+            <div className="lsf-custom-sticky">
+              <button
+                type="button"
+                className="lsf-btn lsf-btn--primary"
+                disabled={!customBaseId || !customSize}
+                onClick={() => {
+                  addCustomLine();
+                  setCustomModalOpen(false);
+                }}
+              >
+                Add to cart · €{customGrandTotal.toFixed(2)}
+              </button>
             </div>
-          </Modal>
+
+          </div>
+        </Modal>
+
 
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>
