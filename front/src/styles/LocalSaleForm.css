@@ -723,6 +723,12 @@
   padding: 12px 16px;
   border-radius: 30px;
 }
+.lsf-buildmode.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 
 /* ───────── RESPONSIVE ───────── */
 
