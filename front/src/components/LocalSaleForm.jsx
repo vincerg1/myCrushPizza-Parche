@@ -1644,39 +1644,78 @@ const addHalfLine = () => {
         >
           <div className="lsf-custom">
 
-            {/* ───────── BASE (ACORDEÓN) ───────── */}
-            <div className="lsf-custom-accordion">
-              <div
-                className="lsf-custom-accordion__title"
-                onClick={() =>
-                  setCustomOpenSection(customOpenSection === "BASE" ? null : "BASE")
-                }
-              >
-                Base {customOpenSection === "BASE" ? "▲" : "▼"}
-              </div>
+{/* ───────── BASE (ACORDEÓN COMPLETO) ───────── */}
+          <div className="lsf-custom-accordion">
 
-              {customOpenSection === "BASE" && (
-                <div className="lsf-custom-accordion__content">
-                  <div className="lsf-sizes">
-                    {customBases.map(base => (
-                      <button
-                        key={base.pizzaId}
-                        type="button"
-                        className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
-                        onClick={() => {
-                          setCustomBaseId(base.pizzaId);
-                          setCustomSize("");
-                          setCustomOpenSection("SIZE");
-                        }}
-                      >
-                        {base.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div
+              className="lsf-custom-accordion__title"
+              onClick={() =>
+                setCustomOpenSection(customOpenSection === "BASE" ? null : "BASE")
+              }
+            >
+              Base {customOpenSection === "BASE" ? "▲" : "▼"}
             </div>
 
+            {customOpenSection === "BASE" && (
+              <div className="lsf-custom-accordion__content">
+
+                {/* SELECT BASE */}
+                <div className="lsf-sizes">
+                  {customBases.map(base => (
+                    <button
+                      key={base.pizzaId}
+                      type="button"
+                      className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
+                      onClick={() => {
+                        setCustomBaseId(base.pizzaId);
+                        setCustomSize("");
+                      }}
+                    >
+                      {base.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* SIZE + QTY SOLO SI HAY BASE */}
+                {selectedCustomBase && (
+                  <div className="lsf-custom-row-inline">
+
+                    <div className="lsf-custom-size">
+                      <div className="lsf-custom-inline-label">Size</div>
+                      <div className="lsf-sizes">
+                        {(selectedCustomBase.selectSize || []).map(sz => {
+                          const price = priceForSize(selectedCustomBase.priceBySize, sz);
+                          return (
+                            <button
+                              key={sz}
+                              type="button"
+                              className={`lsf-chip ${customSize === sz ? "is-active" : ""}`}
+                              onClick={() => setCustomSize(sz)}
+                            >
+                              <span className="lsf-chip__sz">{sz}</span>
+                              <span className="lsf-chip__pr">€{price.toFixed(2)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="lsf-custom-qty">
+                      <div className="lsf-custom-inline-label">Qty</div>
+                      <div className="lsf-qty">
+                        <button onClick={() => setCustomQty(q => Math.max(1, q - 1))}>–</button>
+                        <div className="lsf-qty__val">{customQty}</div>
+                        <button onClick={() => setCustomQty(q => q + 1)}>+</button>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
             {/* ───────── SIZE + QTY (MISMA FILA) ───────── */}
             {selectedCustomBase && (
               <div className="lsf-custom-row-inline">
