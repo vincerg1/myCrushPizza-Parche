@@ -200,13 +200,113 @@ export default function LocalSaleForm({
   const [halfExtrasAvail, setHalfExtrasAvail] = useState([]);
   const [showAllHalfExtrasA, setShowAllHalfExtrasA] = useState(false);
   const [showAllHalfExtrasB, setShowAllHalfExtrasB] = useState(false);
-const [openHalfExtrasA, setOpenHalfExtrasA] = useState(false);
-const [openHalfExtrasB, setOpenHalfExtrasB] = useState(false);
+  const [openHalfExtrasA, setOpenHalfExtrasA] = useState(false);
+  const [openHalfExtrasB, setOpenHalfExtrasB] = useState(false);
   const [customer, setCustomer] = useState(null);
   const [dragX, setDragX] = useState(0);
   const dragActive = useRef(false);
   const [tick, setTick] = useState(false);
   const touchStartY = useRef(0);
+
+  // ───────── CUSTOM BUILD ─────────
+const [customModalOpen, setCustomModalOpen] = useState(false);
+const [customBases, setCustomBases] = useState([]);
+const [customIngredientsCatalog, setCustomIngredientsCatalog] = useState([]);
+const [customBaseId, setCustomBaseId] = useState(null);
+const [customSize, setCustomSize] = useState("");
+const [customQty, setCustomQty] = useState(1);
+const [customIngredients, setCustomIngredients] = useState({});
+
+useEffect(() => {
+  if (buildMode !== "custom") return;
+
+  // Bases
+  api.get("/api/bases-pizzas")
+    .then(r => setCustomBases(Array.isArray(r.data) ? r.data : []))
+    .catch(() => setCustomBases([]));
+
+  // Ingredientes globales
+  api.get("/api/ingredients")
+    .then(r => {
+      const all = Array.isArray(r.data) ? r.data : [];
+      const filtered = all.filter(i =>
+        i.status === "ACTIVE" &&
+        normalize(i.category) !== "bebidas"
+      );
+      setCustomIngredientsCatalog(filtered);
+    })
+    .catch(() => setCustomIngredientsCatalog([]));
+
+}, [buildMode]);
+
+
+const selectedCustomBase = useMemo(() => {
+  return customBases.find(b => b.pizzaId === customBaseId) || null;
+}, [customBases, customBaseId]);
+
+const customBasePrice = useMemo(() => {
+  if (!selectedCustomBase || !customSize) return 0;
+  return priceForSize(selectedCustomBase.priceBySize, customSize);
+}, [selectedCustomBase, customSize]);
+
+const customIngredientsTotal = useMemo(() => {
+  return Object.values(customIngredients).reduce((sum, ing) => {
+    const qtyMultiplier = ing.quantity === "DOUBLE" ? 2 : 1;
+    const placementMultiplier = ing.placement === "FULL" ? 1 : 0.5;
+    return sum + (Number(ing.basePrice || 0) * qtyMultiplier * placementMultiplier);
+  }, 0);
+}, [customIngredients]);
+
+const customGrandTotal = (customBasePrice + customIngredientsTotal) * customQty;
+
+const updateCustomIngredient = (ingredient, updates) => {
+  setCustomIngredients(prev => {
+    const current = prev[ingredient.id] || {
+      ingredientId: ingredient.id,
+      name: ingredient.name,
+      basePrice: Number(ingredient.costPrice || 0),
+      placement: null,
+      quantity: "SIMPLE"
+    };
+
+    const updated = { ...current, ...updates };
+
+    // si no tiene placement → eliminar
+    if (!updated.placement) {
+      const copy = { ...prev };
+      delete copy[ingredient.id];
+      return copy;
+    }
+
+    return {
+      ...prev,
+      [ingredient.id]: updated
+    };
+  });
+};
+
+const addCustomLine = () => {
+  if (!selectedCustomBase || !customSize) return;
+
+  const subtotal = customGrandTotal;
+
+  setCart(prev => [
+    ...prev,
+    {
+      type: "CUSTOM_BUILD",
+      pizzaId: selectedCustomBase.pizzaId,
+      name: selectedCustomBase.name,
+      category: selectedCustomBase.category,
+      size: customSize,
+      qty: customQty,
+      price: customBasePrice,
+      customIngredients: Object.values(customIngredients),
+      subtotal
+    }
+  ]);
+
+  setToast("Añadido al carrito");
+};
 
 const sortedHalfExtras = useMemo(() => {
   return [...halfExtrasAvail].sort(
@@ -221,6 +321,26 @@ const visibleHalfExtrasA = showAllHalfExtrasA
 const visibleHalfExtrasB = showAllHalfExtrasB
   ? sortedHalfExtras
   : sortedHalfExtras.slice(0, 3);
+
+  useEffect(() => {
+  if (!customModalOpen) return;
+
+  setCustomBaseId(null);
+  setCustomSize("");
+  setCustomQty(1);
+  setCustomIngredients({});
+}, [customModalOpen]);
+const customIngredientsByCategory = useMemo(() => {
+  const grouped = {};
+
+  customIngredientsCatalog.forEach(ing => {
+    const cat = ing.category || "Otros";
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(ing);
+  });
+
+  return grouped;
+}, [customIngredientsCatalog]);
 
 useEffect(() => {
     const id = setInterval(() => {
@@ -265,15 +385,14 @@ useEffect(() => {
 
 const HALF_CATEGORY_ID = 3; // ← SOLO PIZZAS
 
-useEffect(() => {
-  api
-    .get(`/api/ingredient-extras?categoryId=${HALF_CATEGORY_ID}`)
-    .then(r =>
-      setHalfExtrasAvail(Array.isArray(r.data) ? r.data : [])
-    )
-    .catch(() => setHalfExtrasAvail([]));
-}, []);
-
+  useEffect(() => {
+    api
+      .get(`/api/ingredient-extras?categoryId=${HALF_CATEGORY_ID}`)
+      .then(r =>
+        setHalfExtrasAvail(Array.isArray(r.data) ? r.data : [])
+      )
+      .catch(() => setHalfExtrasAvail([]));
+  }, []);
   const MAX_QTY_SELECT = 12;
   useEffect(() => {
     if (forcedStoreId) return;
@@ -283,7 +402,6 @@ useEffect(() => {
       setStoreId(auth.storeId);
     }
   }, [forcedStoreId, isAdmin, auth?.storeId]);
-
   useEffect(() => {
     if (!storeId) return;
     api
@@ -304,8 +422,6 @@ useEffect(() => {
 
   const categories = useMemo(() => {
   if (!categoriesDb.length) return [];
-
-
 
   // categorías que realmente tienen productos en el menú
   const menuCats = new Set(
@@ -727,7 +843,7 @@ const addHalfLine = () => {
             className={`lsf-buildmode ${buildMode === "custom" ? "is-active" : ""}`}
             onClick={() => {
               setBuildMode("custom");
-              // futuro: setCustomModalOpen(true)
+              setCustomModalOpen(true);
             }}
           >
             Arma tu pizza
@@ -912,304 +1028,304 @@ const addHalfLine = () => {
         </div>
       )}
 
-        {/* PRODUCT MODAL */}
-        <Modal
-          open={productModalOpen}
-          title={current?.name || "Producto"}
-          onClose={() => setProductModalOpen(false)}
-          className="lsf-modal--center"
-        >
-          {!current ? null : (
-            <>
-              <div className="lsf-pm">
-                <div className="lsf-pm__hero">
-                  {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
-                </div>
-
-                {/* DESCRIPCIÓN */}
-                <div className="lsf-pm__desc">
-                  {(() => {
-                    const ingredients =
-                      Array.isArray(current.ingredients) && current.ingredients.length
-                        ? current.ingredients.map((i) => capWords(i.name))
-                        : [];
-
-                    const closer = seededPick(current.pizzaId + 13, CRUSH_CLOSERS);
-
-                    return (
-                      <>
-                        <div className="lsf-muted">
-                          <div><b>Tu crush sin filtro</b></div>
-
-                          {ingredients.length > 0 ? (
-                            <div>
-                              {joinWithY(ingredients)}.{" "}
-                              <span className="lsf-closer-inline">{closer}</span>
-                            </div>
-                          ) : (
-                            <div>Ingredientes seleccionados a mano.</div>
-                          )}
-                        </div>
-
-                        <div className="lsf-allergen">
-                          ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {/* QTY */}
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Qty</div>
-                  <div className="lsf-qty">
-                    <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
-                      –
-                    </button>
-                    <div className="lsf-qty__val">{sel.qty}</div>
-                    <button
-                      type="button"
-                      className="lsf-qty__btn"
-                      onClick={incQty}
-                      disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
-                    >
-                      +
-                    </button>
+          {/* PRODUCT MODAL */}
+          <Modal
+            open={productModalOpen}
+            title={current?.name || "Producto"}
+            onClose={() => setProductModalOpen(false)}
+            className="lsf-modal--center"
+          >
+            {!current ? null : (
+              <>
+                <div className="lsf-pm">
+                  <div className="lsf-pm__hero">
+                    {current.image ? <img src={current.image} alt={current.name} /> : <div className="lsf-pm__ph">🍕</div>}
                   </div>
-                </div>
 
-                {/* SIZES */}
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Size</div>
-                  <div className="lsf-sizes">
-                    {(current.selectSize || []).map((sz) => {
-                      const a = sel.size === sz;
-                      const p = priceForSize(current.priceBySize, sz);
-                      return (
-                        <button
-                          key={sz}
-                          type="button"
-                          className={`lsf-chip ${a ? "is-active" : ""}`}
-                          onClick={() => pickSize(sz)}
-                        >
-                          <span className="lsf-chip__sz">{sz}</span>
-                          <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  {/* DESCRIPCIÓN */}
+                  <div className="lsf-pm__desc">
+                    {(() => {
+                      const ingredients =
+                        Array.isArray(current.ingredients) && current.ingredients.length
+                          ? current.ingredients.map((i) => capWords(i.name))
+                          : [];
 
-                {/* EXTRAS */}
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Extras</div>
-                  {extrasAvail.length === 0 ? (
-                    <div className="lsf-muted">No hay extras.</div>
-                  ) : (
-                    <div className="lsf-extraslist">
-                      {visibleExtras.map((ex) => {
-                      const checked = !!sel.extras[ex.ingredientId];
+                      const closer = seededPick(current.pizzaId + 13, CRUSH_CLOSERS);
 
                       return (
-                        <label key={ex.ingredientId} className="lsf-extrasitem">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleExtra(ex.ingredientId)}
-                          />
+                        <>
+                          <div className="lsf-muted">
+                            <div><b>Tu crush sin filtro</b></div>
 
-                          <span className="lsf-extrasitem__name">
-                            {ex.name || ex.ingredientName}
-                          </span>
+                            {ingredients.length > 0 ? (
+                              <div>
+                                {joinWithY(ingredients)}.{" "}
+                                <span className="lsf-closer-inline">{closer}</span>
+                              </div>
+                            ) : (
+                              <div>Ingredientes seleccionados a mano.</div>
+                            )}
+                          </div>
 
-                          <span className="lsf-extrasitem__price">
-                            +€{Number(ex.price).toFixed(2)}
-                          </span>
-                        </label>
+                          <div className="lsf-allergen">
+                            ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
+                          </div>
+                        </>
                       );
-                    })}
-                    {sortedExtras.length > 3 && (
-                      <div
-                        className="lsf-extras-more"
-                        onClick={() => setShowAllExtras(v => !v)}
+                    })()}
+                  </div>
+
+                  {/* QTY */}
+                  <div className="lsf-pm__row">
+                    <div className="lsf-pm__label">Qty</div>
+                    <div className="lsf-qty">
+                      <button type="button" className="lsf-qty__btn" onClick={decQty} disabled={sel.qty <= 1}>
+                        –
+                      </button>
+                      <div className="lsf-qty__val">{sel.qty}</div>
+                      <button
+                        type="button"
+                        className="lsf-qty__btn"
+                        onClick={incQty}
+                        disabled={sel.qty >= (qtyOptions[qtyOptions.length - 1] || 1)}
                       >
-                        {showAllExtras ? "Mostrar menos ▲" : `Mostrar ${sortedExtras.length - 3} más ↓`}
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SIZES */}
+                  <div className="lsf-pm__row">
+                    <div className="lsf-pm__label">Size</div>
+                    <div className="lsf-sizes">
+                      {(current.selectSize || []).map((sz) => {
+                        const a = sel.size === sz;
+                        const p = priceForSize(current.priceBySize, sz);
+                        return (
+                          <button
+                            key={sz}
+                            type="button"
+                            className={`lsf-chip ${a ? "is-active" : ""}`}
+                            onClick={() => pickSize(sz)}
+                          >
+                            <span className="lsf-chip__sz">{sz}</span>
+                            <span className="lsf-chip__pr">€{p.toFixed(2)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* EXTRAS */}
+                  <div className="lsf-pm__row">
+                    <div className="lsf-pm__label">Extras</div>
+                    {extrasAvail.length === 0 ? (
+                      <div className="lsf-muted">No hay extras.</div>
+                    ) : (
+                      <div className="lsf-extraslist">
+                        {visibleExtras.map((ex) => {
+                        const checked = !!sel.extras[ex.ingredientId];
+
+                        return (
+                          <label key={ex.ingredientId} className="lsf-extrasitem">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleExtra(ex.ingredientId)}
+                            />
+
+                            <span className="lsf-extrasitem__name">
+                              {ex.name || ex.ingredientName}
+                            </span>
+
+                            <span className="lsf-extrasitem__price">
+                              +€{Number(ex.price).toFixed(2)}
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {sortedExtras.length > 3 && (
+                        <div
+                          className="lsf-extras-more"
+                          onClick={() => setShowAllExtras(v => !v)}
+                        >
+                          {showAllExtras ? "Mostrar menos ▲" : `Mostrar ${sortedExtras.length - 3} más ↓`}
+                        </div>
+                      )}
+
                       </div>
                     )}
+                  </div>
 
+                  {/* ACTIONS */}
+                  <div className="lsf-pm__actions">
+                    <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setProductModalOpen(false)}>
+                      Continue
+                    </button>
+
+                    <button
+                      type="button"
+                      className="lsf-btn lsf-btn--primary"
+                      disabled={!modalReady}
+                      onClick={() => {
+                        addLine();
+                        setProductModalOpen(false);
+                      }}
+                    >
+                      {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </Modal>
+          {/* CART MODAL */}
+          <Modal
+            open={cartOpen}
+            title={`Carrito • €${total.toFixed(2)}`}
+            onClose={() => setCartOpen(false)}
+            className="lsf-modal--center"
+          >
+            {cart.length === 0 ? (
+              <div className="lsf-muted">Carrito vacío.</div>
+            ) : (
+              <>
+                <div className="lsf-cartlist">
+                  {cart.map((l, i) => (
+                    <div key={i} className="lsf-cartrow">
+                      <div className="lsf-cartrow__main">
+                        <div className="lsf-cartrow__name">
+                          {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
+                        </div>
+                        {l.extras?.length ? (
+                          <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
+                        ) : null}
+                      </div>
+                      <div className="lsf-cartrow__right">
+                        <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
+                        <button
+                          type="button"
+                          className="lsf-iconbtn"
+                          onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}
+                          aria-label="Eliminar línea"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
 
-                {/* ACTIONS */}
-                <div className="lsf-pm__actions">
-                  <button type="button" className="lsf-btn lsf-btn--ghost" onClick={() => setProductModalOpen(false)}>
-                    Continue
-                  </button>
+                <div className="lsf-cartfoot">
+                  <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
 
                   <button
                     type="button"
                     className="lsf-btn lsf-btn--primary"
-                    disabled={!modalReady}
-                    onClick={() => {
-                      addLine();
-                      setProductModalOpen(false);
-                    }}
-                  >
-                    {modalReady ? `Add to cart · €${modalTotal.toFixed(2)}` : "Selec Size"}
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </Modal>
-        {/* CART MODAL */}
-        <Modal
-          open={cartOpen}
-          title={`Carrito • €${total.toFixed(2)}`}
-          onClose={() => setCartOpen(false)}
-          className="lsf-modal--center"
-        >
-          {cart.length === 0 ? (
-            <div className="lsf-muted">Carrito vacío.</div>
-          ) : (
-            <>
-              <div className="lsf-cartlist">
-                {cart.map((l, i) => (
-                  <div key={i} className="lsf-cartrow">
-                    <div className="lsf-cartrow__main">
-                      <div className="lsf-cartrow__name">
-                        {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
-                      </div>
-                      {l.extras?.length ? (
-                        <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
-                      ) : null}
-                    </div>
-                    <div className="lsf-cartrow__right">
-                      <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
-                      <button
-                        type="button"
-                        className="lsf-iconbtn"
-                        onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}
-                        aria-label="Eliminar línea"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="lsf-cartfoot">
-                <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
-
-                <button
-                  type="button"
-                  className="lsf-btn lsf-btn--primary"
-                  onClick={async () => {
-                    const extrasArrayForItem = (line) =>
-                      (line.extras || []).map((e) => ({
-                        id: e.id,
-                        code: "EXTRA",
-                        label: e.name,
-                        amount: Number(e.price) || 0,
-                      }));
-
-                    const extrasMapForItem = (line) =>
-                      Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
-
-                    if (onConfirmCart) {
-                      if (!storeId) return alert("Select store");
-
-                      onConfirmCart({
-                        storeId: Number(storeId),
-
-                        items: cart.map((c) => ({
-                          ...c, // 🔥 conserva estructura completa (HALF_HALF incluido)
-
-                          extras: extrasArrayForItem(c),
-
-                          extrasMap: Object.fromEntries(
-                            (c.extras || []).map((e) => [e.id, true])
-                          ),
-                        })),
-
-                        total,
-                      });
-
-                      return;
-                    }
-
-
-                    try {
-                      const aggregatedExtras = cart.flatMap((c) =>
-                        (c.extras || []).map((e) => ({
+                    onClick={async () => {
+                      const extrasArrayForItem = (line) =>
+                        (line.extras || []).map((e) => ({
+                          id: e.id,
                           code: "EXTRA",
                           label: e.name,
-                          amount: (Number(e.price) || 0) * Number(c.qty || 1),
-                        }))
-                      );
+                          amount: Number(e.price) || 0,
+                        }));
 
-      const payload = {
-    storeId,
-    type: forcedStoreId ? "DELIVERY" : "LOCAL",
-    delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                      const extrasMapForItem = (line) =>
+                        Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
 
-    // 🔥 FUENTE DE VERDAD (link directo)
-    customerId: customerId ?? null,
+                      if (onConfirmCart) {
+                        if (!storeId) return alert("Select store");
 
-    // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
-    customer: customer
-      ? {
-          id: customer.id ?? null,
-          name: customer.name ?? null,
-          phone: customer.phone ?? null,
-          address_1: customer.address_1 ?? customer.address ?? null,
-          observations: customer.observations ?? null,
-          lat: customer.lat ?? null,
-          lng: customer.lng ?? null,
-        }
-      : null,
+                        onConfirmCart({
+                          storeId: Number(storeId),
 
-    products: cart.map((c) => ({
-      pizzaId: c.pizzaId,
-      size: c.size,
-      qty: c.qty,
-      price: c.price,
-      extras: extrasArrayForItem(c),
-    })),
+                          items: cart.map((c) => ({
+                            ...c, // 🔥 conserva estructura completa (HALF_HALF incluido)
 
-    totalProducts: cart.reduce(
-      (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
-      0
-    ),
+                            extras: extrasArrayForItem(c),
 
-    discounts: 0,
-    total,
-    extras: aggregatedExtras,
-  };
+                            extrasMap: Object.fromEntries(
+                              (c.extras || []).map((e) => [e.id, true])
+                            ),
+                          })),
+
+                          total,
+                        });
+
+                        return;
+                      }
 
 
-                      console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
+                      try {
+                        const aggregatedExtras = cart.flatMap((c) =>
+                          (c.extras || []).map((e) => ({
+                            code: "EXTRA",
+                            label: e.name,
+                            amount: (Number(e.price) || 0) * Number(c.qty || 1),
+                          }))
+                        );
 
-                      await api.post("/api/sales", payload);
-                      setToast("Sale saved ✓");
-                      setCart([]);
-                      setCartOpen(false);
-                      setTimeout(() => onDone(), 600);
-                    } catch (e) {
-                      console.error(e);
-                      alert(e.response?.data?.error || "Error");
-                    }
-                  }}
-                >
-                  {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
-                </button>
-              </div>
-            </>
-          )}
-        </Modal>
-        {/* MITADES MODAL */}
+        const payload = {
+      storeId,
+      type: forcedStoreId ? "DELIVERY" : "LOCAL",
+      delivery: forcedStoreId ? "COURIER" : "PICKUP",
+
+      // 🔥 FUENTE DE VERDAD (link directo)
+      customerId: customerId ?? null,
+
+      // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
+      customer: customer
+        ? {
+            id: customer.id ?? null,
+            name: customer.name ?? null,
+            phone: customer.phone ?? null,
+            address_1: customer.address_1 ?? customer.address ?? null,
+            observations: customer.observations ?? null,
+            lat: customer.lat ?? null,
+            lng: customer.lng ?? null,
+          }
+        : null,
+
+      products: cart.map((c) => ({
+        pizzaId: c.pizzaId,
+        size: c.size,
+        qty: c.qty,
+        price: c.price,
+        extras: extrasArrayForItem(c),
+      })),
+
+      totalProducts: cart.reduce(
+        (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
+        0
+      ),
+
+      discounts: 0,
+      total,
+      extras: aggregatedExtras,
+    };
+
+
+                        console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
+
+                        await api.post("/api/sales", payload);
+                        setToast("Sale saved ✓");
+                        setCart([]);
+                        setCartOpen(false);
+                        setTimeout(() => onDone(), 600);
+                      } catch (e) {
+                        console.error(e);
+                        alert(e.response?.data?.error || "Error");
+                      }
+                    }}
+                  >
+                    {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
+                  </button>
+                </div>
+              </>
+            )}
+          </Modal>
+          {/* MITADES MODAL */}
           <Modal
             open={halfModalOpen}
             title="Pizza mitad / mitad"
@@ -1509,6 +1625,143 @@ const addHalfLine = () => {
               </div>
             )}
           </Modal>
+          {/* CUSTOM MODAL */}
+          <Modal
+            open={customModalOpen}
+            title="Arma tu pizza"
+            onClose={() => {
+              setCustomModalOpen(false);
+              setBuildMode("menu");
+            }}
+            className="lsf-modal--center"
+          >
+            <div className="lsf-custom">
+
+              {/* ───────── BASE ───────── */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Base</div>
+                <div className="lsf-sizes">
+                  {customBases.map(base => (
+                    <button
+                      key={base.pizzaId}
+                      type="button"
+                      className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
+                      onClick={() => {
+                        setCustomBaseId(base.pizzaId);
+                        setCustomSize("");
+                      }}
+                    >
+                      {base.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ───────── SIZE ───────── */}
+              {selectedCustomBase && (
+                <div className="lsf-pm__row">
+                  <div className="lsf-pm__label">Size</div>
+                  <div className="lsf-sizes">
+                    {(selectedCustomBase.selectSize || []).map(sz => {
+                      const price = priceForSize(selectedCustomBase.priceBySize, sz);
+                      return (
+                        <button
+                          key={sz}
+                          type="button"
+                          className={`lsf-chip ${customSize === sz ? "is-active" : ""}`}
+                          onClick={() => setCustomSize(sz)}
+                        >
+                          <span className="lsf-chip__sz">{sz}</span>
+                          <span className="lsf-chip__pr">€{price.toFixed(2)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ───────── QTY ───────── */}
+              <div className="lsf-pm__row">
+                <div className="lsf-pm__label">Qty</div>
+                <div className="lsf-qty">
+                  <button onClick={() => setCustomQty(q => Math.max(1, q - 1))}>–</button>
+                  <div className="lsf-qty__val">{customQty}</div>
+                  <button onClick={() => setCustomQty(q => q + 1)}>+</button>
+                </div>
+              </div>
+
+              {/* ───────── INGREDIENTES ───────── */}
+              {Object.entries(customIngredientsByCategory).map(([catName, ingredients]) => (
+                <div key={catName} className="lsf-custom-cat">
+                  <div className="lsf-pm__label">{catName}</div>
+
+                  {ingredients.map(ing => {
+                    const selected = customIngredients[ing.id];
+
+                    return (
+                      <div key={ing.id} className="lsf-custom-item">
+
+                        <div className="lsf-custom-item__name">
+                          {ing.name} · €{Number(ing.costPrice || 0).toFixed(2)}
+                        </div>
+
+                        <div className="lsf-custom-item__controls">
+
+                          {/* Placement */}
+                          {["FULL", "LEFT", "RIGHT"].map(pos => (
+                            <label key={pos}>
+                              <input
+                                type="radio"
+                                name={`place-${ing.id}`}
+                                checked={selected?.placement === pos}
+                                onChange={() =>
+                                  updateCustomIngredient(ing, { placement: pos })
+                                }
+                              />
+                              {pos}
+                            </label>
+                          ))}
+
+                          {/* Quantity */}
+                          {["SIMPLE", "DOUBLE"].map(qty => (
+                            <label key={qty}>
+                              <input
+                                type="radio"
+                                name={`qty-${ing.id}`}
+                                checked={selected?.quantity === qty}
+                                onChange={() =>
+                                  updateCustomIngredient(ing, { quantity: qty })
+                                }
+                              />
+                              {qty}
+                            </label>
+                          ))}
+
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {/* ───────── CTA ───────── */}
+              <button
+                type="button"
+                className="lsf-btn lsf-btn--primary lsf-half__cta"
+                disabled={!customBaseId || !customSize}
+                onClick={() => {
+                  addCustomLine();
+                  setCustomModalOpen(false);
+                }}
+              >
+                {customBaseId && customSize
+                  ? `Añadir al carrito · €${customGrandTotal.toFixed(2)}`
+                  : "Selecciona base y tamaño"}
+              </button>
+
+            </div>
+          </Modal>
+
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>
   );
