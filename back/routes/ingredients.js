@@ -6,27 +6,23 @@ const {
 
 module.exports = function (prisma) {
   const r = express.Router();
-
   const toUpperSafe = (v) => (v ?? "").toString().trim().toUpperCase();
-
   const parseId = (req) => {
     const id = Number(req.params.id);
     return Number.isInteger(id) && id > 0 ? id : null;
   };
-
   const parseNumberOrNull = (v) => {
     if (v === "" || v === null || v === undefined) return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
-
   const parseIntOrZero = (v) => {
     if (v === "" || v === null || v === undefined) return 0;
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
   };
 
-  /* GET /api/ingredients → list all */
+
   r.get("/", async (_, res) => {
     try {
       const data = await prisma.ingredient.findMany({
@@ -38,66 +34,59 @@ module.exports = function (prisma) {
       res.status(500).json({ error: "Error fetching ingredients" });
     }
   });
+  r.post("/", async (req, res) => {
+    try {
+      const { name, category, unit, costPrice } = req.body;
 
-  /* POST /api/ingredients → create new */
-r.post("/", async (req, res) => {
-  try {
-    const { name, category, unit, costPrice } = req.body;
+      if (!name?.toString().trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      if (!category?.toString().trim()) {
+        return res.status(400).json({ error: "Category is required" });
+      }
 
-    if (!name?.toString().trim()) {
-      return res.status(400).json({ error: "Name is required" });
-    }
-    if (!category?.toString().trim()) {
-      return res.status(400).json({ error: "Category is required" });
-    }
-
-    const stores = await prisma.store.findMany({
-      where: { active: true },
-      select: { id: true },
-    });
-
-    if (!stores.length) {
-      return res.status(400).json({
-        error: "At least one store must exist before creating ingredients",
-      });
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      // 1️⃣ Crear ingrediente global
-      const ingredient = await tx.ingredient.create({
-        data: {
-          name: toUpperSafe(name),
-          category: toUpperSafe(category),
-          unit: unit ? String(unit).trim() : null,
-          costPrice: parseNumberOrNull(costPrice),
-          stock: 0, // ya no se usa operativamente
-        },
+      const stores = await prisma.store.findMany({
+        where: { active: true },
+        select: { id: true },
       });
 
-      // 2️⃣ Crear filas por tienda
-      await tx.storeIngredientStock.createMany({
-        data: stores.map((s) => ({
-          storeId: s.id,
-          ingredientId: ingredient.id,
-          stock: 0,
-          active: true,
-        })),
+      if (!stores.length) {
+        return res.status(400).json({
+          error: "At least one store must exist before creating ingredients",
+        });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        // 1️⃣ Crear ingrediente global
+        const ingredient = await tx.ingredient.create({
+          data: {
+            name: toUpperSafe(name),
+            category: toUpperSafe(category),
+            unit: unit ? String(unit).trim() : null,
+            costPrice: parseNumberOrNull(costPrice),
+            stock: 0, // ya no se usa operativamente
+          },
+        });
+
+        // 2️⃣ Crear filas por tienda
+        await tx.storeIngredientStock.createMany({
+          data: stores.map((s) => ({
+            storeId: s.id,
+            ingredientId: ingredient.id,
+            stock: 0,
+            active: true,
+          })),
+        });
+
+        return ingredient;
       });
 
-      return ingredient;
-    });
-
-    res.json(result);
-  } catch (err) {
-    console.error(err);
-    res.status(400).json({ error: err.meta?.cause || err.message });
-  }
-});
-
-
-  /**
-   * PATCH /api/ingredients/:id → edit fields
-   */
+      res.json(result);
+    } catch (err) {
+      console.error(err);
+      res.status(400).json({ error: err.meta?.cause || err.message });
+    }
+  });
   r.patch("/:id", async (req, res) => {
     try {
       const id = parseId(req);
@@ -158,11 +147,6 @@ r.post("/", async (req, res) => {
       res.status(400).json({ error: err.meta?.cause || err.message });
     }
   });
-
-  /**
-   * PATCH /api/ingredients/:id/status → set status
-   * Body: { status: "ACTIVE" | "INACTIVE" }
-   */
   r.patch("/:id/status", async (req, res) => {
     try {
       const id = parseId(req);
@@ -198,8 +182,6 @@ r.post("/", async (req, res) => {
       res.status(400).json({ error: err.meta?.cause || err.message });
     }
   });
-
-  /* DELETE /api/ingredients/:id → remove */
   r.delete("/:id", async (req, res) => {
     try {
       const id = parseId(req);

@@ -64,9 +64,10 @@ const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
 const ingredientExtrasRoutes  = require("./routes/ingredientExtras");
 const printRouter             = require("./routes/print");
-
+const basesPizzas = require("./routes/basesPizzas");
 
 /* Montaje */
+app.use("/api/bases-pizzas", basesPizzas(prisma));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 app.use('/api/pizzas',          pizzasRouter);
 app.use('/api/menu_pizzas',     pizzasRouter);
