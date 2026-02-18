@@ -845,7 +845,7 @@ const addHalfLine = () => {
             Mitad / Mitad
           </button>
 
-          {/* <button
+           {/* <button
             type="button"
             className={`lsf-buildmode ${buildMode === "custom" ? "is-active" : ""}`}
             onClick={() => {
@@ -853,16 +853,9 @@ const addHalfLine = () => {
               setCustomModalOpen(true);
             }}
           >
-            👷‍♀️🚧Arma tu pizza
-          </button> */}
-          <button
-            type="button"
-            className="lsf-buildmode is-disabled"
-            disabled
-            title="Próximamente"
-          >
-            👷‍♀️🚧 Arma tu pizza
-          </button>
+            Arma tu pizza
+          </button>  */}
+
 
         </div>
 

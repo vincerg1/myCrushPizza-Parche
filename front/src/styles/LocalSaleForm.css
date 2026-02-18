@@ -562,54 +562,47 @@
 .lsf-custom {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding-bottom: 80px; /* espacio para sticky */
+  gap: 16px;
+  padding-bottom: 80px;
 }
 
 /* ───────── ACCORDEÓN ───────── */
 
 .lsf-custom-accordion {
   border-bottom: 1px solid #eee;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
 }
 
 .lsf-custom-accordion__title {
   font-weight: 600;
   font-size: 14px;
-  letter-spacing: 0.3px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  padding: 10px 0;
-  transition: opacity 0.2s ease;
-}
-
-.lsf-custom-accordion__title:hover {
-  opacity: 0.7;
+  padding: 8px 0;
 }
 
 .lsf-custom-accordion__content {
-  padding: 10px 0 6px 0;
+  padding: 8px 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-/* ───────── SIZE + QTY INLINE ───────── */
+/* ───────── SIZE + QTY ───────── */
 
 .lsf-custom-row-inline {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 20px;
-  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .lsf-custom-inline-label {
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   opacity: 0.7;
 }
 
@@ -622,11 +615,8 @@
 /* ───────── INGREDIENT ITEM ───────── */
 
 .lsf-custom-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f3f3f3;
+  padding: 8px 0;
+  border-bottom: 1px solid #f2f2f2;
 }
 
 .lsf-custom-item:last-child {
@@ -634,57 +624,65 @@
 }
 
 .lsf-custom-item__name {
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
 }
 
-/* ───────── CONTROLES HORIZONTALES ───────── */
+/* ───────── CONTROLES (SIEMPRE UNA LÍNEA) ───────── */
 
 .lsf-custom-item__controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;           /* 🔥 no romper */
+  overflow-x: auto;            /* 🔥 si no cabe → scroll */
+  scrollbar-width: none;       /* firefox */
 }
 
-/* ───────── PLACEMENT ───────── */
+.lsf-custom-item__controls::-webkit-scrollbar {
+  display: none;               /* chrome */
+}
+
+/* PLACEMENT */
 
 .lsf-custom-placement {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
 
 .lsf-custom-radio {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
-  cursor: pointer;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .lsf-custom-radio input {
   accent-color: #111;
-  cursor: pointer;
 }
 
-/* ───────── TOGGLE SIMPLE / DOBLE ───────── */
+/* TOGGLE */
 
 .lsf-custom-toggle {
   display: flex;
   border: 1px solid #ddd;
-  border-radius: 20px;
+  border-radius: 18px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .lsf-toggle {
   border: none;
   background: transparent;
-  padding: 6px 14px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .lsf-toggle.is-active {
@@ -692,17 +690,14 @@
   color: white;
 }
 
-.lsf-toggle:hover {
-  opacity: 0.8;
-}
-
-/* ───────── PRECIO INGREDIENTE ───────── */
+/* PRECIO */
 
 .lsf-custom-item__price {
+  margin-left: auto;
   font-weight: 600;
-  font-size: 13px;
-  min-width: 60px;
-  text-align: right;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ───────── STICKY CTA ───────── */
@@ -711,7 +706,7 @@
   position: sticky;
   bottom: 0;
   background: white;
-  padding: 14px 10px;
+  padding: 12px 10px;
   box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.08);
   border-top: 1px solid #eee;
   z-index: 10;
@@ -719,34 +714,53 @@
 
 .lsf-custom-sticky .lsf-btn {
   width: 100%;
-  font-size: 15px;
-  padding: 12px 16px;
+  font-size: 14px;
+  padding: 10px 14px;
   border-radius: 30px;
 }
+
+/* ───────── BUILD MODE DISABLED ───────── */
+
 .lsf-buildmode.is-disabled {
   opacity: 0.45;
   cursor: not-allowed;
   pointer-events: none;
 }
 
+/* ───────── MOBILE TIGHT MODE ───────── */
 
-/* ───────── RESPONSIVE ───────── */
+@media (max-width: 480px) {
 
-@media (max-width: 640px) {
-  .lsf-custom-item__controls {
-    flex-direction: column;
-    align-items: flex-start;
+  .lsf-custom {
+    gap: 12px;
+  }
+
+  .lsf-custom-item {
+    padding: 6px 0;
+  }
+
+  .lsf-custom-placement {
     gap: 8px;
   }
 
-  .lsf-custom-item__price {
-    align-self: flex-end;
+  .lsf-custom-radio {
+    font-size: 10px;
   }
 
-  .lsf-custom-row-inline {
-    flex-direction: column;
+  .lsf-toggle {
+    padding: 3px 8px;
+    font-size: 10px;
   }
+
+  .lsf-custom-item__price {
+    font-size: 11px;
+  }
+
 }
+
+
+
+
 
 
 
