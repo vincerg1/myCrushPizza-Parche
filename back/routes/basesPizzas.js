@@ -10,7 +10,7 @@ module.exports = function (prisma) {
         where: {
           status: "ACTIVE",
           name: {
-            startsWith: "Base"
+            startsWith: "BASE"
           }
         },
         select: {
