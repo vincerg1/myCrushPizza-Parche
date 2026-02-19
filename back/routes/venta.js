@@ -1261,320 +1261,294 @@ router.post('/checkout/confirm', async (req, res) => {
   }
 });
 router.post(
-    '/stripe/webhook',
-    express.raw({ type: 'application/json' }),
-    async (req, res) => {
-      if (!stripeReady) {
-        logW('webhook recibido pero Stripe no está listo');
-        return res.status(503).send('Stripe not configured');
-      }
+  '/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    if (!stripeReady) {
+      logW('webhook recibido pero Stripe no está listo');
+      return res.status(503).send('Stripe not configured');
+    }
 
-      let event;
+    let event;
+    try {
+      const sig = req.headers['stripe-signature'];
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+    } catch (err) {
+      logE('⚠️  Webhook signature verification failed.', err);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    logI('Webhook recibido', { type: event.type });
+
+    if (event.type === 'checkout.session.completed') {
+      const session       = event.data.object;
+      const checkoutId    = session.id;
+      const paymentIntent = session.payment_intent || null;
+      const payStatus     = session.payment_status;
+      const payOk         = payStatus === 'paid' || payStatus === 'no_payment_required';
+
+      logI('session.completed', { checkoutId, payStatus, paymentIntent });
+
+      let paidNotify = null;
+
       try {
-        const sig = req.headers['stripe-signature'];
-        event = stripe.webhooks.constructEvent(
-          req.body,
-          sig,
-          process.env.STRIPE_WEBHOOK_SECRET
-        );
-      } catch (err) {
-        logE('⚠️  Webhook signature verification failed.', err);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
-      }
+        /* ---------- C1) Modo carrito: (opcional) crear venta aquí ---------- */
+        if (session.metadata?.cart) {
+          let cart = null;
+          try { cart = JSON.parse(session.metadata.cart); } catch {}
 
-      logI('Webhook recibido', { type: event.type });
+          if (cart) {
+            await prisma.$transaction(async (tx) => {
+              const normItems = await normalizeItems(tx, cart.items || []);
+              await assertStock(tx, Number(cart.storeId), normItems);
 
-      if (event.type === 'checkout.session.completed') {
-        const session        = event.data.object;
-        const checkoutId     = session.id;
-        const paymentIntent  = session.payment_intent || null;
-        const payStatus      = session.payment_status; // 'paid' | 'no_payment_required' | ...
-        const payOk          = payStatus === 'paid' || payStatus === 'no_payment_required';
+              // OJO: recalcTotals devuelve lineItems base (pizzaId/size/qty/price)
+              const { lineItems, totalProducts } =
+                await recalcTotals(tx, Number(cart.storeId), normItems);
 
-        logI('session.completed', { checkoutId, payStatus, paymentIntent });
-
-        let paidNotify = null;
-
-        try {
-          /* ---------- C1) Modo carrito: (opcional) crear venta aquí ---------- */
-          if (session.metadata?.cart) {
-            let cart = null;
-            try { cart = JSON.parse(session.metadata.cart); } catch {}
-
-            if (cart) {
-              await prisma.$transaction(async (tx) => {
-                const normItems = await normalizeItems(tx, cart.items || []);
-                await assertStock(tx, Number(cart.storeId), normItems);
-                const { lineItems, totalProducts } =
-                  await recalcTotals(tx, Number(cart.storeId), normItems);
-
-                // Cliente
-                let customerId = null, snapshot = null;
-                const isDelivery =
-                  String(cart.type).toUpperCase() === 'DELIVERY' ||
-                  String(cart.delivery).toUpperCase() === 'COURIER';
+              // Cliente
+              let customerId = null, snapshot = null;
+              const isDelivery =
+                String(cart.type).toUpperCase() === 'DELIVERY' ||
+                String(cart.delivery).toUpperCase() === 'COURIER';
 
               if (cart?.customer?.phone?.trim()) {
-const phone = normPhone(cart.customer.phone);
-if (!phone) throw new Error('Invalid phone');
+                const phone = normPhone(cart.customer.phone);
+                if (!phone) throw new Error('Invalid phone');
 
-  const name  = (cart.customer.name || '').trim();
+                const name = (cart.customer.name || '').trim();
 
-  const createAddress = isDelivery
-    ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
-    : `(PICKUP) ${phone}`;
+                const createAddress = isDelivery
+                  ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
+                  : `(PICKUP) ${phone}`;
 
-  const c = await tx.customer.upsert({
-    where:  { phone },
-    update: {
-      phone, name,
-      ...(isDelivery && {
-        address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-        lat: clean(cart.customer.lat),
-        lng: clean(cart.customer.lng),
-      }),
-      portal: clean(cart.customer.portal),
-      observations: clean(cart.customer.observations),
-    },
-    create: {
-      code: await genCustomerCode(tx),
-      phone, name,
-      address_1: createAddress,
-      portal: clean(cart.customer.portal),
-      observations: clean(cart.customer.observations),
-      lat: isDelivery ? clean(cart.customer.lat) : null,
-      lng: isDelivery ? clean(cart.customer.lng) : null,
-    },
-  });
-
-  customerId = c.id;
-  snapshot = {
-    phone: c.phone, name: c.name,
-    address_1: c.address_1, portal: c.portal, observations: c.observations,
-    lat: c.lat, lng: c.lng
-  };
-}
-
-
-                // Extras + cupón (preview)
-                const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
-                let discounts = 0;
-
-                const couponCode = upper(cart.coupon || '');
-                let percentApplied = null;
-                let amountApplied  = null;
-                if (couponCode) {
-                  const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-                  const nowRef = nowInTZ();
-                  const valid =
-                    !!coup &&
-                    coup.status === 'ACTIVE' &&
-                    (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
-                    isActiveByDate(coup, nowRef) &&
-                    isWithinWindow(coup, nowRef);
-
-                  if (valid) {
-                    const comp = computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
-                    if (comp.discount > 0) {
-                      discounts = comp.discount;
-                      percentApplied = comp.percentApplied;
-                      amountApplied  = comp.amountApplied;
-                      extrasFinal.push({ code:'COUPON', label:comp.label, amount:-comp.discount, couponCode, percentApplied, amountApplied });
-                    }
-                  }
-                }
-const lineItemsWithMeta = lineItems.map((li, idx) => {
-  const rawItem = (cart.items || [])[idx] || {};
-
-  const leftPizzaId = Number(rawItem?.leftPizzaId);
-  const rightPizzaId = Number(rawItem?.rightPizzaId);
-
-  return {
-    ...li,
-    ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
-      ? { leftPizzaId, rightPizzaId }
-      : {})
-  };
-});
-                const sale = await tx.sale.create({
-                  data: {
-                    code: await genOrderCode(tx),
-                    storeId: Number(cart.storeId),
-                    customerId,
-                    type: cart.type || 'LOCAL',
-                    delivery: cart.delivery || 'PICKUP',
-                    customerData: snapshot || cart.customer || {},
-                    products: lineItemsWithMeta,
-                    totalProducts,
-                    discounts,
-                    total:
-                      round2(totalProducts - discounts) +
-                      (Array.isArray(extrasFinal)
-                        ? extrasFinal.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-                        : 0),
-                    extras: extrasFinal,
-                    notes: cart.notes || '',
-                    channel: cart.channel || 'WEB',
-                    status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-                    stripeCheckoutSessionId: checkoutId,
-                    stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-                    address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-                    lat:       snapshot?.lat       ?? cart?.customer?.lat       ?? null,
-                    lng:       snapshot?.lng       ?? cart?.customer?.lng       ?? null,
-                  }
+                const c = await tx.customer.upsert({
+                  where: { phone },
+                  update: {
+                    phone, name,
+                    ...(isDelivery && {
+                      address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                      lat: clean(cart.customer.lat),
+                      lng: clean(cart.customer.lng),
+                    }),
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                  },
+                  create: {
+                    code: await genCustomerCode(tx),
+                    phone, name,
+                    address_1: createAddress,
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                    lat: isDelivery ? clean(cart.customer.lat) : null,
+                    lng: isDelivery ? clean(cart.customer.lng) : null,
+                  },
                 });
 
-                // Bajar stock solo si pago OK
-                if (payOk) {
-                  for (const p of lineItems) {
-                    await tx.storePizzaStock.update({
-                      where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
-                      data:  { stock: { decrement: Number(p.qty) } }
+                customerId = c.id;
+                snapshot = {
+                  phone: c.phone, name: c.name,
+                  address_1: c.address_1, portal: c.portal, observations: c.observations,
+                  lat: c.lat, lng: c.lng
+                };
+              }
+
+              // Extras + cupón (preview)
+              const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+              let discounts = 0;
+
+              const couponCode = upper(cart.coupon || '');
+              let percentApplied = null;
+              let amountApplied  = null;
+
+              if (couponCode) {
+                const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+                const nowRef = nowInTZ();
+                const valid =
+                  !!coup &&
+                  coup.status === 'ACTIVE' &&
+                  (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
+                  isActiveByDate(coup, nowRef) &&
+                  isWithinWindow(coup, nowRef);
+
+                if (valid) {
+                  const comp = computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
+                  if (comp.discount > 0) {
+                    discounts = comp.discount;
+                    percentApplied = comp.percentApplied;
+                    amountApplied  = comp.amountApplied;
+                    extrasFinal.push({
+                      code: 'COUPON',
+                      label: comp.label,
+                      amount: -comp.discount,
+                      couponCode,
+                      percentApplied,
+                      amountApplied
                     });
                   }
                 }
-
-                // Preparar SMS si pago OK
-                if (payOk) {
-                  const store = await tx.store.findUnique({
-                    where: { id: sale.storeId },
-                    select: { storeName: true }
-                  });
-                  paidNotify = {
-                    phone: snapshot?.phone || null,
-                    name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
-                    code : sale.code,
-                    storeName: store?.storeName || 'myCrushPizza',
-                    isDelivery:
-                      String(sale.delivery).toUpperCase() === 'COURIER' ||
-                      String(sale.type).toUpperCase() === 'DELIVERY'
-                  };
-                }
-
-                // CANJE del cupón (único punto): incremento atómico + log
-                if (payOk) {
-                  const couponLine = (Array.isArray(extrasFinal) ? extrasFinal : []).find(e => String(e?.code || '').toUpperCase()==='COUPON' && e.couponCode);
-                  if (couponLine?.couponCode) {
-                    await redeemCouponAtomic(tx, {
-                      code: couponLine.couponCode,
-                      saleId: sale.id,
-                      storeId: sale.storeId,
-                      customerId,
-                      segmentAtRedeem: null,              // opcional si tienes segmentación
-                      kindSnapshot: null, variantSnapshot: null, // se obtendrán del cupón
-                      percentApplied: couponLine.percentApplied ?? null,
-                      amountApplied : couponLine.amountApplied  ?? null,
-                      discountValue : Math.abs(Number(couponLine.amount || 0)) || Number(discounts) || null
-                    });
-                  }
-                }
-
-                logI('Venta creada desde webhook (cart)', {
-                  saleId: sale.id, code: sale.code, payStatus
-                });
-              });
-
-              // Enviar SMS fuera de la transacción
-              if (payOk && paidNotify?.phone) {
-                const body = buildOrderPaidSMS({
-                  name: paidNotify.name,
-                  orderCode: paidNotify.code
-                });
-
-                sendSMS(paidNotify.phone, body).catch(err =>
-                  console.error('[Twilio SMS error PAID(cart)]', {
-                    err: err.message,
-                    code: paidNotify.code
-                  })
-                );
               }
 
-              return res.json({ received: true });
-            }
-          }
+              /* ============================================================
+                 ✅ FIX: reconstruir EXTRAS POR ITEM (igual que /pedido)
+                 - Mantiene mitad&mitad: leftPizzaId/rightPizzaId
+                 - Mantiene type (HALF_HALF, CUSTOM_BUILD, etc)
+                 - Añade extras normalizados en products[].extras
+                 ============================================================ */
 
-          /* ---------- C2) Venta previa: marcar pagada + canje ---------- */
-          await prisma.$transaction(async (tx) => {
-            let sale = await tx.sale.findFirst({
-              where: { stripeCheckoutSessionId: checkoutId },
-              select: {
-                id: true, code: true, type: true, delivery: true, status: true,
-                storeId: true, products: true, customerId: true, customerData: true,
-                extras: true, discounts: true,
-                store: { select: { storeName: true } }
-              }
-            });
-
-            if (!sale && session.client_reference_id) {
-              sale = await tx.sale.findFirst({
-                where: { code: session.client_reference_id },
-                select: {
-                  id: true, code: true, type: true, delivery: true, status: true,
-                  storeId: true, products: true, customerId: true, customerData: true,
-                  extras: true, discounts: true,
-                  store: { select: { storeName: true } }
-                }
-              });
-            }
-
-            if (!sale) { logW('Webhook session sin venta asociada', { checkoutId }); return; }
-            if (sale.status === 'PAID') { logI('Webhook idempotente (ya pagado)', { saleId: sale.id }); return; }
-
-            // Bajar stock solo si pago OK
-            if (payOk) {
-              const items = Array.isArray(sale.products)
-                ? sale.products
-                : JSON.parse(sale.products || '[]');
-              for (const p of items) {
-                await tx.storePizzaStock.update({
-                  where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
-                  data:  { stock: { decrement: Number(p.qty) } }
-                });
-              }
-            }
-
-            await tx.sale.update({
-              where: { id: sale.id },
-              data: {
-                status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-                stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-                processed: false
-              }
-            });
-
-            if (payOk) {
-              paidNotify = {
-                phone: normPhone(sale.customerData?.phone) || null,
-                name : (sale.customerData?.name  || '').trim(),
-                code : sale.code,
-                storeName: sale.store?.storeName || 'myCrushPizza',
-                isDelivery:
-                  String(sale.delivery).toUpperCase() === 'COURIER' ||
-                  String(sale.type || '').toUpperCase() === 'DELIVERY' ||
-                  sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
+              const toExtraAmount = (ex) => {
+                const parsed = [ex?.amount, ex?.price, ex?.delta]
+                  .map(toPrice)
+                  .find(Number.isFinite);
+                return Number.isFinite(parsed) ? parsed : NaN;
               };
 
-              // CANJE cupón si existe
-              const extrasArr = Array.isArray(sale.extras) ? sale.extras : parseMaybe(sale.extras, []);
-              const couponLine = (Array.isArray(extrasArr) ? extrasArr : []).find(e => String(e?.code || '').toUpperCase()==='COUPON' && e.couponCode);
-              if (couponLine?.couponCode) {
-                await redeemCouponAtomic(tx, {
-                  code: couponLine.couponCode,
-                  saleId: sale.id,
-                  storeId: sale.storeId,
-                  customerId: sale.customerId || null,
-                  segmentAtRedeem: null,
-                  kindSnapshot: null, variantSnapshot: null,
-                  percentApplied: couponLine.percentApplied ?? null,
-                  amountApplied : couponLine.amountApplied  ?? null,
-                  discountValue : Math.abs(Number(couponLine.amount || 0)) || Number(sale.discounts || 0) || null
-                });
+              const buildItemExtras = (rawItem, qty) => {
+                const pools = []
+                  .concat(rawItem?.extras || [])
+                  .concat(rawItem?.toppings || [])
+                  .concat(rawItem?.addOns || rawItem?.addons || [])
+                  .concat(rawItem?.options || [])
+                  .concat(rawItem?.modifiers || [])
+                  .concat(rawItem?.ingredients || [])
+                  .concat(rawItem?.complements || [])
+                  .concat(rawItem?.sides || [])
+                  // 🔥 por si tu custom build manda customIngredients:
+                  .concat(rawItem?.customIngredients || []);
+
+                // IMPORTANT: en tu frontend ya estás mandando amount “por unidad”
+                // (no multiplicamos por qty aquí para no inflar)
+                return pools
+                  .map(ex => {
+                    const amt = toExtraAmount(ex);
+                    if (!Number.isFinite(amt) || amt < 0) return null;
+                    return {
+                      code: String(ex?.code || 'EXTRA'),
+                      label: String(ex?.label || ex?.name || ex?.code || 'Extra'),
+                      amount: round2(amt),
+                      // opcional: para ticket más rico si te interesa:
+                      placement: ex?.placement || null,
+                      quantity : ex?.quantity  || null,
+                      ingredientId: ex?.id ?? ex?.ingredientId ?? null
+                    };
+                  })
+                  .filter(Boolean);
+              };
+
+              const lineItemsWithMeta = lineItems.map((li, idx) => {
+                const rawItem = (cart.items || [])[idx] || {};
+                const qty = Math.max(1, Number(rawItem?.qty || li?.qty || 1));
+
+                const leftPizzaId  = Number(rawItem?.leftPizzaId);
+                const rightPizzaId = Number(rawItem?.rightPizzaId);
+                const itemType     = rawItem?.type;
+
+                const parsedExtras = buildItemExtras(rawItem, qty);
+
+                return {
+                  ...li,
+                  ...(itemType ? { type: itemType } : {}),
+                  ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
+                    ? { leftPizzaId, rightPizzaId }
+                    : {}),
+                  ...(parsedExtras.length ? { extras: parsedExtras } : { extras: [] })
+                };
+              });
+
+              const sale = await tx.sale.create({
+                data: {
+                  code: await genOrderCode(tx),
+                  storeId: Number(cart.storeId),
+                  customerId,
+                  type: cart.type || 'LOCAL',
+                  delivery: cart.delivery || 'PICKUP',
+                  customerData: snapshot || cart.customer || {},
+                  products: lineItemsWithMeta,
+                  totalProducts,
+                  discounts,
+                  total:
+                    round2(totalProducts - discounts) +
+                    (Array.isArray(extrasFinal)
+                      ? extrasFinal.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+                      : 0),
+                  extras: extrasFinal,
+                  notes: cart.notes || '',
+                  channel: cart.channel || 'WEB',
+                  status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+                  stripeCheckoutSessionId: checkoutId,
+                  stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+                  address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+                  lat:       snapshot?.lat       ?? cart?.customer?.lat       ?? null,
+                  lng:       snapshot?.lng       ?? cart?.customer?.lng       ?? null,
+                }
+              });
+
+              // Bajar stock solo si pago OK
+              if (payOk) {
+                for (const p of lineItems) {
+                  await tx.storePizzaStock.update({
+                    where: {
+                      storeId_pizzaId: {
+                        storeId: sale.storeId,
+                        pizzaId: Number(p.pizzaId)
+                      }
+                    },
+                    data: { stock: { decrement: Number(p.qty) } }
+                  });
+                }
               }
-            }
 
-            logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
-          });
+              // Preparar SMS si pago OK
+              if (payOk) {
+                const store = await tx.store.findUnique({
+                  where: { id: sale.storeId },
+                  select: { storeName: true }
+                });
+                paidNotify = {
+                  phone: snapshot?.phone || null,
+                  name : (snapshot?.name  || cart?.customer?.name  || '').trim(),
+                  code : sale.code,
+                  storeName: store?.storeName || 'myCrushPizza',
+                  isDelivery:
+                    String(sale.delivery).toUpperCase() === 'COURIER' ||
+                    String(sale.type).toUpperCase() === 'DELIVERY'
+                };
+              }
 
+              // CANJE del cupón (único punto): incremento atómico + log
+              if (payOk) {
+                const couponLine = (Array.isArray(extrasFinal) ? extrasFinal : [])
+                  .find(e => String(e?.code || '').toUpperCase() === 'COUPON' && e.couponCode);
+
+                if (couponLine?.couponCode) {
+                  await redeemCouponAtomic(tx, {
+                    code: couponLine.couponCode,
+                    saleId: sale.id,
+                    storeId: sale.storeId,
+                    customerId,
+                    segmentAtRedeem: null,
+                    kindSnapshot: null, variantSnapshot: null,
+                    percentApplied: couponLine.percentApplied ?? null,
+                    amountApplied : couponLine.amountApplied  ?? null,
+                    discountValue :
+                      Math.abs(Number(couponLine.amount || 0)) || Number(discounts) || null
+                  });
+                }
+              }
+
+              logI('Venta creada desde webhook (cart)', {
+                saleId: sale.id,
+                code: sale.code,
+                payStatus,
+                embeddedExtrasLines: (lineItemsWithMeta || []).reduce((s, x) => s + ((x.extras || []).length), 0)
+              });
+            });
+
+            // Enviar SMS fuera de la transacción
             if (payOk && paidNotify?.phone) {
               const body = buildOrderPaidSMS({
                 name: paidNotify.name,
@@ -1582,20 +1556,123 @@ const lineItemsWithMeta = lineItems.map((li, idx) => {
               });
 
               sendSMS(paidNotify.phone, body).catch(err =>
-                console.error('[Twilio SMS error PAID(update)]', {
+                console.error('[Twilio SMS error PAID(cart)]', {
                   err: err.message,
                   code: paidNotify.code
                 })
               );
             }
 
-        } catch (e) {
-          logE('[webhook] error al procesar session.completed', e);
+            return res.json({ received: true });
+          }
         }
-      }
 
-      return res.json({ received: true });
+        /* ---------- C2) Venta previa: marcar pagada + canje ---------- */
+        await prisma.$transaction(async (tx) => {
+          let sale = await tx.sale.findFirst({
+            where: { stripeCheckoutSessionId: checkoutId },
+            select: {
+              id: true, code: true, type: true, delivery: true, status: true,
+              storeId: true, products: true, customerId: true, customerData: true,
+              extras: true, discounts: true,
+              store: { select: { storeName: true } }
+            }
+          });
+
+          if (!sale && session.client_reference_id) {
+            sale = await tx.sale.findFirst({
+              where: { code: session.client_reference_id },
+              select: {
+                id: true, code: true, type: true, delivery: true, status: true,
+                storeId: true, products: true, customerId: true, customerData: true,
+                extras: true, discounts: true,
+                store: { select: { storeName: true } }
+              }
+            });
+          }
+
+          if (!sale) { logW('Webhook session sin venta asociada', { checkoutId }); return; }
+          if (sale.status === 'PAID') { logI('Webhook idempotente (ya pagado)', { saleId: sale.id }); return; }
+
+          // Bajar stock solo si pago OK
+          if (payOk) {
+            const items = Array.isArray(sale.products)
+              ? sale.products
+              : JSON.parse(sale.products || '[]');
+
+            for (const p of items) {
+              await tx.storePizzaStock.update({
+                where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
+                data:  { stock: { decrement: Number(p.qty) } }
+              });
+            }
+          }
+
+          await tx.sale.update({
+            where: { id: sale.id },
+            data: {
+              status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+              stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+              processed: false
+            }
+          });
+
+          if (payOk) {
+            paidNotify = {
+              phone: normPhone(sale.customerData?.phone) || null,
+              name : (sale.customerData?.name  || '').trim(),
+              code : sale.code,
+              storeName: sale.store?.storeName || 'myCrushPizza',
+              isDelivery:
+                String(sale.delivery).toUpperCase() === 'COURIER' ||
+                String(sale.type || '').toUpperCase() === 'DELIVERY' ||
+                sale.delivery === true || sale.delivery === 1 || sale.delivery === '1'
+            };
+
+            // CANJE cupón si existe
+            const extrasArr = Array.isArray(sale.extras) ? sale.extras : parseMaybe(sale.extras, []);
+            const couponLine = (Array.isArray(extrasArr) ? extrasArr : [])
+              .find(e => String(e?.code || '').toUpperCase() === 'COUPON' && e.couponCode);
+
+            if (couponLine?.couponCode) {
+              await redeemCouponAtomic(tx, {
+                code: couponLine.couponCode,
+                saleId: sale.id,
+                storeId: sale.storeId,
+                customerId: sale.customerId || null,
+                segmentAtRedeem: null,
+                kindSnapshot: null, variantSnapshot: null,
+                percentApplied: couponLine.percentApplied ?? null,
+                amountApplied : couponLine.amountApplied  ?? null,
+                discountValue :
+                  Math.abs(Number(couponLine.amount || 0)) || Number(sale.discounts || 0) || null
+              });
+            }
+          }
+
+          logI('Venta actualizada por webhook', { saleId: sale.id, payStatus });
+        });
+
+        if (payOk && paidNotify?.phone) {
+          const body = buildOrderPaidSMS({
+            name: paidNotify.name,
+            orderCode: paidNotify.code
+          });
+
+          sendSMS(paidNotify.phone, body).catch(err =>
+            console.error('[Twilio SMS error PAID(update)]', {
+              err: err.message,
+              code: paidNotify.code
+            })
+          );
+        }
+      } catch (e) {
+        logE('[webhook] error al procesar session.completed', e);
+      }
     }
+
+    return res.json({ received: true });
+  }
 );
 router.get('/status/:code', async (req, res) => {
     try {
