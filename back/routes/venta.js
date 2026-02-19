@@ -543,6 +543,7 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
     .concat(rawItem?.options || [])
     .concat(rawItem?.modifiers || [])
     .concat(rawItem?.ingredients || [])
+    .concat(rawItem?.customIngredients || []) 
     .concat(rawItem?.complements || [])
     .concat(rawItem?.sides || []);
 
