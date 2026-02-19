@@ -1285,6 +1285,7 @@ const chooseMode = (
     return [p];
   };
   const normalizeExtra = (e, i = 0) => ({
+    id: Number(e?.id ?? e?.ingredientId ?? e?.pizzaId ?? e?.productId ?? 0) || undefined,
     code: String(e?.code ?? e?.id ?? e?.slug ?? `EXTRA_${i}`),
     label: String(e?.label ?? e?.name ?? e?.title ?? `Extra ${i + 1}`),
     amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
@@ -1325,7 +1326,15 @@ const item = {
 };
 
 if (Array.isArray(x?.ingredients) && x.ingredients.length > 0) {
-  item.ingredients = x.ingredients;
+
+  item.ingredients = x.ingredients.map((ing) => ({
+    id: Number(ing?.id ?? ing?.ingredientId ?? 0) || undefined,
+    ingredientId: Number(ing?.ingredientId ?? ing?.id ?? 0) || undefined,
+    name: String(ing?.name ?? ""),
+    placement: String(ing?.placement ?? ""),
+    quantity: String(ing?.quantity ?? ""),
+    price: Number(ing?.price ?? ing?.amount ?? 0) || 0,
+  }));
 }
 
       // 🔥 Mantener tipo si existe (HALF_HALF, CUSTOM, etc.)
@@ -1534,6 +1543,7 @@ if (couponOk && coupon?.code) {
             amount: Number(e?.amount ?? e?.price ?? e?.value ?? 0),
           }))
         : [],
+        ingredients: Array.isArray(it.ingredients) ? it.ingredients : [],
     }));
 
     if (!itemsForApi.length) {

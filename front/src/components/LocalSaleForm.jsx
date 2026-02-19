@@ -1070,7 +1070,7 @@ const addHalfLine = () => {
                   (c.extras || []).map((e) => [e.id, true])
                 ),
 
-                ingredients: c.ingredients || []   // 👈 ESTO ES CLAVE
+                ingredients: c.ingredients || []   
               })),
 
 
@@ -1330,6 +1330,7 @@ const addHalfLine = () => {
                             extrasMap: Object.fromEntries(
                               (c.extras || []).map((e) => [e.id, true])
                             ),
+                            ingredients: c.ingredients || [],
                           })),
 
                           total,
