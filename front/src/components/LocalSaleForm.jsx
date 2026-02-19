@@ -295,6 +295,26 @@ const updateCustomIngredient = (ingredient, updates) => {
 const addCustomLine = () => {
   if (!selectedCustomBase || !customSize) return;
 
+  const serializedIngredients = Object.entries(customIngredients).map(
+    ([id, data]) => {
+      const ingredientInfo = Object.values(customIngredientsByCategory)
+        .flat()
+        .find(ing => ing.id === Number(id));
+
+      return {
+        id: Number(id),
+        name: ingredientInfo?.name || "",
+        placement: data.placement,
+        quantity: data.quantity,
+        price: getCustomIngredientPrice({
+          ...data,
+          id: Number(id),
+          name: ingredientInfo?.name
+        })
+      };
+    }
+  );
+
   const subtotal = customGrandTotal;
 
   setCart(prev => [
@@ -307,13 +327,14 @@ const addCustomLine = () => {
       size: customSize,
       qty: customQty,
       price: customBasePrice,
-      customIngredients: Object.values(customIngredients),
+      ingredients: serializedIngredients,
       subtotal
     }
   ]);
 
   setToast("Añadido al carrito");
 };
+
 
 const sortedHalfExtras = useMemo(() => {
   return [...halfExtrasAvail].sort(
@@ -804,6 +825,29 @@ const addHalfLine = () => {
   const modalTotal = modalUnit * Number(sel.qty || 1);
   const modalReady = !!current && !!sel.size;
 
+
+  
+  const CUSTOM_CATEGORY_ORDER = [
+    "SALSAS",
+    "QUESOS",
+    "FIAMBRES",
+    "CARNES",
+    "PESCADOS",
+    "DEL MAR",
+    "VEGETALES",
+    "SETAS",
+    "COMPLEMENTOS"
+  ];
+
+  const removeCustomIngredient = (ingredientId) => {
+  setCustomIngredients(prev => {
+    const updated = { ...prev };
+    delete updated[ingredientId];
+    return updated;
+  });
+};
+
+
   return (
     <>
         <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
@@ -845,7 +889,7 @@ const addHalfLine = () => {
             Mitad / Mitad
           </button>
 
-           {/* <button
+           <button
             type="button"
             className={`lsf-buildmode ${buildMode === "custom" ? "is-active" : ""}`}
             onClick={() => {
@@ -854,7 +898,7 @@ const addHalfLine = () => {
             }}
           >
             Arma tu pizza
-          </button>  */}
+          </button>  
 
 
         </div>
@@ -1018,14 +1062,17 @@ const addHalfLine = () => {
               storeId: Number(storeId),
 
               items: cart.map((c) => ({
-                ...c, 
+                ...c,
 
                 extras: extrasArrayForItem(c),
 
                 extrasMap: Object.fromEntries(
                   (c.extras || []).map((e) => [e.id, true])
                 ),
+
+                ingredients: c.ingredients || []   // 👈 ESTO ES CLAVE
               })),
+
 
               total,
             });
@@ -1198,32 +1245,59 @@ const addHalfLine = () => {
               <div className="lsf-muted">Carrito vacío.</div>
             ) : (
               <>
-                <div className="lsf-cartlist">
-                  {cart.map((l, i) => (
-                    <div key={i} className="lsf-cartrow">
-                      <div className="lsf-cartrow__main">
-                        <div className="lsf-cartrow__name">
-                          {l.name} <span className="lsf-cartrow__meta">({l.size} × {l.qty})</span>
-                        </div>
-                        {l.extras?.length ? (
-                          <div className="lsf-cartrow__extras">+ {l.extras.map((e) => e.name).join(", ")}</div>
-                        ) : null}
-                      </div>
-                      <div className="lsf-cartrow__right">
-                        <div className="lsf-cartrow__price">€{l.subtotal.toFixed(2)}</div>
-                        <button
-                          type="button"
-                          className="lsf-iconbtn"
-                          onClick={() => setCart((c) => c.filter((_, idx) => idx !== i))}
-                          aria-label="Eliminar línea"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <div className="lsf-cartlist">
+                {cart.map((l, i) => (
+                  <div key={i} className="lsf-cartrow">
 
+                    <div className="lsf-cartrow__main">
+
+                      <div className="lsf-cartrow__name">
+                        {l.name}
+                        <span className="lsf-cartrow__meta">
+                          ({l.size} × {l.qty})
+                        </span>
+                      </div>
+
+                      {/* 🔹 INGREDIENTES CUSTOM */}
+                      {l.ingredients?.length > 0 && (
+                        <div className="lsf-cartrow__extras">
+                          {l.ingredients.map((ing) => (
+                            <div key={ing.id}>
+                              • {ing.name} ({ing.placement} - {ing.quantity})
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 🔹 EXTRAS NORMALES */}
+                      {l.extras?.length > 0 && (
+                        <div className="lsf-cartrow__extras">
+                          + {l.extras.map((e) => e.name).join(", ")}
+                        </div>
+                      )}
+
+                    </div>
+
+                    <div className="lsf-cartrow__right">
+                      <div className="lsf-cartrow__price">
+                        €{l.subtotal.toFixed(2)}
+                      </div>
+
+                      <button
+                        type="button"
+                        className="lsf-iconbtn"
+                        onClick={() =>
+                          setCart((c) => c.filter((_, idx) => idx !== i))
+                        }
+                        aria-label="Eliminar línea"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                  </div>
+                ))}
+              </div>
                 <div className="lsf-cartfoot">
                   <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
 
@@ -1651,10 +1725,36 @@ const addHalfLine = () => {
                 <div
                   className="lsf-custom-accordion__title"
                   onClick={() =>
-                    setCustomOpenSection(customOpenSection === "BASE" ? null : "BASE")
+                    setCustomOpenSection(
+                      customOpenSection === "BASE" ? null : "BASE"
+                    )
                   }
                 >
-                  Base {customOpenSection === "BASE" ? "▲" : "▼"}
+                  <span>BASE</span>
+
+                  <div className="lsf-accordion-meta">
+
+                    {!customBaseId && (
+                      <span className="lsf-accordion-hint">
+                        Selecciona una base
+                      </span>
+                    )}
+
+                    {customBaseId && !customSize && (
+                      <span className="lsf-accordion-warning">
+                        Falta tamaño
+                      </span>
+                    )}
+
+                    {customBaseId && customSize && selectedCustomBase && (
+                      <span className="lsf-accordion-success">
+                        {selectedCustomBase.name} {customSize}
+                      </span>
+                    )}
+
+                    <span>{customOpenSection === "BASE" ? "▲" : "▼"}</span>
+
+                  </div>
                 </div>
 
                 {customOpenSection === "BASE" && (
@@ -1666,10 +1766,13 @@ const addHalfLine = () => {
                         <button
                           key={base.pizzaId}
                           type="button"
-                          className={`lsf-chip ${customBaseId === base.pizzaId ? "is-active" : ""}`}
+                          className={`lsf-chip ${
+                            customBaseId === base.pizzaId ? "is-active" : ""
+                          }`}
                           onClick={() => {
                             setCustomBaseId(base.pizzaId);
                             setCustomSize("");
+                            setCustomOpenSection(null);
                           }}
                         >
                           {base.name}
@@ -1677,7 +1780,7 @@ const addHalfLine = () => {
                       ))}
                     </div>
 
-                    {/* SIZE + QTY SOLO DENTRO DEL ACORDEÓN */}
+                    {/* SIZE + QTY */}
                     {selectedCustomBase && (
                       <div className="lsf-custom-row-inline">
 
@@ -1689,11 +1792,14 @@ const addHalfLine = () => {
                                 selectedCustomBase.priceBySize,
                                 sz
                               );
+
                               return (
                                 <button
                                   key={sz}
                                   type="button"
-                                  className={`lsf-chip ${customSize === sz ? "is-active" : ""}`}
+                                  className={`lsf-chip ${
+                                    customSize === sz ? "is-active" : ""
+                                  }`}
                                   onClick={() => setCustomSize(sz)}
                                 >
                                   <span className="lsf-chip__sz">{sz}</span>
@@ -1734,73 +1840,90 @@ const addHalfLine = () => {
                 )}
               </div>
 
-              {/* ───────── INGREDIENTES POR CATEGORÍA ───────── */}
-              {Object.entries(customIngredientsByCategory).map(
-                ([catName, ingredients]) => {
-                  const isOpen = customOpenSection === catName;
+            {/* ───────── INGREDIENTES ORDENADOS ───────── */}
 
-                  return (
-                    <div key={catName} className="lsf-custom-accordion">
+            {CUSTOM_CATEGORY_ORDER
+              .filter(cat => customIngredientsByCategory[cat])
+              .map(catName => {
 
-                      <div
-                        className="lsf-custom-accordion__title"
-                        onClick={() =>
-                          setCustomOpenSection(isOpen ? null : catName)
-                        }
-                      >
-                        {catName} {isOpen ? "▲" : "▼"}
+                const ingredients = customIngredientsByCategory[catName];
+                const selectedCount = ingredients.filter(
+                  ing => customIngredients[ing.id]
+                ).length;
+
+                const isOpen = customOpenSection === catName;
+                const isLocked = !customBaseId || !customSize;
+
+                return (
+                  <div key={catName} className="lsf-custom-accordion">
+
+                    <div
+                      className={`lsf-custom-accordion__title ${
+                        isLocked ? "is-disabled" : ""
+                      }`}
+                      onClick={() => {
+                        if (isLocked) return;
+                        setCustomOpenSection(isOpen ? null : catName);
+                      }}
+                    >
+                      <span>{catName}</span>
+
+                      <div className="lsf-accordion-meta">
+                        {selectedCount > 0 && (
+                          <span className="lsf-accordion-badge">
+                            {selectedCount}
+                          </span>
+                        )}
+                        <span>{isOpen ? "▲" : "▼"}</span>
                       </div>
+                    </div>
 
-                      {isOpen && (
-                        <div className="lsf-custom-accordion__content">
+                    {isOpen && !isLocked && (
+                      <div className="lsf-custom-accordion__content">
 
-                          {ingredients.map(ing => {
-                            const selected = customIngredients[ing.id];
-                            const calculatedPrice = selected
-                              ? getCustomIngredientPrice(selected)
-                              : 0;
+                        {ingredients.map(ing => {
+                          const selected = customIngredients[ing.id];
 
-                            return (
-                              <div key={ing.id} className="lsf-custom-item">
+                          return (
+                            <div key={ing.id} className="lsf-custom-item">
 
-                                <div className="lsf-custom-item__name">
-                                  {ing.name}
+                              <div className="lsf-custom-item__name">
+                                {ing.name}
+                              </div>
+
+                              <div className="lsf-custom-item__controls">
+
+                                {/* PLACEMENT */}
+                                <div className="lsf-custom-placement">
+                                  {["FULL", "LEFT", "RIGHT"].map(pos => (
+                                    <button
+                                      key={pos}
+                                      type="button"
+                                      className={`lsf-chip ${
+                                        selected?.placement === pos ? "is-active" : ""
+                                      }`}
+                                      onClick={() =>
+                                        updateCustomIngredient(ing, {
+                                          placement: pos,
+                                          quantity: selected?.quantity || "SIMPLE"
+                                        })
+                                      }
+                                    >
+                                      {pos}
+                                    </button>
+                                  ))}
                                 </div>
 
-                                <div className="lsf-custom-item__controls">
-
-                                  {/* PLACEMENT */}
-                                  <div className="lsf-custom-placement">
-                                    {["FULL", "LEFT", "RIGHT"].map(pos => (
-                                      <label key={pos} className="lsf-custom-radio">
-                                        <input
-                                          type="radio"
-                                          name={`place-${ing.id}`}
-                                          checked={selected?.placement === pos}
-                                          onChange={() =>
-                                            updateCustomIngredient(ing, {
-                                              placement: pos
-                                            })
-                                          }
-                                        />
-                                        {pos}
-                                      </label>
-                                    ))}
-                                  </div>
-
-                                  {/* SIMPLE / DOBLE */}
+                                {/* SIMPLE / DOBLE */}
+                                {selected && (
                                   <div className="lsf-custom-toggle">
                                     <button
                                       type="button"
                                       className={`lsf-toggle ${
-                                        selected?.quantity === "SIMPLE"
-                                          ? "is-active"
-                                          : ""
+                                        selected.quantity === "SIMPLE" ? "is-active" : ""
                                       }`}
                                       onClick={() =>
-                                        updateCustomIngredient(ing, {
-                                          quantity: "SIMPLE"
-                                        })
+                                        updateCustomIngredient(ing, { quantity: "SIMPLE" })
                                       }
                                     >
                                       SIMPLE
@@ -1809,36 +1932,44 @@ const addHalfLine = () => {
                                     <button
                                       type="button"
                                       className={`lsf-toggle ${
-                                        selected?.quantity === "DOUBLE"
-                                          ? "is-active"
-                                          : ""
+                                        selected.quantity === "DOUBLE" ? "is-active" : ""
                                       }`}
                                       onClick={() =>
-                                        updateCustomIngredient(ing, {
-                                          quantity: "DOUBLE"
-                                        })
+                                        updateCustomIngredient(ing, { quantity: "DOUBLE" })
                                       }
                                     >
                                       DOBLE
                                     </button>
                                   </div>
+                                )}
 
-                                  {/* PRECIO */}
-                                  <div className="lsf-custom-item__price">
-                                    €{calculatedPrice.toFixed(2)}
+                                {/* PRECIO + REMOVE */}
+                                {selected && (
+                                  <div className="lsf-custom-item__price-wrap">
+                                    <div className="lsf-custom-item__price">
+                                      €{getCustomIngredientPrice(selected).toFixed(2)}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      className="lsf-custom-remove"
+                                      onClick={() => removeCustomIngredient(ing.id)}
+                                    >
+                                      ✖
+                                    </button>
                                   </div>
+                                )}
 
-                                </div>
                               </div>
-                            );
-                          })}
+                            </div>
+                          );
+                        })}
 
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-              )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* ───────── CTA STICKY ───────── */}
               <div className="lsf-custom-sticky">
@@ -1857,6 +1988,7 @@ const addHalfLine = () => {
 
             </div>
           </Modal>
+
 
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>

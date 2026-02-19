@@ -588,7 +588,27 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  background-color: #f6f5f5;
 }
+
+.lsf-accordion-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+}
+
+.lsf-accordion-warning {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff8c00;
+}
+
+.lsf-accordion-success {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a73e8;
+}
+
 
 /* ───────── SIZE + QTY ───────── */
 
@@ -726,6 +746,54 @@
   cursor: not-allowed;
   pointer-events: none;
 }
+.lsf-custom-accordion__title.is-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.lsf-custom-item__price-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.lsf-custom-remove {
+  border: none;
+  background: #ff2e73;
+  color: white;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lsf-custom-remove:hover {
+  opacity: 0.8;
+}
+
+.lsf-accordion-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lsf-accordion-badge {
+  background: #ff2e73;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
+
 
 /* ───────── MOBILE TIGHT MODE ───────── */
 

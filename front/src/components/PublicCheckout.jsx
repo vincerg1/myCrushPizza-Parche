@@ -1674,17 +1674,31 @@ if (couponOk && coupon?.code) {
                 return (
                   <tr key={i}>
                     <td>
-                      {label}
-                      {extras.length > 0 && (
-                        <div className="pc-note">
-                          {extras.map((e, idx) => {
-                            const n = String(e.name ?? e.label ?? e.code ?? "extra");
-                            const p = Number(e.price ?? e.amount ?? 0);
-                            return `${idx ? ", " : "+ "}${n} (+${fmtEur(p)})`;
-                          }).join("")}
-                        </div>
-                      )}
-                    </td>
+                    {label}
+
+                    {/* 🔹 INGREDIENTES CUSTOM */}
+                    {Array.isArray(it.ingredients) && it.ingredients.length > 0 && (
+                      <div className="pc-note">
+                        {it.ingredients.map((ing, idx) => (
+                          <div key={idx}>
+                            • {ing.name} ({ing.placement} - {ing.quantity})
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 🔹 EXTRAS NORMALES */}
+                    {extras.length > 0 && (
+                      <div className="pc-note">
+                        {extras.map((e, idx) => {
+                          const n = String(e.name ?? e.label ?? e.code ?? "extra");
+                          const p = Number(e.price ?? e.amount ?? 0);
+                          return `${idx ? ", " : "+ "}${n} (+${fmtEur(p)})`;
+                        }).join("")}
+                      </div>
+                    )}
+                  </td>
+
                     <td>{it.size}</td>
                     <td style={{ textAlign: "center" }}>{qty}</td>
                     <td style={{ textAlign: "right" }}>{fmtEur(lineTotal)}</td>
