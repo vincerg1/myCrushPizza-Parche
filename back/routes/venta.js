@@ -357,6 +357,7 @@ router.post('/direct-pay', async (req, res) => {
     });
   }
 });
+console.log("✅ payload.items[0].ingredients:", payload.items?.[0]?.ingredients);
 router.post('/pedido', async (req, res) => {
   const appMeta = await prisma.appMeta.findUnique({ where: { id: 1 } }).catch(() => null);
 
@@ -706,7 +707,6 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
     res.status(400).json({ error: e.message });
   }
 });
-
 router.post('/checkout-session', async (req, res) => {
   if (!stripeReady){
     logW('checkout-session llamado sin Stripe listo');
