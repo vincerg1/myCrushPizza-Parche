@@ -1318,11 +1318,15 @@ const buildItemsForApi = (lines = []) =>
         normalizeExtra(e, i)
       );
 
-      const item = {
-        size,
-        qty,
-        extras,
-      };
+const item = {
+  size,
+  qty,
+  extras,
+};
+
+if (Array.isArray(x?.ingredients) && x.ingredients.length > 0) {
+  item.ingredients = x.ingredients;
+}
 
       // 🔥 Mantener tipo si existe (HALF_HALF, CUSTOM, etc.)
       if (x?.type) {
