@@ -846,7 +846,22 @@ const addHalfLine = () => {
     return updated;
   });
 };
+// ───────── BUILD PROGRESSION STATE ─────────
 
+const hasBase = !!customBaseId;
+const hasSize = !!customSize;
+
+const selectedIds = Object.keys(customIngredients).map(id => Number(id));
+
+const hasSauce =
+  (customIngredientsByCategory["SALSAS"] || [])
+    .some(ing => selectedIds.includes(ing.id));
+
+const hasCheese =
+  (customIngredientsByCategory["QUESOS"] || [])
+    .some(ing => selectedIds.includes(ing.id));
+
+const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
   return (
     <>
