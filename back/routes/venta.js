@@ -534,6 +534,7 @@ router.post('/pedido', async (req, res) => {
 
 const lineItemsWithExtras = lineItems.map((li, idx) => {
   const rawItem = items[idx] || {};
+  console.log("🟡 RAW ITEM INGREDIENTS:", rawItem?.ingredients);
   const qty = Math.max(1, Number(rawItem.qty || 1));
 
   const pools = []
@@ -556,9 +557,12 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
       if (!Number.isFinite(parsed) || parsed < 0) return null;
 
       return {
-        code: 'EXTRA',
-        label: String(ex?.label || ex?.name || 'Extra'),
-        amount: round2(parsed)
+      code: 'EXTRA',
+      label: String(ex?.label || ex?.name || 'Extra'),
+      amount: round2(parsed),
+      placement: ex?.placement || null,
+      quantity: ex?.quantity || null,
+      ingredientId: ex?.id ?? ex?.ingredientId ?? null
       };
     })
     .filter(Boolean);
