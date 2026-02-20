@@ -367,7 +367,37 @@ const customIngredientsByCategory = useMemo(() => {
     grouped[cat].push(ing);
   });
 
+  // 🔥 ORDEN INTELIGENTE POR CATEGORÍA
+  Object.keys(grouped).forEach(cat => {
+
+    // SALSAS → Tomate primero
+    if (cat === "SALSAS") {
+      grouped[cat] = [...grouped[cat]].sort((a, b) => {
+        if (normalize(a.name).includes("tomate")) return -1;
+        if (normalize(b.name).includes("tomate")) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    // QUESOS → Mozzarella primero
+    else if (cat === "QUESOS") {
+      grouped[cat] = [...grouped[cat]].sort((a, b) => {
+        if (normalize(a.name).includes("mozz")) return -1;
+        if (normalize(b.name).includes("mozz")) return 1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    // Resto → orden alfabético limpio
+    else {
+      grouped[cat] = [...grouped[cat]].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+    }
+  });
+
   return grouped;
+
 }, [customIngredientsCatalog]);
 
 useEffect(() => {
@@ -568,7 +598,7 @@ const halfBasePrice = useMemo(() => {
   const priceA = priceForSize(a.priceBySize, halfSize);
   const priceB = priceForSize(b.priceBySize, halfSize);
 
-  return (priceA / 2) + (priceB / 2);
+  return Math.max(priceA, priceB);
 }, [halfSize, halfItems, halfAIndex, halfBIndex]);
 
 const halfTotal = halfBasePrice * halfQty;
@@ -818,6 +848,21 @@ const addHalfLine = () => {
 };
 
   const total = cart.reduce((t, l) => t + l.subtotal, 0);
+  // ───────── INCENTIVE (TEST MODE) ─────────
+
+const INCENTIVE_THRESHOLD = 15.99;
+
+const incentiveUnlocked = total >= INCENTIVE_THRESHOLD;
+
+const incentiveRemaining = Math.max(
+  0,
+  INCENTIVE_THRESHOLD - total
+);
+
+const incentiveProgress = Math.min(
+  100,
+  (total / INCENTIVE_THRESHOLD) * 100
+);
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
   const getImg = (it) => it?.image || "";
@@ -865,18 +910,44 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
   return (
     <>
+    {/* ───────── INCENTIVE BANNER ───────── */}
+<div
+  className={`lsf-incentive ${
+    !incentiveUnlocked ? "is-breathing" : ""
+  }`}
+>
+  {!incentiveUnlocked ? (
+    <>
+      <div className="lsf-incentive__text">
+        🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
+        <b> Panzerotti Tradicional de regalo =)</b>
+      </div>
+
+      <div className="lsf-incentive__bar">
+        <div
+          className="lsf-incentive__fill"
+          style={{ width: `${incentiveProgress}%` }}
+        />
+      </div>
+    </>
+  ) : (
+    <div className="lsf-incentive__unlocked">
+      🎉 ¡Panzerotti Tradicional desbloqueado!
+    </div>
+  )}
+</div>
         <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         <div className="lsf-top">
           <div className="lsf-top__title">
             {compact ? "Selecciona productos" : "Local sale"}
           </div>
 
-          <button
-            type="button"
-            className="lsf-cartbtn"
-            onClick={() => setCartOpen(true)}
-            aria-label="Abrir carrito"
-          >
+              <button
+              type="button"
+              className={`lsf-cartbtn ${cartCount > 0 ? "is-active" : ""}`}
+              onClick={() => setCartOpen(true)}
+              aria-label="Abrir carrito"
+            >
             🛒 <span className="lsf-cartbtn__count">{cartCount}</span>
             <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
           </button>
@@ -1424,305 +1495,263 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             )}
           </Modal>
           {/* MITADES MODAL */}
-          <Modal
-            open={halfModalOpen}
-            title="Pizza mitad / mitad"
-            onClose={() => {
-              setHalfModalOpen(false);
-              setBuildMode("menu");
-            }}
-            className="lsf-modal--center"
-          >
-            {halfItems.length === 0 ? (
-              <div className="lsf-muted">No hay pizzas disponibles</div>
-            ) : (
-              <div className="lsf-half">
+      <Modal
+        open={halfModalOpen}
+        title="Pizza mitad / mitad"
+        onClose={() => {
+          setHalfModalOpen(false);
+          setBuildMode("menu");
+        }}
+        className="lsf-modal--center"
+      >
+        {halfItems.length === 0 ? (
+          <div className="lsf-muted">No hay pizzas disponibles</div>
+        ) : (
+          <div className="lsf-half">
 
-                {/* ───────── MITADES ───────── */}
-                <div className="lsf-half__slots">
+            {/* ───────── MITADES ───────── */}
+            <div className="lsf-half__slots">
 
-                  {/* MITAD A */}
-                  <div className="lsf-half__slot">
-                    <div className="lsf-half__label">Mitad A</div>
+              {/* MITAD A */}
+              <div className="lsf-half__slot">
+                <div className="lsf-half__label">Mitad A</div>
 
-                    <div className="lsf-half__nav lsf-half__nav--top">
-                      <button onClick={prevHalfA}>▲</button>
-                    </div>
-
-                    <div
-                      className="lsf-half__img"
-                      onTouchStart={(e) => {
-                        touchStartY.current = e.touches[0].clientY;
-                      }}
-                      onTouchEnd={(e) => {
-                        const diff = e.changedTouches[0].clientY - touchStartY.current;
-                        if (Math.abs(diff) > 40) {
-                          diff < 0 ? nextHalfA() : prevHalfA();
-                        }
-                      }}
-                    >
-                      {halfItems[halfAIndex]?.image ? (
-                        <img
-                          src={halfItems[halfAIndex].image}
-                          alt={halfItems[halfAIndex].name}
-                        />
-                      ) : (
-                        <div className="lsf-half__img--ph">🍕</div>
-                      )}
-                    </div>
-
-                    <div className="lsf-half__name">
-                      {halfItems[halfAIndex]?.name}
-                    </div>
-
-                    <div className="lsf-half__price">
-                      €{(
-                        priceForSize(
-                          halfItems[halfAIndex]?.priceBySize,
-                          halfItems[halfAIndex]?.selectSize?.[0] || "M"
-                        ) / 2
-                      ).toFixed(2)}
-                    </div>
-
-                    <div className="lsf-half__nav lsf-half__nav--bottom">
-                      <button onClick={nextHalfA}>▼</button>
-                    </div>
-                  </div>
-
-                  {/* MITAD B */}
-                  <div className="lsf-half__slot">
-                    <div className="lsf-half__label">Mitad B</div>
-
-                    <div className="lsf-half__nav lsf-half__nav--top">
-                      <button onClick={prevHalfB}>▲</button>
-                    </div>
-
-                    <div
-                      className="lsf-half__img"
-                      onTouchStart={(e) => {
-                        touchStartY.current = e.touches[0].clientY;
-                      }}
-                      onTouchEnd={(e) => {
-                        const diff = e.changedTouches[0].clientY - touchStartY.current;
-                        if (Math.abs(diff) > 40) {
-                          diff < 0 ? nextHalfB() : prevHalfB();
-                        }
-                      }}
-                    >
-                      {halfItems[halfBIndex]?.image ? (
-                        <img
-                          src={halfItems[halfBIndex].image}
-                          alt={halfItems[halfBIndex].name}
-                        />
-                      ) : (
-                        <div className="lsf-half__img--ph">🍕</div>
-                      )}
-                    </div>
-
-                    <div className="lsf-half__name">
-                      {halfItems[halfBIndex]?.name}
-                    </div>
-
-                    <div className="lsf-half__price">
-                      €{(
-                        priceForSize(
-                          halfItems[halfBIndex]?.priceBySize,
-                          halfItems[halfBIndex]?.selectSize?.[0] || "M"
-                        ) / 2
-                      ).toFixed(2)}
-                    </div>
-
-                    <div className="lsf-half__nav lsf-half__nav--bottom">
-                      <button onClick={nextHalfB}>▼</button>
-                    </div>
-                  </div>
-
+                <div className="lsf-half__nav lsf-half__nav--top">
+                  <button onClick={prevHalfA}>▲</button>
                 </div>
 
-                {/* ───────── QTY ───────── */}
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Qty</div>
-                  <div className="lsf-qty">
-                    <button
-                      type="button"
-                      className="lsf-qty__btn"
-                      onClick={() => setHalfQty(q => Math.max(1, q - 1))}
-                    >
-                      –
-                    </button>
-                    <div className="lsf-qty__val">{halfQty}</div>
-                    <button
-                      type="button"
-                      className="lsf-qty__btn"
-                      onClick={() => setHalfQty(q => q + 1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* ───────── SIZE ───────── */}
-                <div className="lsf-pm__row">
-                  <div className="lsf-pm__label">Size</div>
-
-                  {sizeOptions.length === 0 ? (
-                    <div className="lsf-muted">No hay tamaños compatibles</div>
-                  ) : (
-                    <div className="lsf-sizes">
-                      {sizeOptions.map(sz => {
-                        const a = halfItems[halfAIndex];
-                        const b = halfItems[halfBIndex];
-
-                        const dynamicPrice =
-                          priceForSize(a.priceBySize, sz) / 2 +
-                          priceForSize(b.priceBySize, sz) / 2;
-
-                        return (
-                          <button
-                            key={sz}
-                            type="button"
-                            className={`lsf-chip ${halfSize === sz ? "is-active" : ""}`}
-                            onClick={() => setHalfSize(sz)}
-                          >
-                            <span className="lsf-chip__sz">{sz}</span>
-                            <span className="lsf-chip__pr">
-                              €{dynamicPrice.toFixed(2)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* ───────── ALÉRGENOS ───────── */}
-                <div className="lsf-allergen">
-                  ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
-                </div>
-
-                {/* ───────── EXTRAS MITAD A (ACORDEÓN) ───────── */}
-                <div className="lsf-pm__row">
-                  <div
-                    className="lsf-pm__label"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setOpenHalfExtrasA(v => !v)}
-                  >
-                    Extras Mitad A {openHalfExtrasA ? "▲" : "▼"}
-                  </div>
-
-                  {openHalfExtrasA && (
-                    sortedHalfExtras.length === 0 ? (
-                      <div className="lsf-muted">No hay extras.</div>
-                    ) : (
-                      <div className="lsf-extraslist">
-                        {sortedHalfExtras.map(ex => {
-                          const checked = !!halfExtras.A[ex.ingredientId];
-
-                      return (
-                          <label key={`A-${ex.ingredientId}`} className="lsf-extrasitem">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleHalfExtra("A", ex.ingredientId)}
-                            />
-                            <span className="lsf-extrasitem__name">
-                              {ex.name || ex.ingredientName}
-                            </span>
-                            <span className="lsf-extrasitem__price">
-                              +€{Number(ex.price).toFixed(2)}
-                            </span>
-                          </label>
-                        );
-                      })}
-
-                      {sortedHalfExtras.length > 3 && (
-                        <div
-                          className="lsf-extras-more"
-                          onClick={() =>
-                            setShowAllHalfExtrasA(v => !v)
-                          }
-                        >
-                          {showAllHalfExtrasA
-                            ? "Mostrar menos ▲"
-                            : `Mostrar ${sortedHalfExtras.length - 3} más ↓`}
-                        </div>
-                      )}
-                     
-                      </div>
-                    )
-                  )}
-                </div>
-
-                {/* ───────── EXTRAS MITAD B (ACORDEÓN) ───────── */}
-                <div className="lsf-pm__row">
-                  <div
-                    className="lsf-pm__label"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setOpenHalfExtrasB(v => !v)}
-                  >
-                    Extras Mitad B {openHalfExtrasB ? "▲" : "▼"}
-                  </div>
-
-                  {openHalfExtrasB && (
-                    sortedHalfExtras.length === 0 ? (
-                      <div className="lsf-muted">No hay extras.</div>
-                    ) : (
-                      <div className="lsf-extraslist">
-                        {sortedHalfExtras.map(ex => {
-                          const checked = !!halfExtras.B[ex.ingredientId];
-
-                          return (
-                            <label key={`B-${ex.ingredientId}`} className="lsf-extrasitem">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleHalfExtra("B", ex.ingredientId)}
-                              />
-                              <span className="lsf-extrasitem__name">
-                                {ex.name || ex.ingredientName}
-                              </span>
-                              <span className="lsf-extrasitem__price">
-                                +€{Number(ex.price).toFixed(2)}
-                              </span>
-                            </label>
-                          );
-                        })}
-
-                        {sortedHalfExtras.length > 3 && (
-                          <div
-                            className="lsf-extras-more"
-                            onClick={() =>
-                              setShowAllHalfExtrasB(v => !v)
-                            }
-                          >
-                            {showAllHalfExtrasB
-                              ? "Mostrar menos ▲"
-                              : `Mostrar ${sortedHalfExtras.length - 3} más ↓`}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  )}
-                </div>
-
-                {/* ───────── CTA ───────── */}
-                <button
-                  type="button"
-                  className="lsf-btn lsf-btn--primary lsf-half__cta"
-                  disabled={!halfSize}
-                  onClick={() => {
-                    addHalfLine();
-                    setHalfModalOpen(false);
+                <div
+                  className="lsf-half__img"
+                  onTouchStart={(e) => {
+                    touchStartY.current = e.touches[0].clientY;
+                  }}
+                  onTouchEnd={(e) => {
+                    const diff = e.changedTouches[0].clientY - touchStartY.current;
+                    if (Math.abs(diff) > 40) {
+                      diff < 0 ? nextHalfA() : prevHalfA();
+                    }
                   }}
                 >
-                  {halfSize
-                    ? `Añadir al carrito · €${halfGrandTotal.toFixed(2)}`
-                    : "Selecciona tamaño"}
-                </button>
+                  {halfItems[halfAIndex]?.image ? (
+                    <img
+                      src={halfItems[halfAIndex].image}
+                      alt={halfItems[halfAIndex].name}
+                    />
+                  ) : (
+                    <div className="lsf-half__img--ph">🍕</div>
+                  )}
+                </div>
 
+                <div className="lsf-half__name">
+                  {halfItems[halfAIndex]?.name}
+                </div>
+
+                <div className="lsf-half__nav lsf-half__nav--bottom">
+                  <button onClick={nextHalfA}>▼</button>
+                </div>
               </div>
-            )}
-          </Modal>
+
+              {/* MITAD B */}
+              <div className="lsf-half__slot">
+                <div className="lsf-half__label">Mitad B</div>
+
+                <div className="lsf-half__nav lsf-half__nav--top">
+                  <button onClick={prevHalfB}>▲</button>
+                </div>
+
+                <div
+                  className="lsf-half__img"
+                  onTouchStart={(e) => {
+                    touchStartY.current = e.touches[0].clientY;
+                  }}
+                  onTouchEnd={(e) => {
+                    const diff = e.changedTouches[0].clientY - touchStartY.current;
+                    if (Math.abs(diff) > 40) {
+                      diff < 0 ? nextHalfB() : prevHalfB();
+                    }
+                  }}
+                >
+                  {halfItems[halfBIndex]?.image ? (
+                    <img
+                      src={halfItems[halfBIndex].image}
+                      alt={halfItems[halfBIndex].name}
+                    />
+                  ) : (
+                    <div className="lsf-half__img--ph">🍕</div>
+                  )}
+                </div>
+
+                <div className="lsf-half__name">
+                  {halfItems[halfBIndex]?.name}
+                </div>
+
+                <div className="lsf-half__nav lsf-half__nav--bottom">
+                  <button onClick={nextHalfB}>▼</button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* ───────── QTY ───────── */}
+            <div className="lsf-pm__row">
+              <div className="lsf-pm__label">Qty</div>
+              <div className="lsf-qty">
+                <button
+                  type="button"
+                  className="lsf-qty__btn"
+                  onClick={() => setHalfQty(q => Math.max(1, q - 1))}
+                >
+                  –
+                </button>
+                <div className="lsf-qty__val">{halfQty}</div>
+                <button
+                  type="button"
+                  className="lsf-qty__btn"
+                  onClick={() => setHalfQty(q => q + 1)}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* ───────── SIZE ───────── */}
+            <div className="lsf-pm__row">
+              <div className="lsf-pm__label">Size</div>
+
+              {sizeOptions.length === 0 ? (
+                <div className="lsf-muted">No hay tamaños compatibles</div>
+              ) : (
+                <div className="lsf-sizes">
+                  {sizeOptions.map(sz => {
+                    const a = halfItems[halfAIndex];
+                    const b = halfItems[halfBIndex];
+
+                    const dynamicPrice = Math.max(
+                      priceForSize(a.priceBySize, sz),
+                      priceForSize(b.priceBySize, sz)
+                    );
+
+                    return (
+                      <button
+                        key={sz}
+                        type="button"
+                        className={`lsf-chip ${halfSize === sz ? "is-active" : ""}`}
+                        onClick={() => setHalfSize(sz)}
+                      >
+                        <span className="lsf-chip__sz">{sz}</span>
+                        <span className="lsf-chip__pr">
+                          €{dynamicPrice.toFixed(2)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+    
+            </div>
+
+            {/* ───────── ALÉRGENOS ───────── */}
+            <div className="lsf-allergen">
+              ⚠️ Puede contener <b>alérgenos</b>. Consulta con nuestro personal si tienes alguna alergia.
+            </div>
+
+            {/* ───────── EXTRAS MITAD A ───────── */}
+            <div className="lsf-pm__row">
+              <div
+                className="lsf-pm__label"
+                style={{ cursor: "pointer" }}
+                onClick={() => setOpenHalfExtrasA(v => !v)}
+              >
+                Extras Mitad A {openHalfExtrasA ? "▲" : "▼"}
+              </div>
+
+              {openHalfExtrasA && (
+                sortedHalfExtras.length === 0 ? (
+                  <div className="lsf-muted">No hay extras.</div>
+                ) : (
+                  <div className="lsf-extraslist">
+                    {sortedHalfExtras.map(ex => {
+                      const checked = !!halfExtras.A[ex.ingredientId];
+
+                      return (
+                        <label key={`A-${ex.ingredientId}`} className="lsf-extrasitem">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleHalfExtra("A", ex.ingredientId)}
+                          />
+                          <span className="lsf-extrasitem__name">
+                            {ex.name || ex.ingredientName}
+                          </span>
+                          <span className="lsf-extrasitem__price">
+                            +€{Number(ex.price).toFixed(2)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* ───────── EXTRAS MITAD B ───────── */}
+            <div className="lsf-pm__row">
+              <div
+                className="lsf-pm__label"
+                style={{ cursor: "pointer" }}
+                onClick={() => setOpenHalfExtrasB(v => !v)}
+              >
+                Extras Mitad B {openHalfExtrasB ? "▲" : "▼"}
+              </div>
+
+              {openHalfExtrasB && (
+                sortedHalfExtras.length === 0 ? (
+                  <div className="lsf-muted">No hay extras.</div>
+                ) : (
+                  <div className="lsf-extraslist">
+                    {sortedHalfExtras.map(ex => {
+                      const checked = !!halfExtras.B[ex.ingredientId];
+
+                      return (
+                        <label key={`B-${ex.ingredientId}`} className="lsf-extrasitem">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleHalfExtra("B", ex.ingredientId)}
+                          />
+                          <span className="lsf-extrasitem__name">
+                            {ex.name || ex.ingredientName}
+                          </span>
+                          <span className="lsf-extrasitem__price">
+                            +€{Number(ex.price).toFixed(2)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* ───────── CTA ───────── */}
+            <button
+              type="button"
+              className="lsf-btn lsf-btn--primary lsf-half__cta"
+              disabled={!halfSize}
+              onClick={() => {
+                addHalfLine();
+                setHalfModalOpen(false);
+              }}
+            >
+              {halfSize
+                ? `Añadir al carrito · €${halfGrandTotal.toFixed(2)}`
+                : "Selecciona tamaño"}
+            </button>
+
+          </div>
+        )}
+      </Modal>
           {/* CUSTOM MODAL */}
           <Modal
             open={customModalOpen}

@@ -38,15 +38,40 @@
   background: #fff;
   padding: 8px 10px;
   border-radius: 12px;
+  transition: all 0.25s ease;
 }
+
 .lsf-cartbtn__count {
   font-weight: 800;
   padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid #e7e7e7;
+  transition: all 0.25s ease;
 }
+
 .lsf-cartbtn__total {
   font-weight: 800;
+  transition: all 0.25s ease;
+}
+
+/* ───────── ESTADO ACTIVO ───────── */
+
+.lsf-cartbtn.is-active {
+  background: linear-gradient(135deg, #f92672, #f581c3);
+  border-color: #f92672;
+  color: #fff;
+  
+
+}
+
+.lsf-cartbtn.is-active .lsf-cartbtn__count {
+  background: #fff;
+  color: #f92672;
+  border-color: #fff;
+}
+
+.lsf-cartbtn.is-active .lsf-cartbtn__total {
+  color: #fff;
 }
 .lsf-store select {
   width: 100%;
@@ -1164,9 +1189,63 @@
   font-weight: 800;
   border-radius: 16px;
 }
-/* ───────────────── HALF & HALF ───────────────── */
 
 
+/* ───────── INCENTIVE ───────── */
+
+.lsf-incentive {
+  margin: 6px 0;
+  padding: 10px 10px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #fff4d6, #d4f806);
+  border: 1px solid #d4f806;
+  font-size: 14px;
+}
+
+.lsf-incentive__text {
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-style: italic;
+  color: #f92672;
+}
+
+.lsf-incentive__bar {
+  height: 6px;
+  background: #eee;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.lsf-incentive__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f581c3, #f92672);
+  transition: width 0.3s ease;
+}
+
+.lsf-incentive__unlocked {
+  font-weight: 700;
+  color: #198754;
+}
+/* ───────── BREATH EFFECT ───────── */
+
+@keyframes incentiveBreath {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(249, 38, 114, 0);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow: 0 0 18px rgba(249, 38, 114, 0.25);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 rgba(249, 38, 114, 0);
+  }
+}
+
+.lsf-incentive.is-breathing {
+  animation: incentiveBreath 2.8s ease-in-out infinite;
+}
 .lsf-btn--primary.is-ready { animation: lsfPulse 1.05s infinite; }
 @keyframes lsfPulse {
   0%   { transform: scale(1); }
