@@ -1773,7 +1773,6 @@ const addHalfLine = () => {
                           onClick={() => {
                             setCustomBaseId(base.pizzaId);
                             setCustomSize("");
-                            setCustomOpenSection(null);
                           }}
                         >
                           {base.name}
@@ -1853,7 +1852,17 @@ const addHalfLine = () => {
                 ).length;
 
                 const isOpen = customOpenSection === catName;
-                const isLocked = !customBaseId || !customSize;
+                let isLocked = true;
+
+                  if (!hasBase || !hasSize) {
+                    isLocked = true;
+                  } else if (catName === "SALSAS") {
+                    isLocked = false;
+                  } else if (catName === "QUESOS") {
+                    isLocked = !hasSauce;
+                  } else {
+                    isLocked = !isMargaritaReady;
+                  }
 
                 return (
                   <div key={catName} className="lsf-custom-accordion">
@@ -1977,7 +1986,7 @@ const addHalfLine = () => {
                 <button
                   type="button"
                   className="lsf-btn lsf-btn--primary"
-                  disabled={!customBaseId || !customSize}
+                  disabled={!isMargaritaReady}
                   onClick={() => {
                     addCustomLine();
                     setCustomModalOpen(false);
