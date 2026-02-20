@@ -889,7 +889,7 @@ const addHalfLine = () => {
             Mitad / Mitad
           </button>
 
-           <button
+            <button
             type="button"
             className={`lsf-buildmode ${buildMode === "custom" ? "is-active" : ""}`}
             onClick={() => {
@@ -898,7 +898,7 @@ const addHalfLine = () => {
             }}
           >
             Arma tu pizza
-          </button>  
+          </button>   
 
 
         </div>

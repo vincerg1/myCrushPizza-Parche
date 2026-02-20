@@ -956,7 +956,7 @@ border-radius: 20px;
   margin-top: 0px;
 }
 .pc-hero-btn {
-  min-width: 150px;          /* MISMAS DIMENSIONES */
+  min-width: 150px;          
   padding: 10px 30;
   border-radius: 20px;
   font-size: 25px;
@@ -968,7 +968,7 @@ border-radius: 20px;
   margin-top: 10px;
   margin-bottom: 0px;
   background: #ff5a96;
-  color: #f7ff00;
+  color: #d4f806;
   font-weight: 900;
   font-size: 30px;          
   letter-spacing: 20px;

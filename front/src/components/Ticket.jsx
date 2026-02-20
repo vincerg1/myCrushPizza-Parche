@@ -111,20 +111,26 @@ export default function Ticket({ order, autoPrint = false }) {
                   </tr>
 
                   {/* 🔹 EXTRAS POR PRODUCTO */}
-                  {safeExtras(p?.extras).map((ex, j) => {
-                    const amount = Number(ex?.amount || 0);
+                {safeExtras(p?.extras).map((ex, j) => {
+                  const amount = Number(ex?.amount || 0);
 
-                    return (
-                      <tr key={`ex-${i}-${j}`} className="ticket-extra">
-                        <td style={{ paddingLeft: "12px" }}>
-                          + {ex?.label || ex?.name || "Extra"}
-                        </td>
-                        <td className="right">
-                          {amount > 0 ? `${amount.toFixed(2)} €` : ""}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  const parts = [];
+                  if (ex?.placement) parts.push(ex.placement);
+                  if (ex?.quantity && ex.quantity !== "SIMPLE") parts.push(ex.quantity);
+
+                  const meta = parts.length ? ` (${parts.join(" - ")})` : "";
+
+                  return (
+                    <tr key={`ex-${i}-${j}`} className="ticket-extra">
+                      <td style={{ paddingLeft: "12px" }}>
+                        + {(ex?.label || ex?.name || "Extra")}{meta}
+                      </td>
+                      <td className="right">
+                        {amount > 0 ? `${amount.toFixed(2)} €` : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
                 </React.Fragment>
               );
             })}
