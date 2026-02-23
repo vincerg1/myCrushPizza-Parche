@@ -291,7 +291,6 @@ const updateCustomIngredient = (ingredient, updates) => {
     };
   });
 };
-
 const addCustomLine = () => {
   if (!selectedCustomBase || !customSize) return;
 
@@ -1074,7 +1073,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                       }}
                       aria-label={`Añadir ${it.name}`}
                     >
-                      {alreadyInCart ? "✔️" : "+agregar"}
+                      {alreadyInCart ? "✔️" : "Comprar"}
                     </button>
 
                   <div className="lsf-card__overlay">

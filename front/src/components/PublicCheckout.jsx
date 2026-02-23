@@ -948,15 +948,25 @@ const chooseMode = (
 
     </div>
 
-    {/* OFERTAS (FUERA DEL BLANCO) */}
-    <div
-      className="pc-hero-offers"
-      onClick={() => window.location.href = "https://juego.mycrushpizza.com/"}
-      role="button"
-      aria-label="Ver ofertas"
-    >
-      OFERTAS
-    </div>
+
+<div
+  className="pc-hero-offers"
+  onClick={() => window.location.href = "https://juego.mycrushpizza.com/"}
+  role="button"
+  aria-label="Ver ofertas"
+>
+  <span className="offers-title">OFERTAS</span>
+  <span className="offers-sub">[pulse aquí]</span>
+
+  <div className="offers-stars">
+    <svg viewBox="0 0 24 24">
+      <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
+    </svg>
+    <svg viewBox="0 0 24 24">
+      <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
+    </svg>
+  </div>
+</div>
 
   </div>
 );

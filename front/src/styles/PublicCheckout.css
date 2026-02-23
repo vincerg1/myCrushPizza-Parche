@@ -964,29 +964,107 @@ border-radius: 20px;
   background: #4285f4;
   color: #fff;
 }
+
 .pc-hero-offers {
-  margin-top: 10px;
-  margin-bottom: 0px;
-  background: #ff5a96;
-  color: #d4f806;
-  font-weight: 900;
-  font-size: 30px;          
-  letter-spacing: 20px;
-  text-align: center;
-  padding: 18px 10px;
-  border-radius: 20px;
-  cursor: pointer;
+  margin-top: 20px;
   position: relative;
-  animation: offersPulse 2.4s ease-in-out infinite;
+  overflow: hidden;
+  background: linear-gradient(135deg, #ff4e90, #ff4e90);
+  color: white;
+  font-weight: 900;
+  text-align: center;
+  padding: 22px 15px;
+  border-radius: 24px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  border: 4px solid #d4f806;
+
+  box-shadow:
+    0 6px 0 #b4d800,
+    0 12px 25px rgba(0,0,0,0.35);
+
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-@keyframes offersPulse {
-  0%   { transform: scale(1); box-shadow: 0 0 0 rgba(247,255,0,0.0); }
-  50%  { transform: scale(1.03); box-shadow: 0 0 18px rgba(1, 1, 0, 0.55); }
-  90% { transform: scale(1); box-shadow: 0 0 0 rgba(247,255,0,0.0); }
+
+/* CAPA DE LAS LÍNEAS */
+.pc-hero-offers::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(122, 21, 77, 0.08) 0px,
+    rgba(202, 3, 172, 0.441) 4px,
+    transparent 4px,
+    transparent 12px
+  );
+
+  animation: textureFade 12s ease-in-out infinite;
+}
+
+/* ANIMACIÓN SOLO PARA LAS LÍNEAS */
+@keyframes textureFade {
+  0%   { opacity: 0.15; }
+  50%  { opacity: 0.45; }
+  100% { opacity: 0.15; }
 }
 .pc-hero-offers:active {
-  transform: scale(0.98);
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #b4d800,
+    0 6px 15px rgba(0,0,0,0.3);
 }
+.offers-title {
+  font-size: 26px;
+  letter-spacing: 1px;
+}
+.offers-sub {
+  font-size: 14px;
+  font-weight: 700;
+  color: #d4f806;
+}
+.offers-stars {
+  position: absolute;
+  top: 12px;
+  right: 22px;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+.offers-stars svg {
+  width: 22px;
+  height: 22px;
+  fill: #d4f806;
+
+  /* glow arcade */
+  filter: drop-shadow(0 0 4px #d4f806);
+}
+@keyframes sparkle {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}
+.offers-stars svg:nth-child(1) {
+  animation: sparkle 2.2s ease-in-out infinite;
+}
+.offers-stars svg:nth-child(2) {
+  animation: sparkle 2.2s ease-in-out infinite 0.8s;
+}
+
+
+
+
+
+
+
+
 .pc-hero-whiteBox {
   background: #ffffff;
   border-radius: 20px;
