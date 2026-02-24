@@ -1255,6 +1255,7 @@ const chooseMode = (
     ingredientQuery={ingredientQuery}
     onClearIngredientQuery={() => setIngredientQuery("")}
     initialCart={step === "order" ? pending?.items : null}
+    coupon={couponOk ? coupon : null}
   onConfirmCart={(data) => {
     const sid =
       mode === "deliveryLocate"

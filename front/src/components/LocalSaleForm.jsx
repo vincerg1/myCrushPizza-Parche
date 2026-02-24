@@ -161,6 +161,7 @@ function getPizzaBadge(it) {
 }
 
 export default function LocalSaleForm({
+  coupon = null,
   forcedStoreId = null,
   compact = false,
    customerId = null,
@@ -847,19 +848,24 @@ const addHalfLine = () => {
 };
 
 const grossTotal = cart.reduce((t, l) => t + l.subtotal, 0);
-const coupon = null; // 🔥 luego aquí entrará el cupón real
 
 let discount = 0;
 
-if (coupon) {
+if (coupon && grossTotal > 0) {
+
   if (coupon.type === "fixed") {
-    discount = Math.min(coupon.amount, grossTotal);
+    discount = Math.min(Number(coupon.amount || 0), grossTotal);
   }
 
   if (coupon.type === "percentage") {
-    discount = grossTotal * (coupon.amount / 100);
+    const percent = Number(coupon.amount || 0);
+    discount = grossTotal * (percent / 100);
   }
+
 }
+
+discount = Math.min(discount, grossTotal);
+
 const total = Math.max(0, grossTotal - discount);
   // ───────── INCENTIVE (TEST MODE) ─────────
 
