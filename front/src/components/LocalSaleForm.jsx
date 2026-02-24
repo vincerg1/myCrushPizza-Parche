@@ -846,7 +846,21 @@ const addHalfLine = () => {
   setToast("Añadido al carrito");
 };
 
-  const total = cart.reduce((t, l) => t + l.subtotal, 0);
+const grossTotal = cart.reduce((t, l) => t + l.subtotal, 0);
+const coupon = null; // 🔥 luego aquí entrará el cupón real
+
+let discount = 0;
+
+if (coupon) {
+  if (coupon.type === "fixed") {
+    discount = Math.min(coupon.amount, grossTotal);
+  }
+
+  if (coupon.type === "percentage") {
+    discount = grossTotal * (coupon.amount / 100);
+  }
+}
+const total = Math.max(0, grossTotal - discount);
   // ───────── INCENTIVE (TEST MODE) ─────────
 
 const INCENTIVE_THRESHOLD = 15.99;
@@ -1330,66 +1344,85 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
               <div className="lsf-muted">Carrito vacío.</div>
             ) : (
               <>
-              <div className="lsf-cartlist">
-                {cart.map((l, i) => (
-                  <div key={i} className="lsf-cartrow">
+                <div className="lsf-cartlist">
+                  {cart.map((l, i) => (
+                    <div key={i} className="lsf-cartrow">
 
-                    <div className="lsf-cartrow__main">
+                      <div className="lsf-cartrow__main">
 
-                      <div className="lsf-cartrow__name">
-                        {l.name}
-                        <span className="lsf-cartrow__meta">
-                          ({l.size} × {l.qty})
-                        </span>
+                        <div className="lsf-cartrow__name">
+                          {l.name}
+                          <span className="lsf-cartrow__meta">
+                            ({l.size} × {l.qty})
+                          </span>
+                        </div>
+
+                        {/* INGREDIENTES CUSTOM */}
+                        {l.ingredients?.length > 0 && (
+                          <div className="lsf-cartrow__extras">
+                            {l.ingredients.map((ing) => (
+                              <div key={ing.id}>
+                                • {ing.name} ({ing.placement} - {ing.quantity})
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* EXTRAS NORMALES */}
+                        {l.extras?.length > 0 && (
+                          <div className="lsf-cartrow__extras">
+                            + {l.extras.map((e) => e.name).join(", ")}
+                          </div>
+                        )}
+
                       </div>
 
-                      {/* 🔹 INGREDIENTES CUSTOM */}
-                      {l.ingredients?.length > 0 && (
-                        <div className="lsf-cartrow__extras">
-                          {l.ingredients.map((ing) => (
-                            <div key={ing.id}>
-                              • {ing.name} ({ing.placement} - {ing.quantity})
-                            </div>
-                          ))}
+                      <div className="lsf-cartrow__right">
+                        <div className="lsf-cartrow__price">
+                          €{l.subtotal.toFixed(2)}
                         </div>
-                      )}
 
-                      {/* 🔹 EXTRAS NORMALES */}
-                      {l.extras?.length > 0 && (
-                        <div className="lsf-cartrow__extras">
-                          + {l.extras.map((e) => e.name).join(", ")}
-                        </div>
-                      )}
-
-                    </div>
-
-                    <div className="lsf-cartrow__right">
-                      <div className="lsf-cartrow__price">
-                        €{l.subtotal.toFixed(2)}
+                        <button
+                          type="button"
+                          className="lsf-iconbtn"
+                          onClick={() =>
+                            setCart((c) => c.filter((_, idx) => idx !== i))
+                          }
+                          aria-label="Eliminar línea"
+                        >
+                          ✕
+                        </button>
                       </div>
 
-                      <button
-                        type="button"
-                        className="lsf-iconbtn"
-                        onClick={() =>
-                          setCart((c) => c.filter((_, idx) => idx !== i))
-                        }
-                        aria-label="Eliminar línea"
-                      >
-                        ✕
-                      </button>
                     </div>
+                  ))}
+                </div>
 
-                  </div>
-                ))}
-              </div>
+                {/* FOOTER ECONÓMICO CORRECTO */}
                 <div className="lsf-cartfoot">
-                  <div className="lsf-cartfoot__total">Total: €{total.toFixed(2)}</div>
+
+                  {/* Subtotal bruto */}
+                  <div className="lsf-cartfoot__line">
+                    Subtotal: €{grossTotal.toFixed(2)}
+                  </div>
+
+                  {/* Descuento si existe */}
+                  {discount > 0 && (
+                    <div className="lsf-cartfoot__discount">
+                      Cupón aplicado: -€{discount.toFixed(2)}
+                    </div>
+                  )}
+
+                  {/* Total neto */}
+                  <div className="lsf-cartfoot__total">
+                    Total: €{total.toFixed(2)}
+                  </div>
 
                   <button
                     type="button"
                     className="lsf-btn lsf-btn--primary"
                     onClick={async () => {
+
                       const extrasArrayForItem = (line) =>
                         (line.extras || []).map((e) => ({
                           id: e.id,
@@ -1398,9 +1431,6 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                           amount: Number(e.price) || 0,
                         }));
 
-                      const extrasMapForItem = (line) =>
-                        Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
-
                       if (onConfirmCart) {
                         if (!storeId) return alert("Select store");
 
@@ -1408,10 +1438,8 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                           storeId: Number(storeId),
 
                           items: cart.map((c) => ({
-                            ...c, // 🔥 conserva estructura completa (HALF_HALF incluido)
-
+                            ...c,
                             extras: extrasArrayForItem(c),
-
                             extrasMap: Object.fromEntries(
                               (c.extras || []).map((e) => [e.id, true])
                             ),
@@ -1424,8 +1452,8 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                         return;
                       }
 
-
                       try {
+
                         const aggregatedExtras = cart.flatMap((c) =>
                           (c.extras || []).map((e) => ({
                             code: "EXTRA",
@@ -1434,53 +1462,46 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                           }))
                         );
 
-        const payload = {
-      storeId,
-      type: forcedStoreId ? "DELIVERY" : "LOCAL",
-      delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                        const payload = {
+                          storeId,
+                          type: forcedStoreId ? "DELIVERY" : "LOCAL",
+                          delivery: forcedStoreId ? "COURIER" : "PICKUP",
 
-      // 🔥 FUENTE DE VERDAD (link directo)
-      customerId: customerId ?? null,
+                          customerId: customerId ?? null,
 
-      // 🔥 SNAPSHOT / PATCH del cliente (AQUÍ VIAJAN LAS OBSERVATIONS)
-      customer: customer
-        ? {
-            id: customer.id ?? null,
-            name: customer.name ?? null,
-            phone: customer.phone ?? null,
-            address_1: customer.address_1 ?? customer.address ?? null,
-            observations: customer.observations ?? null,
-            lat: customer.lat ?? null,
-            lng: customer.lng ?? null,
-          }
-        : null,
+                          customer: customer
+                            ? {
+                                id: customer.id ?? null,
+                                name: customer.name ?? null,
+                                phone: customer.phone ?? null,
+                                address_1: customer.address_1 ?? customer.address ?? null,
+                                observations: customer.observations ?? null,
+                                lat: customer.lat ?? null,
+                                lng: customer.lng ?? null,
+                              }
+                            : null,
 
-      products: cart.map((c) => ({
-        pizzaId: c.pizzaId,
-        size: c.size,
-        qty: c.qty,
-        price: c.price,
-        extras: extrasArrayForItem(c),
-      })),
+                          products: cart.map((c) => ({
+                            pizzaId: c.pizzaId,
+                            size: c.size,
+                            qty: c.qty,
+                            price: c.price,
+                            extras: extrasArrayForItem(c),
+                          })),
 
-      totalProducts: cart.reduce(
-        (t, l) => t + Number(l.price || 0) * Number(l.qty || 1),
-        0
-      ),
-
-      discounts: 0,
-      total,
-      extras: aggregatedExtras,
-    };
-
-
-                        console.log("🧠 CUSTOMER EN LocalSaleForm (antes de enviar sale):", customer);
+                          totalProducts: grossTotal,
+                          discounts: discount,
+                          total,
+                          extras: aggregatedExtras,
+                        };
 
                         await api.post("/api/sales", payload);
+
                         setToast("Sale saved ✓");
                         setCart([]);
                         setCartOpen(false);
                         setTimeout(() => onDone(), 600);
+
                       } catch (e) {
                         console.error(e);
                         alert(e.response?.data?.error || "Error");
@@ -1489,6 +1510,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                   >
                     {onConfirmCart ? "Confirmar carrito" : "Confirm sale"}
                   </button>
+
                 </div>
               </>
             )}
