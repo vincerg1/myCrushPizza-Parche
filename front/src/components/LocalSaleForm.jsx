@@ -853,15 +853,21 @@ let discount = 0;
 
 if (coupon && grossTotal > 0) {
 
-  if (coupon.type === "fixed") {
-    discount = Math.min(Number(coupon.amount || 0), grossTotal);
+  if (coupon.kind === "AMOUNT") {
+    const amt = Number(coupon.amount || 0);
+    discount = Math.min(Math.max(amt, 0), grossTotal);
   }
 
-  if (coupon.type === "percentage") {
-    const percent = Number(coupon.amount || 0);
-    discount = grossTotal * (percent / 100);
-  }
+  if (coupon.kind === "PERCENT") {
+    const pct = Math.max(0, Math.min(100, Number(coupon.percent || 0)));
+    const raw = (grossTotal * pct) / 100;
 
+    const cap = coupon.maxAmount != null
+      ? Math.max(0, Number(coupon.maxAmount))
+      : Infinity;
+
+    discount = Math.min(raw, cap, grossTotal);
+  }
 }
 
 discount = Math.min(discount, grossTotal);
