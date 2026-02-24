@@ -1893,19 +1893,19 @@ if (couponOk && coupon?.code) {
   }
 
   // === Toast Cupón ===
-  const CouponToast = showCouponToast ? (
-    <div
-      className="pc-toast pc-toast--brand pc-toast--blink"
-      role="status"
-      onClick={() => setShowCouponToast(false)}
-    >
-      ✅ {coupon?.code} aplicado:{" "}
-      {coupon?.kind === "AMOUNT"
-        ? `-€${Number(coupon?.amount||0).toFixed(2)}`
-        : `${Number(coupon?.percent||0)}%${coupon?.maxAmount!=null ? ` (tope €${Number(coupon.maxAmount).toFixed(2)})` : ""}`
-      }
-    </div>
-  ) : null;
+  // const CouponToast = showCouponToast ? (
+  //   <div
+  //     className="pc-toast pc-toast--brand pc-toast--blink"
+  //     role="status"
+  //     onClick={() => setShowCouponToast(false)}
+  //   >
+  //     ✅ {coupon?.code} aplicado:{" "}
+  //     {coupon?.kind === "AMOUNT"
+  //       ? `-€${Number(coupon?.amount||0).toFixed(2)}`
+  //       : `${Number(coupon?.percent||0)}%${coupon?.maxAmount!=null ? ` (tope €${Number(coupon.maxAmount).toFixed(2)})` : ""}`
+  //     }
+  //   </div>
+  // ) : null;
 
   // === Caja de Cupón (solo portada) ===
   const CouponCard = (
