@@ -873,6 +873,9 @@ if (coupon && grossTotal > 0) {
 discount = Math.min(discount, grossTotal);
 
 const total = Math.max(0, grossTotal - discount);
+console.log("LSF coupon", coupon);
+
+console.log("LSF grossTotal/discount/total", { grossTotal, discount, total });
   // ───────── INCENTIVE (TEST MODE) ─────────
 
 const INCENTIVE_THRESHOLD = 15.99;
@@ -935,6 +938,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
   return (
     <>
+    
     {/* ───────── INCENTIVE BANNER ───────── */}
 <div
   className={`lsf-incentive ${

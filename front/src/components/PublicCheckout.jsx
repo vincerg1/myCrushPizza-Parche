@@ -273,7 +273,7 @@ const onPlaceChanged = useCallback(async () => {
   const COUPON_GROUPS = [3, 4, 4];
   const [ingredientQuery, setIngredientQuery] = useState("");
   const [showCouponInfo, setShowCouponInfo] = useState(false);
-
+const [showCouponNext, setShowCouponNext] = useState(false);
   useEffect(() => {
     if (couponOk && coupon) setShowCouponInfo(true);
   }, [couponOk, coupon]);
@@ -885,7 +885,15 @@ const onKeyDown = (e) => {
           </ul>
 
           <div className="pc-actions" style={{ marginTop: 12 }}>
-            <button className="pc-btn" onClick={onClose}>Entendido</button>
+            <button
+              className="pc-btn"
+              onClick={() => {
+                onClose();
+                setShowCouponNext(true);
+              }}
+            >
+              Entendido
+            </button>
             <button
               className="pc-btn pc-btn-ghost push"
               onClick={() => {
@@ -904,6 +912,65 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
+function CouponNextStepModal({ open, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div className="coupon-flow-overlay">
+      <div className="coupon-flow-modal">
+
+        <button
+          className="coupon-flow-close"
+          onClick={onClose}
+          aria-label="Cerrar"
+        >
+          ✕
+        </button>
+
+        <div className="coupon-flow-header">
+          <div className="coupon-flow-badge">Cupón activado 🎉</div>
+          <h2>¿Cómo quieres recibir tu pedido?</h2>
+          <p>Tu descuento ya está aplicado. Elige cómo continuar.</p>
+        </div>
+
+        <div className="coupon-flow-options">
+
+          <button
+            className="coupon-flow-card"
+            onClick={() => {
+              setMode("pickupLocate");
+              setStep("locate");
+              onClose();
+            }}
+          >
+            <div className="coupon-flow-icon">🏘️</div>
+            <div className="coupon-flow-title">Recoger</div>
+            <div className="coupon-flow-desc">
+              Recoge tu pedido en tienda
+            </div>
+          </button>
+
+          <button
+            className="coupon-flow-card"
+            onClick={() => {
+              setMode("deliveryLocate");
+              setStep("locate");
+              onClose();
+            }}
+          >
+            <div className="coupon-flow-icon">🛵</div>
+            <div className="coupon-flow-title">Domicilio</div>
+            <div className="coupon-flow-desc">
+              Te lo llevamos a casa
+            </div>
+          </button>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}
   // Paso 0: escoger modo
 const chooseMode = (
   <div className="pc-card pc-card--hero pc-hero-new">
@@ -1217,7 +1284,10 @@ const chooseMode = (
       )}
     </div>
   );
+  console.log("couponOk", couponOk);
+console.log("coupon passed to LSF", couponOk ? coupon : null);
   const orderView = (
+    
     <div className="pc-fullscreen">
 
       {/* 🔍 ORDER BAR */}
@@ -1244,6 +1314,7 @@ const chooseMode = (
       </div>
 
       {/* 🧠 LOCAL SALE FORM */}
+      
   <LocalSaleForm
     forcedStoreId={
       mode === "deliveryLocate"
@@ -1973,7 +2044,10 @@ if (couponOk && coupon?.code) {
           expiresAt: coupon?.expiresAt || null
         } : null}
       />
-
+      <CouponNextStepModal
+        open={showCouponNext}
+        onClose={() => setShowCouponNext(false)}
+      />
       <RestrictionModal
         open={restrictModal.open}
         info={restrictModal}
