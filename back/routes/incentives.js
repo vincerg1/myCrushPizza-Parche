@@ -22,10 +22,9 @@ module.exports = function (prisma) {
      ========================================================= */
   router.get("/", async (_req, res) => {
     try {
-      const incentives = await prisma.incentive.findMany({
-        orderBy: { createdAt: "desc" },
-        include: { rewardPizza: true },
-      });
+const incentives = await prisma.incentive.findMany({
+  orderBy: { createdAt: "desc" },
+});
       res.json(incentives);
     } catch (err) {
       console.error("GET /api/incentives error:", err);
@@ -114,23 +113,9 @@ module.exports = function (prisma) {
         });
       }
 
-      const created = await prisma.incentive.create({
-        data: {
-          name: String(name).trim(),
-          triggerMode,
-          fixedAmount:
-            triggerMode === "FIXED" ? asNumberOrNull(fixedAmount) : null,
-          percentOverAvg:
-            triggerMode === "SMART_AVG_TICKET"
-              ? asNumberOrNull(percentOverAvg)
-              : null,
-          rewardPizzaId: rewardId,
-          active: !!active,
-          startsAt: asDateOrNull(startsAt),
-          endsAt: asDateOrNull(endsAt),
-        },
-        include: { rewardPizza: true },
-      });
+        const created = await prisma.incentive.create({
+        data: { ... }
+        });
 
       res.json(created);
     } catch (err) {
