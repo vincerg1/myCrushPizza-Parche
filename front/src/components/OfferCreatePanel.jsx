@@ -258,17 +258,6 @@ export default function OfferCreatePanel() {
     }
   };
 
-
-
-
-
-
-
-
-
-
-
-
   return (
     <div className="panel-inner">
       <h2>Crear ofertas · Generar cupones</h2>

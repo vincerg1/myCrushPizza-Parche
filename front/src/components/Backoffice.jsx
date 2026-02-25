@@ -9,6 +9,7 @@ import MyOffersPanel from "./MyOffersPanel";
 import { useAuth } from "./AuthContext";
 import CustomersPanel from "./CustomersPanel";
 import OfferCreatePanel from "./OfferCreatePanel";
+import IncentivePanel from "./IncentivePanel";
 import OffersOverview from "./OffersOverview";
 import StoreInventory from "./StoreInventory";
 import MyOrdersStore from "./MyOrdersStore";
@@ -271,6 +272,7 @@ export default function Backoffice() {
       children: [
         { key: "offers/sms", label: "Enviar SMS" },
         { key: "offers/create", label: "Crear ofertas" },
+        { key: "offers/incentives", label: "Incentivos" }, 
       ],
     },
     { key: "myOrders", label: "My Orders" },
@@ -286,6 +288,7 @@ export default function Backoffice() {
       case "offers": return <OffersOverview onNavigate={setActive} />;
       case "offers/sms": return <MyOffersPanel />;
       case "offers/create": return <OfferCreatePanel />;
+      case "offers/incentives": return <IncentivePanel />;
       case "myOrders": return <MyOrdersGate />;
       default: return null;
     }

@@ -996,10 +996,11 @@ border-radius: 20px;
 .pc-hero-offers::before {
   content: "";
   position: absolute;
-  z-index: 1; 
+  z-index: 1;
   inset: 0;
   border-radius: 24px;
   pointer-events: none;
+
   background: repeating-linear-gradient(
     135deg,
     rgba(122, 21, 77, 0.08) 0px,
@@ -1008,14 +1009,19 @@ border-radius: 20px;
     transparent 12px
   );
 
-  animation: textureFade 12s ease-in-out infinite;
+  background-size: 200px 200px;
+
+  animation: diagonalMove 20s linear infinite;
 }
 
 /* ANIMACIÓN SOLO PARA LAS LÍNEAS */
-@keyframes textureFade {
-  0%   { opacity: 0.15; }
-  50%  { opacity: 0.45; }
-  100% { opacity: 0.15; }
+@keyframes diagonalMove {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 200px 200px;
+  }
 }
 .pc-hero-offers:active {
   transform: translateY(4px);
@@ -1029,32 +1035,39 @@ border-radius: 20px;
   z-index: 2;  
 }
 .offers-title {
-   font-family: 'Bungee Shade', cursive;
-   color: #d4f806;
-  font-size: 40px;
+  font-family: 'Bungee Shade', cursive;
+  font-size: 50px;
   letter-spacing: 1px;
   text-transform: uppercase;
   position: relative;
-  overflow: hidden;
 
-}
-.offers-title::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -50%;
-  width: 20%;
-  height: 100%;
-
+  /* Degradado animado dentro del texto */
   background: linear-gradient(
-    100deg,
-    transparent,
-    rgba(245, 220, 137, 0.26),
-    transparent
+    90deg,
+    #d4f806 0%,
+    #d4f806 40%,
+    #ffffff 50%,
+    #d4f806 60%,
+    #d4f806 100%
   );
 
-  transform: skewX(0deg);
-  animation: scan 7s ease-in-out infinite;
+  background-size: 200% 100%;
+  background-position: -100% 0;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  animation: textLight 6s ease-in-out infinite;
+}
+@keyframes textLight {
+  0% {
+    background-position: -100% 0;
+  }
+  50% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 /* ===== COUPON FLOW MODAL ===== */
