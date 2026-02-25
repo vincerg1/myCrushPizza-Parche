@@ -64,7 +64,8 @@ const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
 const ingredientExtrasRoutes  = require("./routes/ingredientExtras");
 const printRouter             = require("./routes/print");
-const basesPizzas = require("./routes/basesPizzas");
+const incentivesRoutes        = require("./routes/incentives");
+const basesPizzas             = require("./routes/basesPizzas");
 
 /* Montaje */
 app.use("/api/bases-pizzas", basesPizzas(prisma));
@@ -90,7 +91,8 @@ app.use("/api/games",           gamesRouter);
 app.use("/api",                 categoriesRouter);
 app.use("/api",                 ingredientExtrasRoutes);
 app.use("/api",                 printRouter);
-app.use("/api/ingredients", ingredientsRouter);
+app.use("/api/incentives",      incentivesRoutes);
+app.use("/api/ingredients",     ingredientsRouter);
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),

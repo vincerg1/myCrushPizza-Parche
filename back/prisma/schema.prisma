@@ -107,7 +107,10 @@ enum POSJobStatus {
   PRINTED
   FAILED
 }
-
+enum IncentiveTriggerMode {
+  FIXED
+  SMART_AVG_TICKET
+}
 
 /**
  * ======================= MODELOS =======================
@@ -127,6 +130,7 @@ model MenuPizza {
   updatedAt     DateTime              @updatedAt
   ingredients   MenuPizzaIngredient[]
   stocks        StorePizzaStock[]
+  incentives    Incentive[]
 }
 model MenuPizzaIngredient {
   id           Int  @id @default(autoincrement())
@@ -238,7 +242,8 @@ model Sale {
   lng                     Float?
   stripePaymentIntentId   String?        @unique @db.VarChar(191)
   stripeCheckoutSessionId String?        @unique @db.VarChar(191)
-
+  incentiveId Int?
+  incentive   Incentive? @relation(fields: [incentiveId], references: [id])
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
 
@@ -458,4 +463,24 @@ model POSJob {
   processedAt DateTime?
 
   @@index([posId, status])
+}
+model Incentive {
+  id              Int      @id @default(autoincrement())
+  name            String
+
+  triggerMode     IncentiveTriggerMode
+  fixedAmount     Float?          // usado si FIXED
+  percentOverAvg  Float?          // usado si SMART
+
+  rewardPizzaId   Int
+  rewardPizza     MenuPizza @relation(fields: [rewardPizzaId], references: [id])
+
+  active          Boolean  @default(false)
+
+  startsAt        DateTime?
+  endsAt          DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  sales     Sale[]
 }
