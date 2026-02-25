@@ -64,7 +64,7 @@ const gamesRouter           = require("./routes/games")(prisma);
 const categoriesRouter      = require("./routes/categories");
 const ingredientExtrasRoutes  = require("./routes/ingredientExtras");
 const printRouter             = require("./routes/print");
-const incentivesRoutes        = require("./routes/incentives");
+const incentivesRoutes = require("./routes/incentives")(prisma);
 const basesPizzas             = require("./routes/basesPizzas");
 
 /* Montaje */
