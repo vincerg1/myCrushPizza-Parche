@@ -4,7 +4,9 @@ const express = require("express");
 module.exports = function (prisma) {
   const router = express.Router();
 
-  // helpers
+  /* ─────────────────────────────────────────────
+     Helpers
+  ───────────────────────────────────────────── */
   const asNumberOrNull = (v) => {
     if (v === "" || v === null || v === undefined) return null;
     const n = Number(v);
@@ -19,12 +21,13 @@ module.exports = function (prisma) {
 
   /* =========================================================
      GET ALL INCENTIVES
-     ========================================================= */
+  ========================================================= */
   router.get("/", async (_req, res) => {
     try {
-const incentives = await prisma.incentive.findMany({
-  orderBy: { createdAt: "desc" },
-});
+      const incentives = await prisma.incentive.findMany({
+        orderBy: { createdAt: "desc" },
+      });
+
       res.json(incentives);
     } catch (err) {
       console.error("GET /api/incentives error:", err);
@@ -33,8 +36,8 @@ const incentives = await prisma.incentive.findMany({
   });
 
   /* =========================================================
-     GET ACTIVE INCENTIVE (PARA LSF)
-     ========================================================= */
+     GET ACTIVE INCENTIVE
+  ========================================================= */
   router.get("/active/one", async (_req, res) => {
     try {
       const now = new Date();
@@ -43,15 +46,10 @@ const incentives = await prisma.incentive.findMany({
         where: {
           active: true,
           AND: [
-            {
-              OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-            },
-            {
-              OR: [{ endsAt: null }, { endsAt: { gte: now } }],
-            },
+            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
           ],
         },
-        include: { rewardPizza: true },
       });
 
       res.json(incentive || null);
@@ -63,7 +61,7 @@ const incentives = await prisma.incentive.findMany({
 
   /* =========================================================
      CREATE INCENTIVE
-     ========================================================= */
+  ========================================================= */
   router.post("/", async (req, res) => {
     try {
       const {
@@ -90,7 +88,6 @@ const incentives = await prisma.incentive.findMany({
         return res.status(400).json({ error: "Invalid rewardPizzaId" });
       }
 
-      // Validación por modo
       if (triggerMode === "FIXED") {
         const fa = asNumberOrNull(fixedAmount);
         if (fa === null || fa <= 0) {
@@ -105,7 +102,7 @@ const incentives = await prisma.incentive.findMany({
         }
       }
 
-      // Si viene activo=true -> desactivar otros
+      // Si viene active=true → desactivar otros
       if (active === true) {
         await prisma.incentive.updateMany({
           where: { active: true },
@@ -113,20 +110,33 @@ const incentives = await prisma.incentive.findMany({
         });
       }
 
-        const created = await prisma.incentive.create({
-        data: { ... }
-        });
+      const created = await prisma.incentive.create({
+        data: {
+          name: String(name).trim(),
+          triggerMode,
+          fixedAmount:
+            triggerMode === "FIXED" ? asNumberOrNull(fixedAmount) : null,
+          percentOverAvg:
+            triggerMode === "SMART_AVG_TICKET"
+              ? asNumberOrNull(percentOverAvg)
+              : null,
+          rewardPizzaId: rewardId,
+          active: !!active,
+          startsAt: asDateOrNull(startsAt),
+          endsAt: asDateOrNull(endsAt),
+        },
+      });
 
       res.json(created);
     } catch (err) {
       console.error("POST /api/incentives error:", err);
-      res.status(500).json({ error: "Error creating incentive" });
+      res.status(500).json({ error: err.message });
     }
   });
 
   /* =========================================================
      UPDATE INCENTIVE
-     ========================================================= */
+  ========================================================= */
   router.patch("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -145,18 +155,6 @@ const incentives = await prisma.incentive.findMany({
         endsAt,
       } = req.body || {};
 
-      if (triggerMode && !["FIXED", "SMART_AVG_TICKET"].includes(triggerMode)) {
-        return res.status(400).json({ error: "Invalid triggerMode" });
-      }
-
-      // Si lo activan -> desactivar otros
-      if (active === true) {
-        await prisma.incentive.updateMany({
-          where: { active: true, NOT: { id } },
-          data: { active: false },
-        });
-      }
-
       const data = {};
 
       if (name != null) data.name = String(name).trim();
@@ -170,51 +168,43 @@ const incentives = await prisma.incentive.findMany({
         data.rewardPizzaId = rewardId;
       }
 
+      if (active === true) {
+        await prisma.incentive.updateMany({
+          where: { active: true, NOT: { id } },
+          data: { active: false },
+        });
+      }
+
       if (active != null) data.active = !!active;
 
-      // fechas: si viene "" => null
       if (startsAt !== undefined) data.startsAt = asDateOrNull(startsAt);
       if (endsAt !== undefined) data.endsAt = asDateOrNull(endsAt);
 
-      // Importante: si cambian triggerMode, limpiamos lo otro.
-      const mode = triggerMode;
-
-      if (mode === "FIXED") {
-        const fa = asNumberOrNull(fixedAmount);
-        if (fa === null || fa <= 0) {
-          return res.status(400).json({ error: "Invalid fixedAmount" });
-        }
-        data.fixedAmount = fa;
+      if (triggerMode === "FIXED") {
+        data.fixedAmount = asNumberOrNull(fixedAmount);
         data.percentOverAvg = null;
-      } else if (mode === "SMART_AVG_TICKET") {
-        const p = asNumberOrNull(percentOverAvg);
-        if (p === null || p <= 0) {
-          return res.status(400).json({ error: "Invalid percentOverAvg" });
-        }
-        data.percentOverAvg = p;
+      }
+
+      if (triggerMode === "SMART_AVG_TICKET") {
+        data.percentOverAvg = asNumberOrNull(percentOverAvg);
         data.fixedAmount = null;
-      } else {
-        // si no cambia mode, pero envían valores:
-        if (fixedAmount !== undefined) data.fixedAmount = asNumberOrNull(fixedAmount);
-        if (percentOverAvg !== undefined) data.percentOverAvg = asNumberOrNull(percentOverAvg);
       }
 
       const updated = await prisma.incentive.update({
         where: { id },
         data,
-        include: { rewardPizza: true },
       });
 
       res.json(updated);
     } catch (err) {
       console.error("PATCH /api/incentives/:id error:", err);
-      res.status(500).json({ error: "Error updating incentive" });
+      res.status(500).json({ error: err.message });
     }
   });
 
   /* =========================================================
-     ACTIVATE INCENTIVE (UNIQUE ACTIVE)
-     ========================================================= */
+     ACTIVATE INCENTIVE
+  ========================================================= */
   router.patch("/:id/activate", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -230,13 +220,12 @@ const incentives = await prisma.incentive.findMany({
       const activated = await prisma.incentive.update({
         where: { id },
         data: { active: true },
-        include: { rewardPizza: true },
       });
 
       res.json(activated);
     } catch (err) {
       console.error("PATCH /api/incentives/:id/activate error:", err);
-      res.status(500).json({ error: "Error activating incentive" });
+      res.status(500).json({ error: err.message });
     }
   });
 
