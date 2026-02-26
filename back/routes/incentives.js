@@ -19,6 +19,10 @@ module.exports = function (prisma) {
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
+router.get("/ping", (_req, res) => {
+  res.json({ ok: true, t: Date.now() });
+});
+
   /* =========================================================
      GET ALL INCENTIVES
   ========================================================= */
