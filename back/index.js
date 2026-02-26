@@ -147,19 +147,7 @@ app.post('/ganadores', async (_, res) => {
   }
 });
 
-console.log("===== ROUTE STACK =====");
 
-app._router.stack
-  .filter(r => r.route || r.name === "router")
-  .forEach((layer) => {
-    if (layer.route) {
-      console.log("ROUTE:", layer.route.path);
-    } else if (layer.name === "router" && layer.regexp) {
-      console.log("MOUNTED ROUTER:", layer.regexp);
-    }
-  });
-
-console.log("===== END ROUTE STACK =====");
 
 /* 404 y errores genéricos (último) */
 app.use((req, res) => res.status(404).json({ error: 'Not Found' }));
