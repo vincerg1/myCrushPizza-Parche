@@ -88,11 +88,11 @@ app.use('/api/app',             appRouter);
 app.use('/api/whatsapp',        whatsappWebhookRouter);
 app.use("/api/whatsapp",        whatsappRouter);
 app.use("/api/games",           gamesRouter);
+app.use("/api/incentives",      incentivesRoutes);
+app.use("/api/ingredients",     ingredientsRouter);
 app.use("/api",                 categoriesRouter);
 app.use("/api",                 ingredientExtrasRoutes);
 app.use("/api",                 printRouter);
-app.use("/api/incentives",      incentivesRoutes);
-app.use("/api/ingredients",     ingredientsRouter);
 app.post(
   '/twilio/status-callback',
   express.urlencoded({ extended: false }),
@@ -146,6 +146,20 @@ app.post('/ganadores', async (_, res) => {
     res.status(500).json({ error: 'Error al crear ganador' });
   }
 });
+
+console.log("===== ROUTE STACK =====");
+
+app._router.stack
+  .filter(r => r.route || r.name === "router")
+  .forEach((layer) => {
+    if (layer.route) {
+      console.log("ROUTE:", layer.route.path);
+    } else if (layer.name === "router" && layer.regexp) {
+      console.log("MOUNTED ROUTER:", layer.regexp);
+    }
+  });
+
+console.log("===== END ROUTE STACK =====");
 
 /* 404 y errores genéricos (último) */
 app.use((req, res) => res.status(404).json({ error: 'Not Found' }));

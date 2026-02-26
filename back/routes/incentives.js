@@ -2,7 +2,7 @@
 const express = require("express");
 
 module.exports = function (prisma) {
-  const router = express.Router();
+  const r  = express.Router();
 
   /* ─────────────────────────────────────────────
      Helpers
@@ -19,14 +19,14 @@ module.exports = function (prisma) {
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
-router.get("/ping", (_req, res) => {
+r.get("/ping", (_req, res) => {
   res.json({ ok: true, t: Date.now() });
 });
 
   /* =========================================================
      GET ALL INCENTIVES
   ========================================================= */
-  router.get("/", async (_req, res) => {
+  r.get("/", async (_req, res) => {
     try {
       const incentives = await prisma.incentive.findMany({
         orderBy: { createdAt: "desc" },
@@ -42,7 +42,7 @@ router.get("/ping", (_req, res) => {
   /* =========================================================
      GET ACTIVE INCENTIVE
   ========================================================= */
-  router.get("/active/one", async (_req, res) => {
+  r.get("/active/one", async (_req, res) => {
     try {
       const now = new Date();
 
@@ -66,7 +66,7 @@ router.get("/ping", (_req, res) => {
   /* =========================================================
      CREATE INCENTIVE
   ========================================================= */
-  router.post("/", async (req, res) => {
+  r.post("/", async (req, res) => {
     try {
       const {
         name,
@@ -141,7 +141,7 @@ router.get("/ping", (_req, res) => {
   /* =========================================================
      UPDATE INCENTIVE
   ========================================================= */
-  router.patch("/:id", async (req, res) => {
+  r.patch("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!Number.isFinite(id) || id <= 0) {
@@ -209,7 +209,7 @@ router.get("/ping", (_req, res) => {
   /* =========================================================
      ACTIVATE INCENTIVE
   ========================================================= */
-  router.patch("/:id/activate", async (req, res) => {
+  r.patch("/:id/activate", async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!Number.isFinite(id) || id <= 0) {
@@ -233,5 +233,5 @@ router.get("/ping", (_req, res) => {
     }
   });
 
-  return router;
+  return r;
 };

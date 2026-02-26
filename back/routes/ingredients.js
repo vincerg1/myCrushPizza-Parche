@@ -21,8 +21,6 @@ module.exports = function (prisma) {
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
   };
-
-
   r.get("/", async (_, res) => {
     try {
       const data = await prisma.ingredient.findMany({
