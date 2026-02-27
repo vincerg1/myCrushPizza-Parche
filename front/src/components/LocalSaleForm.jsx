@@ -175,6 +175,7 @@ export default function LocalSaleForm({
   const isAdmin = auth?.role === "admin";
 
   /* state */
+  const [activeIncentive, setActiveIncentive] = useState(null);
   const [storeId, setStoreId] = useState(forcedStoreId);
   const [stores, setStores] = useState([]);
   const [menu, setMenu] = useState([]);
@@ -218,6 +219,20 @@ const [customSize, setCustomSize] = useState("");
 const [customQty, setCustomQty] = useState(1);
 const [customIngredients, setCustomIngredients] = useState({});
 const [customOpenSection, setCustomOpenSection] = useState(null);
+
+
+useEffect(() => {
+  api.get("/api/incentives/active/one")
+    .then(r => {
+      if (r.data && r.data.triggerMode === "FIXED") {
+        setActiveIncentive(r.data);
+      } else {
+        setActiveIncentive(null);
+      }
+    })
+    .catch(() => setActiveIncentive(null));
+}, []);
+
 
 useEffect(() => {
   if (buildMode !== "custom") return;
@@ -620,6 +635,18 @@ useEffect(() => {
     return found?.id || null;
   }, [current, categoriesDb]);
 
+// ───────── INCENTIVE REWARD RESOLUTION ─────────
+const incentiveRewardPizza = useMemo(() => {
+  if (!activeIncentive?.rewardPizzaId) return null;
+
+  return menu.find(
+    m => Number(m.pizzaId) === Number(activeIncentive.rewardPizzaId)
+  ) || null;
+}, [activeIncentive, menu]);
+
+const incentiveRewardName =
+  incentiveRewardPizza?.name || "Premio especial";
+
 const toggleHalfExtra = (side, ingredientId) => {
   setHalfExtras(prev => ({
     ...prev,
@@ -876,21 +903,29 @@ const total = Math.max(0, grossTotal - discount);
 console.log("LSF coupon", coupon);
 
 console.log("LSF grossTotal/discount/total", { grossTotal, discount, total });
-  // ───────── INCENTIVE (TEST MODE) ─────────
 
-const INCENTIVE_THRESHOLD = 15.99;
+// ───────── INCENTIVE (BACKEND MODE) ─────────
 
-const incentiveUnlocked = total >= INCENTIVE_THRESHOLD;
+const INCENTIVE_THRESHOLD =
+  activeIncentive?.triggerMode === "FIXED"
+    ? Number(activeIncentive.fixedAmount || 0)
+    : null;
 
-const incentiveRemaining = Math.max(
-  0,
-  INCENTIVE_THRESHOLD - total
-);
+const incentiveUnlocked =
+  INCENTIVE_THRESHOLD != null
+    ? total >= INCENTIVE_THRESHOLD
+    : false;
 
-const incentiveProgress = Math.min(
-  100,
-  (total / INCENTIVE_THRESHOLD) * 100
-);
+const incentiveRemaining =
+  INCENTIVE_THRESHOLD != null
+    ? Math.max(0, INCENTIVE_THRESHOLD - total)
+    : 0;
+
+const incentiveProgress =
+  INCENTIVE_THRESHOLD != null && INCENTIVE_THRESHOLD > 0
+    ? Math.min(100, (total / INCENTIVE_THRESHOLD) * 100)
+    : 0;
+
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
   const getImg = (it) => it?.image || "";
@@ -940,31 +975,33 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
     <>
     
     {/* ───────── INCENTIVE BANNER ───────── */}
-<div
-  className={`lsf-incentive ${
-    !incentiveUnlocked ? "is-breathing" : ""
-  }`}
->
-  {!incentiveUnlocked ? (
-    <>
-      <div className="lsf-incentive__text">
-        🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
-        <b> Panzerotti Tradicional de regalo =)</b>
-      </div>
+{INCENTIVE_THRESHOLD != null && (
+  <div
+    className={`lsf-incentive ${
+      !incentiveUnlocked ? "is-breathing" : ""
+    }`}
+  >
+    {!incentiveUnlocked ? (
+      <>
+        <div className="lsf-incentive__text">
+          🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
+          <b> {incentiveRewardName} de regalo =)</b>
+        </div>
 
-      <div className="lsf-incentive__bar">
-        <div
-          className="lsf-incentive__fill"
-          style={{ width: `${incentiveProgress}%` }}
-        />
+        <div className="lsf-incentive__bar">
+          <div
+            className="lsf-incentive__fill"
+            style={{ width: `${incentiveProgress}%` }}
+          />
+        </div>
+      </>
+    ) : (
+      <div className="lsf-incentive__unlocked">
+        🎉 ¡{incentiveRewardName} desbloqueado!
       </div>
-    </>
-  ) : (
-    <div className="lsf-incentive__unlocked">
-      🎉 ¡Panzerotti Tradicional desbloqueado!
-    </div>
-  )}
-</div>
+    )}
+  </div>
+)}
         <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         <div className="lsf-top">
           <div className="lsf-top__title">

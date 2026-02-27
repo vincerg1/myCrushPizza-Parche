@@ -1,15 +1,17 @@
 // src/components/IncentivePanel.jsx
 import React, { useEffect, useState } from "react";
 import api from "../setupAxios";
+import "../styles/IncentivePanel.css";
 
 export default function IncentivePanel() {
-
   const [incentives, setIncentives] = useState([]);
+  const [pizzas, setPizzas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
   const [editingId, setEditingId] = useState(null);
-  const [pizzas, setPizzas] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [msg, setMsg] = useState("");
+
   const [form, setForm] = useState({
     name: "",
     triggerMode: "FIXED",
@@ -18,49 +20,45 @@ export default function IncentivePanel() {
     rewardPizzaId: "",
     active: false,
     startsAt: "",
-    endsAt: ""
+    endsAt : "",
   });
 
-const load = async () => {
-  setLoading(true);
-  try {
-    const { data } = await api.get("/api/incentives");
-    setIncentives(Array.isArray(data) ? data : []);
-  } catch {
-    setIncentives([]);
-  } finally {
-    setLoading(false);
-  }
-};
+  /* ───────────────────────── LOAD ───────────────────────── */
 
-/* ───────────── Load pizzas ───────────── */
+  const loadIncentives = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/api/incentives");
+      setIncentives(Array.isArray(data) ? data : []);
+    } catch {
+      setIncentives([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-const loadPizzas = async () => {
-  try {
-    const { data } = await api.get("/api/pizzas");
-
-    const active = Array.isArray(data)
-      ? data.filter(p => p.status === "ACTIVE")
-      : [];
-
-    setPizzas(active);
-  } catch {
-    setPizzas([]);
-  }
-};
+  const loadPizzas = async () => {
+    try {
+      const { data } = await api.get("/api/pizzas");
+      const active = Array.isArray(data) ? data.filter((p) => p.status === "ACTIVE") : [];
+      setPizzas(active);
+    } catch {
+      setPizzas([]);
+    }
+  };
 
   useEffect(() => {
-    load();
+    loadIncentives();
     loadPizzas();
   }, []);
 
-  /* ───────────── Handlers ───────────── */
+  /* ───────────────────────── FORM ───────────────────────── */
 
-  const onChange = (k, v) =>
-    setForm(f => ({ ...f, [k]: v }));
+  const onChange = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
 
   const resetForm = () => {
     setEditingId(null);
+    setMsg("");
     setForm({
       name: "",
       triggerMode: "FIXED",
@@ -69,53 +67,66 @@ const loadPizzas = async () => {
       rewardPizzaId: "",
       active: false,
       startsAt: "",
-      endsAt: ""
+      endsAt: "",
     });
   };
 
-  const edit = (inc) => {
+  const openCreate = () => {
+    resetForm();
+    setEditingId(null);
+    setShowForm(true);
+  };
+
+  const openEdit = (inc) => {
+    setMsg("");
     setEditingId(inc.id);
     setForm({
       name: inc.name || "",
-      triggerMode: inc.triggerMode,
-      fixedAmount: inc.fixedAmount || "",
-      percentOverAvg: inc.percentOverAvg || "",
-      rewardPizzaId: inc.rewardPizzaId || "",
-      active: inc.active || false,
-      startsAt: inc.startsAt ? inc.startsAt.slice(0,16) : "",
-      endsAt: inc.endsAt ? inc.endsAt.slice(0,16) : ""
+      triggerMode: inc.triggerMode || "FIXED",
+      fixedAmount: inc.fixedAmount ?? "",
+      percentOverAvg: inc.percentOverAvg ?? "",
+      rewardPizzaId: inc.rewardPizzaId ?? "",
+      active: !!inc.active,
+      startsAt: inc.startsAt ? inc.startsAt.slice(0, 16) : "",
+      endsAt: inc.endsAt ? inc.endsAt.slice(0, 16) : "",
     });
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    resetForm();
+    setShowForm(false);
   };
 
   const submit = async (e) => {
     e.preventDefault();
     setMsg("");
 
-    if (!form.name) return setMsg("Nombre requerido.");
+    if (!form.name?.trim()) return setMsg("Nombre requerido.");
     if (!form.rewardPizzaId) return setMsg("Selecciona producto premio.");
 
-    if (form.triggerMode === "FIXED" && !Number(form.fixedAmount))
+    if (form.triggerMode === "FIXED" && !Number(form.fixedAmount)) {
       return setMsg("Monto fijo inválido.");
+    }
 
-    if (form.triggerMode === "SMART_AVG_TICKET" && !Number(form.percentOverAvg))
+    if (form.triggerMode === "SMART_AVG_TICKET" && !Number(form.percentOverAvg)) {
       return setMsg("Percent over average inválido.");
+    }
 
     setSaving(true);
 
     try {
       const payload = {
-        name: form.name,
+        name: form.name.trim(),
         triggerMode: form.triggerMode,
         rewardPizzaId: Number(form.rewardPizzaId),
-        active: form.active,
+        active: !!form.active,
         startsAt: form.startsAt || null,
         endsAt: form.endsAt || null,
-        ...(form.triggerMode === "FIXED" && {
-          fixedAmount: Number(form.fixedAmount)
-        }),
+        ...(form.triggerMode === "FIXED" && { fixedAmount: Number(form.fixedAmount) }),
         ...(form.triggerMode === "SMART_AVG_TICKET" && {
-          percentOverAvg: Number(form.percentOverAvg)
-        })
+          percentOverAvg: Number(form.percentOverAvg),
+        }),
       };
 
       if (editingId) {
@@ -126,9 +137,10 @@ const loadPizzas = async () => {
         setMsg("Incentivo creado.");
       }
 
+      await loadIncentives();
+      // si quieres que se quede abierto tras guardar, comenta estas 2 líneas:
       resetForm();
-      load();
-
+      setShowForm(false);
     } catch {
       setMsg("Error guardando incentivo.");
     } finally {
@@ -136,170 +148,171 @@ const loadPizzas = async () => {
     }
   };
 
+  /* ───────────────────────── ACTIONS ───────────────────────── */
+
   const activate = async (id) => {
-    await api.patch(`/api/incentives/${id}/activate`);
-    load();
+    try {
+      await api.patch(`/api/incentives/${id}/activate`);
+      await loadIncentives();
+    } catch {
+      // opcional
+    }
   };
 
-  const activeIncentive = incentives.find(i => i.active);
+  const remove = async (id) => {
+    if (!window.confirm("¿Eliminar este incentivo?")) return;
+    try {
+      await api.delete(`/api/incentives/${id}`);
+      await loadIncentives();
+      if (editingId === id) closeForm();
+    } catch {
+      // opcional
+    }
+  };
+
+  /* ───────────────────────── RENDER ───────────────────────── */
 
   return (
-    <div className="panel-inner">
-      <h2>Incentivos</h2>
+    <div className="IncentivePanel">
+      {/* ───────── HEADER ───────── */}
+      <div className="IncentivePanel-header">
+        <h2>Incentives</h2>
 
-      {/* ───────────── Active incentive ───────────── */}
-      {activeIncentive && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <strong>Incentivo activo:</strong>
-          <div style={{ marginTop: 8 }}>
-            <div><b>{activeIncentive.name}</b></div>
-            <div>
-              Trigger: {
-                activeIncentive.triggerMode === "FIXED"
-                  ? `€${activeIncentive.fixedAmount}`
-                  : `${activeIncentive.percentOverAvg}% sobre ticket promedio`
-              }
-            </div>
-            <div>Premio: {activeIncentive.rewardPizza?.name}</div>
-          </div>
-        </div>
-      )}
-
-      {/* ───────────── List ───────────── */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <h3>Histórico</h3>
-
-        {loading && <p className="note">Cargando…</p>}
-
-        {!loading && incentives.map(i => (
-          <div key={i.id}
-            style={{
-              display:"flex",
-              justifyContent:"space-between",
-              alignItems:"center",
-              padding:"8px 0",
-              borderBottom:"1px solid #eee"
-            }}
-          >
-            <div>
-              <div><b>{i.name}</b></div>
-              <div className="note">
-                {i.triggerMode === "FIXED"
-                  ? `€${i.fixedAmount}`
-                  : `${i.percentOverAvg}% sobre promedio`}
-                {i.active && " · ACTIVO"}
-              </div>
-            </div>
-
-            <div style={{ display:"flex", gap:8 }}>
-              {!i.active && (
-                <button className="btn" onClick={() => activate(i.id)}>
-                  Activar
-                </button>
-              )}
-              <button className="btn" onClick={() => edit(i)}>
-                Editar
-              </button>
-            </div>
-          </div>
-        ))}
+        <button className="IncentivePanel-addBtn" onClick={openCreate}>
+          + Add Incentive
+        </button>
       </div>
 
-      {/* ───────────── Form ───────────── */}
-      <form onSubmit={submit} className="card" style={{ maxWidth: 600 }}>
-
-        <div className="row">
-          <label>Nombre</label>
-          <input className="input"
-            value={form.name}
-            onChange={e => onChange("name", e.target.value)}
-          />
+      {/* ───────── KPI ROW (placeholder futuro) ───────── */}
+      <div className="IncentivePanel-kpis">
+        <div className="IncentivePanel-kpiCard">
+          <span>Total Incentives</span>
+          <strong>{incentives.length}</strong>
         </div>
 
-        <div className="row">
-          <label>Tipo de trigger</label>
-          <select className="input"
-            value={form.triggerMode}
-            onChange={e => onChange("triggerMode", e.target.value)}
-          >
-            <option value="FIXED">Monto fijo</option>
-            <option value="SMART_AVG_TICKET">% sobre ticket promedio</option>
-          </select>
+        <div className="IncentivePanel-kpiCard">
+          <span>Active</span>
+          <strong>{incentives.filter((i) => i.active).length}</strong>
         </div>
+      </div>
 
-        {form.triggerMode === "FIXED" && (
-          <div className="row">
-            <label>Monto mínimo (€)</label>
-            <input className="input" type="number"
-              value={form.fixedAmount}
-              onChange={e => onChange("fixedAmount", e.target.value)}
-            />
-          </div>
-        )}
+      {/* ───────── HISTÓRICO ───────── */}
+      <div className="IncentivePanel-history">
+        {loading && <div className="IncentivePanel-note">Loading...</div>}
 
-        {form.triggerMode === "SMART_AVG_TICKET" && (
-          <div className="row">
-            <label>% sobre promedio</label>
-            <input className="input" type="number"
-              value={form.percentOverAvg}
-              onChange={e => onChange("percentOverAvg", e.target.value)}
-            />
-          </div>
-        )}
+        {!loading &&
+          incentives.map((i) => (
+            <div key={i.id} className="IncentivePanel-row">
+              <div className="IncentivePanel-col">
+                <div className="IncentivePanel-name">{i.name}</div>
+                <div className="IncentivePanel-meta">
+                  {i.triggerMode === "FIXED" ? `€${i.fixedAmount}` : `${i.percentOverAvg}% over avg`}
+                </div>
+              </div>
 
-            <div className="row">
-            <label>Pizza premio</label>
-            <select
-                className="input"
-                value={form.rewardPizzaId}
-                onChange={e => onChange("rewardPizzaId", e.target.value)}
-            >
-                <option value="">Selecciona una pizza…</option>
-                {pizzas.map(p => (
-                <option key={p.id} value={p.id}>
-                    {p.id} · {p.name}
-                </option>
-                ))}
-            </select>
+    
+              <div className="IncentivePanel-actions">
+
+                <button
+                  className={`IncentivePanel-btn ${i.active ? "active" : ""}`}
+                  onClick={() => !i.active && activate(i.id)}
+                  disabled={i.active}
+                >
+                  {i.active ? "Active" : "Activate"}
+                </button>
+
+                <button
+                  className="IncentivePanel-btn"
+                  onClick={() => openEdit(i)}
+                >
+                  Edit
+                </button>
+
+                <button
+                  className="IncentivePanel-btn danger"
+                  onClick={() => remove(i.id)}
+                >
+                  Delete
+                </button>
+
+              </div>
             </div>
+          ))}
+      </div>
 
-        <div className="row">
-          <label>
-            <input type="checkbox"
-              checked={form.active}
-              onChange={e => onChange("active", e.target.checked)}
-            />
-            Activar al guardar
-          </label>
-        </div>
+      {/* ───────── FORM ───────── */}
+      {showForm && (
+        <form onSubmit={submit} className="IncentivePanel-form">
+          <h3>{editingId ? "Edit Incentive" : "Create Incentive"}</h3>
 
-        <div className="actions">
-          <button className="btn" type="button" onClick={resetForm}>
-            Cancelar
-          </button>
-          <button className="btn primary" disabled={saving}>
-            {saving ? "Guardando…" : editingId ? "Actualizar" : "Crear"}
-          </button>
-        </div>
+          <div className="IncentivePanel-field">
+            <label>Name</label>
+            <input value={form.name} onChange={(e) => onChange("name", e.target.value)} />
+          </div>
 
-        {msg && <p className="note">{msg}</p>}
-      </form>
+          <div className="IncentivePanel-field">
+            <label>Trigger type</label>
+            <select value={form.triggerMode} onChange={(e) => onChange("triggerMode", e.target.value)}>
+              <option value="FIXED">Fixed amount</option>
+              <option value="SMART_AVG_TICKET">% over average</option>
+            </select>
+          </div>
 
-      <style>{`
-        .card{
-          background:#fff; border:1px solid #e9eaee; border-radius:16px;
-          padding:18px; box-shadow:0 12px 28px rgba(16,24,40,.06);
-        }
-        .row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
-        .input{
-          width:100%; padding:10px 12px; border:1px solid #dfe3e8; border-radius:10px;
-          font-size:14px; outline:none;
-        }
-        .actions{ display:flex; gap:10px; }
-        .btn{ padding:8px 12px; border-radius:10px; border:1px solid #dfe3e8; background:#fff; cursor:pointer; }
-        .btn.primary{ background:#ff2e73; border-color:#ff2e73; color:#fff; }
-        .note{ font-size:12px; color:#666; }
-      `}</style>
+          {form.triggerMode === "FIXED" && (
+            <div className="IncentivePanel-field">
+              <label>Minimum amount (€)</label>
+              <input
+                type="number"
+                value={form.fixedAmount}
+                onChange={(e) => onChange("fixedAmount", e.target.value)}
+              />
+            </div>
+          )}
+
+          {form.triggerMode === "SMART_AVG_TICKET" && (
+            <div className="IncentivePanel-field">
+              <label>% over average</label>
+              <input
+                type="number"
+                value={form.percentOverAvg}
+                onChange={(e) => onChange("percentOverAvg", e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="IncentivePanel-field">
+            <label>Reward pizza</label>
+            <select value={form.rewardPizzaId} onChange={(e) => onChange("rewardPizzaId", e.target.value)}>
+              <option value="">Select a pizza…</option>
+              {pizzas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.id} · {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="IncentivePanel-checkbox">
+            <label>
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => onChange("active", e.target.checked)}
+              />
+              Activate on save
+            </label>
+          </div>
+
+          <div className="IncentivePanel-formActions">
+            <button type="button" onClick={closeForm}>
+              Cancel
+            </button>
+            <button disabled={saving}>{saving ? "Saving..." : editingId ? "Update" : "Create"}</button>
+          </div>
+
+          {msg && <div className="IncentivePanel-note">{msg}</div>}
+        </form>
+      )}
     </div>
   );
 }
