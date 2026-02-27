@@ -232,6 +232,27 @@ r.get("/ping", (_req, res) => {
       res.status(500).json({ error: err.message });
     }
   });
+  
+  /* =========================================================
+   DELETE INCENTIVE
+========================================================= */
+r.delete("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid id" });
+    }
+
+    await prisma.incentive.delete({
+      where: { id },
+    });
+
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error("DELETE /api/incentives/:id error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
   return r;
 };
