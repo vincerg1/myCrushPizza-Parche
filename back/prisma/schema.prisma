@@ -111,23 +111,30 @@ enum IncentiveTriggerMode {
   FIXED
   SMART_AVG_TICKET
 }
+enum ProductType {
+  SELLABLE
+  BASE
+}
 
 /**
  * ======================= MODELOS =======================
  */
 
 model MenuPizza {
-  id            Int                   @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   name          String
   category      String?
   selectSize    Json
   priceBySize   Json
   cookingMethod String?
-  image         String?        // secure_url
-  imagePublicId String?        // 👈 CLAVE para Cloudinary
-  status        ProductStatus         @default(ACTIVE)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  image         String?
+  imagePublicId String?
+  status        ProductStatus @default(ACTIVE)
+
+  type          ProductType   @default(SELLABLE)   // 👈 NUEVO CAMPO
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   ingredients   MenuPizzaIngredient[]
   stocks        StorePizzaStock[]
   incentives    Incentive[]

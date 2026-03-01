@@ -13,8 +13,11 @@ module.exports = (prisma) => {
       const rows = await prisma.storePizzaStock.findMany({
         where: {
           storeId,
-          active: true, // StorePizzaStock
-          pizza: { status: "ACTIVE" }, // MenuPizza (GLOBAL)
+          active: true, // StorePizzaStock activo
+          pizza: {
+            status: "ACTIVE",
+            type: "SELLABLE", // 🔥 FILTRO ESTRUCTURAL NUEVO
+          },
         },
         select: {
           pizzaId: true,
@@ -34,7 +37,7 @@ module.exports = (prisma) => {
                     select: {
                       id: true,
                       name: true,
-                      status: true, // GLOBAL Ingredient
+                      status: true,
                       storeStocks: {
                         where: { storeId },
                         select: { active: true, stock: true },
@@ -57,14 +60,14 @@ module.exports = (prisma) => {
             ? r.pizza.ingredients
             : [];
 
-          // 🔒 EVALUACIÓN COMPLETA (GLOBAL + TIENDA)
+          // 🔒 Evaluación receta (ingredientes activos y con stock)
           const recipeStatus = computeProductStatus(ingredientsAll);
           if (!recipeStatus.available) return null;
 
           const hasStock = r.stock == null || Number(r.stock) > 0;
           if (!hasStock) return null;
 
-          // 👀 SOLO PARA MOSTRAR: ingredientes activos en esta tienda
+          // 👀 Solo mostrar ingredientes activos en tienda
           const visibleIngredients = ingredientsAll.filter((rel) => {
             const ing = rel.ingredient;
             const storeStock = ing?.storeStocks?.[0];
