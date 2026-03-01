@@ -1837,6 +1837,14 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             className="lsf-modal--center"
           >
             <div className="lsf-custom">
+            {/* ───────── HERO IMAGE ───────── */}
+                  <div className="lsf-custom-hero">
+                    <img
+                      src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExbXFrMGF5azEzdWYyYXI2NW1kM3BvdG5iMnF4eHY3Z2RoYWFnMW95OSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/26gskofCNU8Tl4duU/giphy.gif"
+                      alt="GIF Arma tu pizza"
+                      className="lsf-custom-hero__img"
+                    />
+                  </div>
 
               {/* ───────── BASE (ACORDEÓN COMPLETO) ───────── */}
               <div className="lsf-custom-accordion">
@@ -2009,89 +2017,93 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                     {isOpen && !isLocked && (
                       <div className="lsf-custom-accordion__content">
 
-                        {ingredients.map(ing => {
-                          const selected = customIngredients[ing.id];
+                      {ingredients.map(ing => {
+                        const selected = customIngredients[ing.id];
 
-                          return (
-                            <div key={ing.id} className="lsf-custom-item">
+                        return (
+                          <div key={ing.id} className="lsf-custom-item">
+
+                            {/* ───── FILA 1: Nombre + Placement ───── */}
+                            <div className="lsf-custom-item__header">
 
                               <div className="lsf-custom-item__name">
                                 {ing.name}
                               </div>
 
-                              <div className="lsf-custom-item__controls">
+                              <div className="lsf-custom-placement">
+                                {["FULL", "LEFT", "RIGHT"].map(pos => (
+                                  <button
+                                    key={pos}
+                                    type="button"
+                                    className={`lsf-chip ${
+                                      selected?.placement === pos ? "is-active" : ""
+                                    }`}
+                                    onClick={() =>
+                                      updateCustomIngredient(ing, {
+                                        placement: pos,
+                                        quantity: selected?.quantity || "SIMPLE"
+                                      })
+                                    }
+                                  >
+                                    {pos}
+                                  </button>
+                                ))}
+                              </div>
 
-                                {/* PLACEMENT */}
-                                <div className="lsf-custom-placement">
-                                  {["FULL", "LEFT", "RIGHT"].map(pos => (
-                                    <button
-                                      key={pos}
-                                      type="button"
-                                      className={`lsf-chip ${
-                                        selected?.placement === pos ? "is-active" : ""
-                                      }`}
-                                      onClick={() =>
-                                        updateCustomIngredient(ing, {
-                                          placement: pos,
-                                          quantity: selected?.quantity || "SIMPLE"
-                                        })
-                                      }
-                                    >
-                                      {pos}
-                                    </button>
-                                  ))}
+                            </div>
+
+                            {/* ───── FILA 2: SOLO SI HAY PLACEMENT ───── */}
+                            {selected?.placement && (
+                              <div className="lsf-custom-item__expanded">
+
+                                <div className="lsf-custom-item__selected">
+                                  {selected.placement}
                                 </div>
 
-                                {/* SIMPLE / DOBLE */}
-                                {selected && (
-                                  <div className="lsf-custom-toggle">
-                                    <button
-                                      type="button"
-                                      className={`lsf-toggle ${
-                                        selected.quantity === "SIMPLE" ? "is-active" : ""
-                                      }`}
-                                      onClick={() =>
-                                        updateCustomIngredient(ing, { quantity: "SIMPLE" })
-                                      }
-                                    >
-                                      SIMPLE
-                                    </button>
+                                <div className="lsf-custom-toggle">
+                                  <button
+                                    type="button"
+                                    className={`lsf-toggle ${
+                                      selected.quantity === "SIMPLE" ? "is-active" : ""
+                                    }`}
+                                    onClick={() =>
+                                      updateCustomIngredient(ing, { quantity: "SIMPLE" })
+                                    }
+                                  >
+                                    SIMPLE
+                                  </button>
 
-                                    <button
-                                      type="button"
-                                      className={`lsf-toggle ${
-                                        selected.quantity === "DOUBLE" ? "is-active" : ""
-                                      }`}
-                                      onClick={() =>
-                                        updateCustomIngredient(ing, { quantity: "DOUBLE" })
-                                      }
-                                    >
-                                      DOBLE
-                                    </button>
-                                  </div>
-                                )}
+                                  <button
+                                    type="button"
+                                    className={`lsf-toggle ${
+                                      selected.quantity === "DOUBLE" ? "is-active" : ""
+                                    }`}
+                                    onClick={() =>
+                                      updateCustomIngredient(ing, { quantity: "DOUBLE" })
+                                    }
+                                  >
+                                    DOBLE
+                                  </button>
+                                </div>
 
-                                {/* PRECIO + REMOVE */}
-                                {selected && (
-                                  <div className="lsf-custom-item__price-wrap">
-                                    <div className="lsf-custom-item__price">
-                                      €{getCustomIngredientPrice(selected).toFixed(2)}
-                                    </div>
+                                <div className="lsf-custom-item__price">
+                                  €{getCustomIngredientPrice(selected).toFixed(2)}
+                                </div>
 
-                                    <button
-                                      type="button"
-                                      className="lsf-custom-remove"
-                                      onClick={() => removeCustomIngredient(ing.id)}
-                                    >
-                                      ✖
-                                    </button>
-                                  </div>
-                                )}
+                                <button
+                                  type="button"
+                                  className="lsf-custom-remove"
+                                  onClick={() => removeCustomIngredient(ing.id)}
+                                >
+                                  ✖
+                                </button>
 
                               </div>
-                            </div>
-                          );
-                        })}
+                            )}
+
+                          </div>
+                        );
+                      })}
 
                       </div>
                     )}

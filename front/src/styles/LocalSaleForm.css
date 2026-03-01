@@ -1272,6 +1272,61 @@
   z-index: 10;
 }
 
+/* ───────── CUSTOM HERO GIF ───────── */
+.lsf-custom-hero {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 18px;
+  padding: 0 12px;
+}
+
+.lsf-custom-hero__img {
+  width: 100%;
+  max-width: 280px; /* Tamaño recomendado */
+  height: auto;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+}
+
+/* NUEVA ESTRUCTURA INGREDIENTES */
+
+.lsf-custom-item__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lsf-custom-item__expanded {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f8f8f8;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: expandFade 0.2s ease-in-out;
+}
+
+.lsf-custom-item__selected {
+  font-weight: 600;
+  font-size: 13px;
+  opacity: 0.7;
+  min-width: 50px;
+}
+
+@keyframes expandFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 @media (min-width: 900px) {
 
   .lsf-modal__panel {
