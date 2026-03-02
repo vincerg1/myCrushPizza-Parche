@@ -232,6 +232,8 @@ export default function PendingTable() {
   };
 
   const extraText = (e) => (e?.label ?? e?.name ?? e?.code ?? "extra").toString();
+  const isIncentiveReward = (p) =>
+  String(p?.type || "").toUpperCase() === "INCENTIVE_REWARD";
   const getBaseName = (p) => {
   // Caso nuevo: estructura correcta con ids separados
   if (p?.leftPizzaId && p?.rightPizzaId) {
@@ -257,9 +259,9 @@ const renderItemsLines = (sale) => {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
       {list.map((p, i) => {
-        // 🔥 Detecta mitad / mitad si existen ambos ids
         let baseName;
 
+        // 🔥 Detecta mitad / mitad si existen ambos ids
         if (p?.leftPizzaId && p?.rightPizzaId) {
           const left = nameById[p.leftPizzaId] || `#${p.leftPizzaId}`;
           const right = nameById[p.rightPizzaId] || `#${p.rightPizzaId}`;
@@ -274,12 +276,17 @@ const renderItemsLines = (sale) => {
         const size = p?.size || "";
         const qty = Number(p?.qty ?? p?.cantidad ?? 1);
 
+        // ✅ Detectar incentivo
+        const isReward =
+          String(p?.type || "").toUpperCase() === "INCENTIVE_REWARD";
+
         const extras = Array.from(
           new Set(arrFrom(p?.extras).map(extraText))
         );
 
         return (
           <span key={i}>
+            {isReward ? "🎁 " : ""}
             {baseName} {size}×{qty}
             {extras.length > 0 && (
               <small style={{ display: "block", color: "#666" }}>
@@ -335,7 +342,8 @@ const renderItemsLines = (sale) => {
         new Set(arrFrom(p?.extras).map(extraText))
       );
 
-      const base = `${baseName} ${size}×${qty}`;
+      const isReward = isIncentiveReward(p);
+      const base = `${isReward ? "🎁 " : ""}${baseName} ${size}×${qty}`;
 
       return extras.length
         ? `${base} [+ ${extras.join(", ")}]`

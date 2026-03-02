@@ -102,15 +102,28 @@ export default function Ticket({ order, autoPrint = false }) {
               }
 
               return (
-                <React.Fragment key={i}>
+              <React.Fragment key={i}>
+                {/* ✅ Etiqueta visual si es incentivo */}
+                {String(p?.type || "").toUpperCase() === "INCENTIVE_REWARD" && (
                   <tr>
-                    <td>{baseName}</td>
-                    <td className="right">
-                      {p?.size} ×{p?.qty ?? 1}
+                    <td colSpan="2" style={{ fontWeight: "bold", paddingTop: "6px" }}>
+                      🎁 INCENTIVO
                     </td>
                   </tr>
+                )}
 
-                  {/* 🔹 EXTRAS POR PRODUCTO */}
+                <tr>
+                  <td>
+                    {String(p?.type || "").toUpperCase() === "INCENTIVE_REWARD"
+                      ? `• ${baseName}`
+                      : baseName}
+                  </td>
+                  <td className="right">
+                    {p?.size} ×{p?.qty ?? 1}
+                  </td>
+                </tr>
+
+                {/* 🔹 EXTRAS POR PRODUCTO */}
                 {safeExtras(p?.extras).map((ex, j) => {
                   const amount = Number(ex?.amount || 0);
 
@@ -131,7 +144,7 @@ export default function Ticket({ order, autoPrint = false }) {
                     </tr>
                   );
                 })}
-                </React.Fragment>
+              </React.Fragment>
               );
             })}
 
