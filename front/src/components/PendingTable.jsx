@@ -90,6 +90,7 @@ export default function PendingTable() {
         if (since) params.since = since;
 
         const { data } = await api.get("/api/sales/pending", { params });
+        console.log("PENDING SALES", data);
         const arr = Array.isArray(data) ? data : [];
 
         lastFetchAtRef.current = new Date().toISOString();

@@ -646,6 +646,15 @@ const incentiveRewardPizza = useMemo(() => {
 
 const incentiveRewardName =
   incentiveRewardPizza?.name || "Premio especial";
+  // 🔥 Precio real del premio (usamos tamaño M por defecto)
+const incentiveRewardPrice = useMemo(() => {
+  if (!incentiveRewardPizza) return 0;
+
+  const sizes = incentiveRewardPizza.selectSize || [];
+  const sizeToUse = sizes.includes("M") ? "M" : sizes[0];
+
+  return priceForSize(incentiveRewardPizza.priceBySize, sizeToUse);
+}, [incentiveRewardPizza]);
 
 const toggleHalfExtra = (side, ingredientId) => {
   setHalfExtras(prev => ({
@@ -874,7 +883,9 @@ const addHalfLine = () => {
   setToast("Añadido al carrito");
 };
 
-const grossTotal = cart.reduce((t, l) => t + l.subtotal, 0);
+const grossTotal = cart
+  .filter(l => l.type !== "INCENTIVE_REWARD")
+  .reduce((t, l) => t + l.subtotal, 0);
 
 let discount = 0;
 
@@ -899,9 +910,15 @@ if (coupon && grossTotal > 0) {
 
 discount = Math.min(discount, grossTotal);
 
-const total = Math.max(0, grossTotal - discount);
-console.log("LSF coupon", coupon);
+const totalBeforeIncentive = Math.max(0, grossTotal - discount);
 
+const incentiveAmount = cart
+  .filter(l => l.type === "INCENTIVE_REWARD")
+  .reduce((t, l) => t + Math.abs(l.subtotal), 0);
+
+const total = Math.max(0, totalBeforeIncentive);
+
+console.log("LSF coupon", coupon);
 console.log("LSF grossTotal/discount/total", { grossTotal, discount, total });
 
 // ───────── INCENTIVE (BACKEND MODE) ─────────
@@ -913,17 +930,52 @@ const INCENTIVE_THRESHOLD =
 
 const incentiveUnlocked =
   INCENTIVE_THRESHOLD != null
-    ? total >= INCENTIVE_THRESHOLD
+    ? totalBeforeIncentive >= INCENTIVE_THRESHOLD
     : false;
 
+    useEffect(() => {
+  if (!activeIncentive || !incentiveRewardPizza) return;
+
+  setCart(prev => {
+    const existing = prev.find(l => l.type === "INCENTIVE_REWARD");
+
+    if (incentiveUnlocked && !existing) {
+      return [
+        ...prev,
+        {
+          type: "INCENTIVE_REWARD",
+          incentiveId: activeIncentive.id,
+          rewardPizzaId: incentiveRewardPizza.pizzaId,
+          name: incentiveRewardName,
+          size: "M",
+          qty: 1,
+          price: -incentiveRewardPrice,
+          subtotal: -incentiveRewardPrice
+        }
+      ];
+    }
+
+    if (!incentiveUnlocked && existing) {
+      return prev.filter(l => l.type !== "INCENTIVE_REWARD");
+    }
+
+    return prev;
+  });
+}, [
+  incentiveUnlocked,
+  activeIncentive,
+  incentiveRewardPizza,
+  incentiveRewardPrice,
+  incentiveRewardName
+]);
 const incentiveRemaining =
   INCENTIVE_THRESHOLD != null
-    ? Math.max(0, INCENTIVE_THRESHOLD - total)
+    ? Math.max(0, INCENTIVE_THRESHOLD - totalBeforeIncentive)
     : 0;
 
 const incentiveProgress =
   INCENTIVE_THRESHOLD != null && INCENTIVE_THRESHOLD > 0
-    ? Math.min(100, (total / INCENTIVE_THRESHOLD) * 100)
+    ? Math.min(100, (totalBeforeIncentive / INCENTIVE_THRESHOLD) * 100)
     : 0;
 
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
@@ -1404,7 +1456,9 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                       <div className="lsf-cartrow__main">
 
                         <div className="lsf-cartrow__name">
-                          {l.name}
+                          {l.type === "INCENTIVE_REWARD"
+                            ? `🎁 Incentivo: ${l.name}`
+                            : l.name}
                           <span className="lsf-cartrow__meta">
                             ({l.size} × {l.qty})
                           </span>
@@ -1438,9 +1492,10 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                         <button
                           type="button"
                           className="lsf-iconbtn"
-                          onClick={() =>
-                            setCart((c) => c.filter((_, idx) => idx !== i))
-                          }
+                          onClick={() => {
+                            if (l.type === "INCENTIVE_REWARD") return;
+                            setCart((c) => c.filter((_, idx) => idx !== i));
+                          }}
                           aria-label="Eliminar línea"
                         >
                           ✕
@@ -1460,11 +1515,17 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                   </div>
 
                   {/* Descuento si existe */}
-                  {discount > 0 && (
-                    <div className="lsf-cartfoot__discount">
-                      Cupón aplicado: -€{discount.toFixed(2)}
-                    </div>
-                  )}
+                    {discount > 0 && (
+                      <div className="lsf-cartfoot__discount">
+                        Cupón aplicado: -€{discount.toFixed(2)}
+                      </div>
+                    )}
+
+                    {incentiveAmount > 0 && (
+                      <div className="lsf-cartfoot__discount">
+                        Incentivo aplicado: -€{incentiveAmount.toFixed(2)}
+                      </div>
+                    )}
 
                   {/* Total neto */}
                   <div className="lsf-cartfoot__total">
@@ -1534,7 +1595,9 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                               }
                             : null,
 
-                          products: cart.map((c) => ({
+                        products: cart
+                          .filter(c => c.type !== "INCENTIVE_REWARD")
+                          .map((c) => ({
                             pizzaId: c.pizzaId,
                             size: c.size,
                             qty: c.qty,
@@ -1546,6 +1609,8 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                           discounts: discount,
                           total,
                           extras: aggregatedExtras,
+                          incentiveId: incentiveAmount > 0 ? activeIncentive?.id : null,
+                          incentiveAmount: incentiveAmount > 0 ? incentiveAmount : 0,
                         };
 
                         await api.post("/api/sales", payload);
