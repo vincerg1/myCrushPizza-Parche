@@ -156,16 +156,20 @@ module.exports = (prisma) => {
     /* ───────────────────────── POST /api/sales ───────────────────────── */
   r.post('/', auth(), async (req, res) => {
     try {
-      const {
-        storeId: storeIdBody,
-        type,
-        delivery,
-        customer,
-        customerId: customerIdBody,
-        products,
-        extras = [],
-        notes = '',
-      } = req.body;
+    const {
+      storeId: storeIdBody,
+      type,
+      delivery,
+      customer,
+      customerId: customerIdBody,
+      products,
+      extras = [],
+      notes = '',
+
+      // ✅ INCENTIVE (viene del front)
+      incentiveId: incentiveIdBody,
+      incentiveAmount: incentiveAmountBody,
+    } = req.body;
 
       /* ───────── utilidades ───────── */
       const trimOrNull = (v) => {
@@ -205,7 +209,13 @@ module.exports = (prisma) => {
 
       const isCoupon = (e) => upper(e.code) === 'COUPON';
       const isDeliveryFee = (e) => upper(e.code) === 'DELIVERY_FEE';
+        // ✅ Incentivo como línea informativa (NO afecta total / stock)
+        const isIncentiveRewardProduct = (p) => upper(p?.type) === 'INCENTIVE_REWARD';
 
+        // Productos que sí cobran (excluye incentivo)
+        const chargeableProducts = Array.isArray(products)
+          ? products.filter((p) => !isIncentiveRewardProduct(p))
+          : [];
       /* ───────── storeId según rol ───────── */
       let storeId;
       if (req.user.role === 'store') {
@@ -220,13 +230,15 @@ module.exports = (prisma) => {
       }
 
       /* ───────── validar productos ───────── */
-      if (!Array.isArray(products) || !products.length)
-        return res.status(400).json({ error: 'products vacío' });
+        if (!Array.isArray(products) || !products.length)
+          return res.status(400).json({ error: 'products vacío' });
 
-      for (const p of products) {
-        if (![p.pizzaId, p.qty, p.price].every((n) => Number(n) > 0) || !p.size)
-          return res.status(400).json({ error: 'Producto mal formado' });
-      }
+        // ✅ Validamos SOLO lo cobrable
+        for (const p of chargeableProducts) {
+          if (![p.pizzaId, p.qty, p.price].every((n) => Number(n) > 0) || !p.size) {
+            return res.status(400).json({ error: 'Producto mal formado' });
+          }
+        }
 
       /* ───────── resolver cliente (DENTRO TX) ───────── */
       let customerId = null;
@@ -342,9 +354,9 @@ module.exports = (prisma) => {
 console.log('🟠 NESTED EXTRAS:', JSON.stringify(nestedExtras, null, 2));
 console.log('🟠 TOP LEVEL EXTRAS:', JSON.stringify(topLevelExtras, null, 2));
 console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
-      const totalProducts = round2(
-        products.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
-      );
+const totalProducts = round2(
+  chargeableProducts.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
+);
 
       let discounts = 0;
 
@@ -366,12 +378,13 @@ console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
       const sale = await prisma.$transaction(async (tx) => {
         await resolveCustomer(tx);
 
-        for (const p of products) {
+        for (const p of chargeableProducts) {
           const stk = await tx.storePizzaStock.findUnique({
             where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
           });
-          if (!stk || stk.stock < p.qty)
+          if (!stk || stk.stock < p.qty) {
             throw new Error(`Stock insuficiente para pizza ${p.pizzaId}`);
+          }
         }
 
         const publicCode = await genOrderCode(tx);
@@ -385,21 +398,25 @@ console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
             delivery,
             customerData: snapshot,
             processed: false,
-            products,
+            products,                 // ✅ mantenemos la línea INCENTIVE_REWARD para imprimirla
             extras: extrasAll,
             totalProducts,
             discounts,
             total,
             notes,
+
+            // ✅ Incentivo persistido (informativo, no afecta total)
+            incentiveId: incentiveIdBody != null ? Number(incentiveIdBody) : null,
+            incentiveAmount: incentiveAmountBody != null ? round2(Number(incentiveAmountBody)) : 0,
           },
         });
 
-        for (const p of products) {
-          await tx.storePizzaStock.update({
-            where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
-            data: { stock: { decrement: p.qty } },
-          });
-        }
+for (const p of chargeableProducts) {
+  await tx.storePizzaStock.update({
+    where: { storeId_pizzaId: { storeId, pizzaId: p.pizzaId } },
+    data: { stock: { decrement: p.qty } },
+  });
+}
 
         return newSale;
       });
