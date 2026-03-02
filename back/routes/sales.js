@@ -342,7 +342,14 @@ module.exports = (prisma) => {
 
       /* ───────── extras ───────── */
       const nestedExtras = products.flatMap((p) => {
+
+        // 🔥 NO convertir incentivo en extra cobrable
+        if (String(p?.type || '').toUpperCase() === 'INCENTIVE_REWARD') {
+          return [];
+        }
+
         const qty = Math.max(1, Number(p.qty || 1));
+
         return (p.extras || [])
           .map(sanitizeExtra)
           .filter(Boolean)

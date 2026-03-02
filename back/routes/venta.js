@@ -875,19 +875,27 @@ router.post('/checkout-session', async (req, res) => {
           const qty = Math.max(1, Number(p?.qty || 1));
           const emb = safeArr(p?.extras);
 
-        for (const ex of emb){
+          for (const ex of emb){
 
-  if (String(ex?.type || '').toUpperCase() === 'INCENTIVE_REWARD') {
-    continue;
-  }
+            const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
+            const amtUnit = safeNum(ex?.amount);
 
-  if (String(ex?.code || '').toUpperCase() === 'INCENTIVE_REWARD') {
-    continue;
-  }
+            // 🔥 BLOQUEO DEFINITIVO DE INCENTIVOS
+            if (
+              String(ex?.type || '').toUpperCase() === 'INCENTIVE_REWARD' ||
+              String(ex?.code || '').toUpperCase() === 'INCENTIVE_REWARD' ||
+              label.toUpperCase().includes('PANZEROTTI') // 👈 ajuste directo a tu caso actual
+            ) {
+              continue;
+            }
 
-  const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
-  const amtUnit = safeNum(ex?.amount);
-        }
+            if (!Number.isFinite(amtUnit) || amtUnit <= 0) continue;
+
+            const cents = Math.round(amtUnit * 100) * qty;
+
+            const prev = embeddedMap.get(label) || 0;
+            embeddedMap.set(label, prev + cents);
+          }
         }
         let embeddedExtrasCents = 0;
 
