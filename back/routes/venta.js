@@ -888,7 +888,7 @@ router.post('/checkout-session', async (req, res) => {
   const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
   const amtUnit = safeNum(ex?.amount);
         }
-
+        }
         let embeddedExtrasCents = 0;
 
         for (const [label, cents] of embeddedMap.entries()){
