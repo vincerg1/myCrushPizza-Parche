@@ -871,7 +871,7 @@ router.post('/checkout-session', async (req, res) => {
         // Mapa label -> cents acumulados
         const embeddedMap = new Map();
 
-        for (const p of safeArr(productsJson)){
+        for (const p of safeArr(chargeableProducts)){
           const qty = Math.max(1, Number(p?.qty || 1));
           const emb = safeArr(p?.extras);
 
