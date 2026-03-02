@@ -747,6 +747,9 @@ router.post('/checkout-session', async (req, res) => {
       }
 
       const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
+      const chargeableProducts = productsJson.filter(
+          p => String(p?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
+        );
       const extrasJson   = Array.isArray(sale.extras)   ? sale.extras   : parseMaybe(sale.extras,   []);
 
       let sessionUrl = null;
@@ -755,7 +758,7 @@ router.post('/checkout-session', async (req, res) => {
         await assertStock(tx, sale.storeId, productsJson);
 
         // OJO: recalcTotals calcula SOLO pizzas (no incluye products[].extras)
-        const { lineItems, total } = await recalcTotals(tx, sale.storeId, productsJson);
+        const { lineItems, total } = await recalcTotals(tx, sale.storeId, chargeableProducts);
 
         // nombres por id
         const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
