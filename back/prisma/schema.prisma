@@ -251,6 +251,7 @@ model Sale {
   stripeCheckoutSessionId String?        @unique @db.VarChar(191)
   incentiveId Int?
   incentive   Incentive? @relation(fields: [incentiveId], references: [id])
+  incentiveAmount Float? @default(0)
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
 
