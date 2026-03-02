@@ -875,23 +875,18 @@ router.post('/checkout-session', async (req, res) => {
           const qty = Math.max(1, Number(p?.qty || 1));
           const emb = safeArr(p?.extras);
 
-          for (const ex of emb){
-            const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
-            const amtUnit = safeNum(ex?.amount);
+        for (const ex of emb){
 
-            if (!label) continue;
-            if (!Number.isFinite(amtUnit) || amtUnit <= 0) continue;
+  if (String(ex?.type || '').toUpperCase() === 'INCENTIVE_REWARD') {
+    continue;
+  }
 
-            // Interpretación robusta:
-            // - si alguien guardó amount ya * qty, esto lo inflaría
-            //   PERO en tu /pedido corregido amount es por unidad.
-            //   Aun así, si detectas qty>1 y amount parece "total", esto lo ajustarías,
-            //   pero aquí mantenemos lógica simple y consistente: unit * qty.
-            const cents = Math.round(amtUnit * 100) * qty;
+  if (String(ex?.code || '').toUpperCase() === 'INCENTIVE_REWARD') {
+    continue;
+  }
 
-            const prev = embeddedMap.get(label) || 0;
-            embeddedMap.set(label, prev + cents);
-          }
+  const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
+  const amtUnit = safeNum(ex?.amount);
         }
 
         let embeddedExtrasCents = 0;
