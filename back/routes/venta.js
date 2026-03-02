@@ -716,8 +716,6 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
     res.status(400).json({ error: e.message });
   }
 });
-
-
 router.post('/checkout-session', async (req, res) => {
   if (!stripeReady){
     logW('checkout-session llamado sin Stripe listo');
@@ -1011,9 +1009,7 @@ router.post('/checkout/confirm', async (req, res) => {
       return res.status(400).json({ error: 'sessionId u orderCode requerido' });
     }
 
-    // ─────────────────────────────
     // 1️⃣ Recuperar sesión Stripe
-    // ─────────────────────────────
     let session = null;
     if (sessionId) {
       session = await stripe.checkout.sessions.retrieve(sessionId, {
@@ -1021,30 +1017,30 @@ router.post('/checkout/confirm', async (req, res) => {
       });
     }
 
-    // ─────────────────────────────
     // 2️⃣ Buscar venta
-    // ─────────────────────────────
     let sale = null;
+
     if (session?.metadata?.saleId) {
       sale = await prisma.sale.findUnique({
         where: { id: Number(session.metadata.saleId) }
       });
     }
+
     if (!sale && session?.id) {
       sale = await prisma.sale.findFirst({
         where: { stripeCheckoutSessionId: session.id }
       });
     }
+
     if (!sale && orderCode) {
       sale = await prisma.sale.findUnique({
         where: { code: String(orderCode) }
       });
     }
 
-    // ─────────────────────────────
     // 3️⃣ ¿Está pagado?
-    // ─────────────────────────────
     const payStatus = session?.payment_status || null;
+
     let pi = null;
     let stripePiId = null;
 
@@ -1060,12 +1056,12 @@ router.post('/checkout/confirm', async (req, res) => {
 
     const paidBySession =
       payStatus === 'paid' || payStatus === 'no_payment_required';
+
     const paidByPI = pi?.status === 'succeeded';
+
     const isPaid = paidBySession || paidByPI;
 
-    // ─────────────────────────────
     // 4️⃣ Modo carrito → delegar webhook
-    // ─────────────────────────────
     if (!sale && session?.metadata?.cart) {
       if (!isPaid) {
         return res.json({ ok: true, paid: false, status: 'AWAITING_PAYMENT' });
@@ -1089,60 +1085,61 @@ router.post('/checkout/confirm', async (req, res) => {
     if (!sale) {
       return res.status(404).json({ error: 'Pedido no existe' });
     }
+
     if (!isPaid) {
       return res.json({ ok: true, paid: false, status: sale.status });
     }
 
-    // ─────────────────────────────
     // 5️⃣ Transacción: PAID + stock + cupón
-    // ─────────────────────────────
     let smsPayload = null;
 
     await prisma.$transaction(async (tx) => {
+
       const fresh = await tx.sale.findUnique({
         where: { id: sale.id }
       });
+
+      if (!fresh) throw new Error('Sale no encontrada en confirm');
 
       if (fresh.status === 'PAID') return; // idempotente
 
       // ↓ bajar stock
       const items = Array.isArray(fresh.products)
-        ? fresh.products
-        : JSON.parse(fresh.products || '[]');
+  ? fresh.products
+  : parseMaybe(fresh.products, []);
 
       for (const p of items) {
 
-        // 🔥 Ignorar incentivos
+        // ✅ Ignorar incentivos
         if (String(p?.type || '').toUpperCase() === 'INCENTIVE_REWARD') {
           continue;
         }
 
-        // 🔥 Seguridad extra
-        if (!Number.isFinite(Number(p?.pizzaId))) {
-          continue;
+        const pid = Number(p?.pizzaId);
+        if (!Number.isFinite(pid) || pid <= 0) {
+          continue; // seguridad extra
         }
 
         await tx.storePizzaStock.update({
           where: {
             storeId_pizzaId: {
               storeId: fresh.storeId,
-              pizzaId: Number(p.pizzaId)
+              pizzaId: pid
             }
           },
           data: {
-            stock: { decrement: Number(p.qty) }
+            stock: { decrement: Number(p.qty || 1) }
           }
         });
       }
 
-      // ↓ marcar PAID
+      // ↓ marcar PAID (SIN paidAt)
       await tx.sale.update({
         where: { id: fresh.id },
         data: {
           status: 'PAID',
           stripePaymentIntentId:
-            stripePiId || fresh.stripePaymentIntentId || null,
-          paidAt: new Date()
+            stripePiId || fresh.stripePaymentIntentId || null
         }
       });
 
@@ -1173,8 +1170,9 @@ router.post('/checkout/confirm', async (req, res) => {
         });
       }
 
-      // ↓ preparar SMS (FUERA de la tx se envía)
+      // ↓ preparar SMS (se envía fuera)
       const phone = fresh.customerData?.phone || null;
+
       if (phone) {
         smsPayload = {
           phone,
@@ -1186,9 +1184,7 @@ router.post('/checkout/confirm', async (req, res) => {
       }
     });
 
-    // ─────────────────────────────
-    // 6️⃣ Enviar SMS (fuera de tx)
-    // ─────────────────────────────
+    // 6️⃣ Enviar SMS fuera de transacción
     if (smsPayload?.phone && smsPayload?.text) {
       sendSMS(smsPayload.phone, smsPayload.text)
         .catch(err =>
@@ -1196,11 +1192,11 @@ router.post('/checkout/confirm', async (req, res) => {
         );
     }
 
-    res.json({ ok: true, paid: true, status: 'PAID' });
+    return res.json({ ok: true, paid: true, status: 'PAID' });
 
   } catch (e) {
     logE('[POST /api/venta/checkout/confirm] error', e);
-    res.status(400).json({ error: e.message });
+    return res.status(400).json({ error: e.message });
   }
 });
 router.post(
@@ -1244,219 +1240,222 @@ router.post(
           let cart = null;
           try { cart = JSON.parse(session.metadata.cart); } catch {}
 
-if (cart) {
-  await prisma.$transaction(async (tx) => {
+          if (cart) {
+            await prisma.$transaction(async (tx) => {
 
-    /* ───────── FILTRAR INCENTIVO ───────── */
+              /* ───────── FILTRAR INCENTIVO ───────── */
 
-    const chargeableCartItems = (Array.isArray(cart.items) ? cart.items : []).filter(
-      it => String(it?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
-    );
+              const chargeableCartItems = (Array.isArray(cart.items) ? cart.items : []).filter(
+                it => String(it?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
+              );
 
-    const incentiveCartItems = (Array.isArray(cart.items) ? cart.items : []).filter(
-      it => String(it?.type || '').toUpperCase() === 'INCENTIVE_REWARD'
-    );
+              const incentiveCartItems = (Array.isArray(cart.items) ? cart.items : []).filter(
+                it => String(it?.type || '').toUpperCase() === 'INCENTIVE_REWARD'
+              );
 
-    const normItems = await normalizeItems(tx, chargeableCartItems);
-    await assertStock(tx, Number(cart.storeId), normItems);
+              const normItems = await normalizeItems(tx, chargeableCartItems);
+              await assertStock(tx, Number(cart.storeId), normItems);
 
-    const { lineItems, totalProducts } =
-      await recalcTotals(tx, Number(cart.storeId), normItems);
+              const { lineItems, totalProducts } =
+                await recalcTotals(tx, Number(cart.storeId), normItems);
 
-    /* ───────── CLIENTE ───────── */
+              /* ───────── CLIENTE ───────── */
 
-    let customerId = null, snapshot = null;
+              let customerId = null, snapshot = null;
 
-    const isDelivery =
-      String(cart.type).toUpperCase() === 'DELIVERY' ||
-      String(cart.delivery).toUpperCase() === 'COURIER';
+              const isDelivery =
+                String(cart.type).toUpperCase() === 'DELIVERY' ||
+                String(cart.delivery).toUpperCase() === 'COURIER';
 
-    if (cart?.customer?.phone?.trim()) {
-      const phone = normPhone(cart.customer.phone);
-      if (!phone) throw new Error('Invalid phone');
+              if (cart?.customer?.phone?.trim()) {
+                const phone = normPhone(cart.customer.phone);
+                if (!phone) throw new Error('Invalid phone');
 
-      const name = (cart.customer.name || '').trim();
+                const name = (cart.customer.name || '').trim();
 
-      const createAddress = isDelivery
-        ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
-        : `(PICKUP) ${phone}`;
+                const createAddress = isDelivery
+                  ? (cart.customer.address_1 || 'SIN DIRECCIÓN')
+                  : `(PICKUP) ${phone}`;
 
-      const c = await tx.customer.upsert({
-        where: { phone },
-        update: {
-          phone, name,
-          ...(isDelivery && {
-            address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
-            lat: clean(cart.customer.lat),
-            lng: clean(cart.customer.lng),
-          }),
-          portal: clean(cart.customer.portal),
-          observations: clean(cart.customer.observations),
-        },
-        create: {
-          code: await genCustomerCode(tx),
-          phone, name,
-          address_1: createAddress,
-          portal: clean(cart.customer.portal),
-          observations: clean(cart.customer.observations),
-          lat: isDelivery ? clean(cart.customer.lat) : null,
-          lng: isDelivery ? clean(cart.customer.lng) : null,
-        },
-      });
+                const c = await tx.customer.upsert({
+                  where: { phone },
+                  update: {
+                    phone, name,
+                    ...(isDelivery && {
+                      address_1: cart.customer.address_1 || 'SIN DIRECCIÓN',
+                      lat: clean(cart.customer.lat),
+                      lng: clean(cart.customer.lng),
+                    }),
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                  },
+                  create: {
+                    code: await genCustomerCode(tx),
+                    phone, name,
+                    address_1: createAddress,
+                    portal: clean(cart.customer.portal),
+                    observations: clean(cart.customer.observations),
+                    lat: isDelivery ? clean(cart.customer.lat) : null,
+                    lng: isDelivery ? clean(cart.customer.lng) : null,
+                  },
+                });
 
-      customerId = c.id;
-      snapshot = {
-        phone: c.phone,
-        name: c.name,
-        address_1: c.address_1,
-        portal: c.portal,
-        observations: c.observations,
-        lat: c.lat,
-        lng: c.lng
-      };
-    }
+                customerId = c.id;
+                snapshot = {
+                  phone: c.phone,
+                  name: c.name,
+                  address_1: c.address_1,
+                  portal: c.portal,
+                  observations: c.observations,
+                  lat: c.lat,
+                  lng: c.lng
+                };
+              }
 
-    /* ───────── CUPÓN ───────── */
+              /* ───────── CUPÓN ───────── */
 
-    const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
-    let discounts = 0;
+              const extrasFinal = Array.isArray(cart.extras) ? [...cart.extras] : [];
+              let discounts = 0;
 
-    const couponCode = upper(cart.coupon || '');
+              const couponCode = upper(cart.coupon || '');
 
-    if (couponCode) {
-      const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
-      const nowRef = nowInTZ();
+              if (couponCode) {
+                const coup = await tx.coupon.findUnique({ where: { code: couponCode } });
+                const nowRef = nowInTZ();
 
-      const valid =
-        !!coup &&
-        coup.status === 'ACTIVE' &&
-        (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
-        isActiveByDate(coup, nowRef) &&
-        isWithinWindow(coup, nowRef);
+                const valid =
+                  !!coup &&
+                  coup.status === 'ACTIVE' &&
+                  (coup.usageLimit ?? 1) > (coup.usedCount ?? 0) &&
+                  isActiveByDate(coup, nowRef) &&
+                  isWithinWindow(coup, nowRef);
 
-      if (valid) {
-        const comp = computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
-        if (comp.discount > 0) {
-          discounts = comp.discount;
-          extrasFinal.push({
-            code: 'COUPON',
-            label: comp.label,
-            amount: -comp.discount,
-            couponCode,
-            percentApplied: comp.percentApplied,
-            amountApplied: comp.amountApplied
-          });
-        }
-      }
-    }
+                if (valid) {
+                  const comp = computeCouponDiscount({ ...coup, code: couponCode }, totalProducts);
+                  if (comp.discount > 0) {
+                    discounts = comp.discount;
+                    extrasFinal.push({
+                      code: 'COUPON',
+                      label: comp.label,
+                      amount: -comp.discount,
+                      couponCode,
+                      percentApplied: comp.percentApplied,
+                      amountApplied: comp.amountApplied
+                    });
+                  }
+                }
+              }
 
-    /* ───────── EXTRAS POR ITEM ───────── */
+              /* ───────── EXTRAS POR ITEM ───────── */
 
-    const toExtraAmount = (ex) => {
-      const parsed = [ex?.amount, ex?.price, ex?.delta]
-        .map(toPrice)
-        .find(Number.isFinite);
-      return Number.isFinite(parsed) ? parsed : NaN;
-    };
+              const toExtraAmount = (ex) => {
+                const parsed = [ex?.amount, ex?.price, ex?.delta]
+                  .map(toPrice)
+                  .find(Number.isFinite);
+                return Number.isFinite(parsed) ? parsed : NaN;
+              };
 
-    const buildItemExtras = (rawItem) => {
-      const pools = []
-        .concat(rawItem?.extras || [])
-        .concat(rawItem?.toppings || [])
-        .concat(rawItem?.addOns || rawItem?.addons || [])
-        .concat(rawItem?.options || [])
-        .concat(rawItem?.modifiers || [])
-        .concat(rawItem?.ingredients || [])
-        .concat(rawItem?.customIngredients || [])
-        .concat(rawItem?.complements || [])
-        .concat(rawItem?.sides || []);
+              const buildItemExtras = (rawItem) => {
+                const pools = []
+                  .concat(rawItem?.extras || [])
+                  .concat(rawItem?.toppings || [])
+                  .concat(rawItem?.addOns || rawItem?.addons || [])
+                  .concat(rawItem?.options || [])
+                  .concat(rawItem?.modifiers || [])
+                  .concat(rawItem?.ingredients || [])
+                  .concat(rawItem?.customIngredients || [])
+                  .concat(rawItem?.complements || [])
+                  .concat(rawItem?.sides || []);
 
-      return pools
-        .map(ex => {
-          const amt = toExtraAmount(ex);
-          if (!Number.isFinite(amt) || amt < 0) return null;
-          return {
-            code: String(ex?.code || 'EXTRA'),
-            label: String(ex?.label || ex?.name || ex?.code || 'Extra'),
-            amount: round2(amt),
-            placement: ex?.placement || null,
-            quantity : ex?.quantity  || null,
-            ingredientId: ex?.id ?? ex?.ingredientId ?? null
-          };
-        })
-        .filter(Boolean);
-    };
+                return pools
+                  .map(ex => {
+                    const amt = toExtraAmount(ex);
+                    if (!Number.isFinite(amt) || amt < 0) return null;
+                    return {
+                      code: String(ex?.code || 'EXTRA'),
+                      label: String(ex?.label || ex?.name || ex?.code || 'Extra'),
+                      amount: round2(amt),
+                      placement: ex?.placement || null,
+                      quantity : ex?.quantity  || null,
+                      ingredientId: ex?.id ?? ex?.ingredientId ?? null
+                    };
+                  })
+                  .filter(Boolean);
+              };
 
-    const lineItemsWithMeta = lineItems.map((li, idx) => {
-      const rawItem = chargeableCartItems[idx] || {};
+              const lineItemsWithMeta = lineItems.map((li, idx) => {
+                const rawItem = chargeableCartItems[idx] || {};
 
-      const leftPizzaId  = Number(rawItem?.leftPizzaId);
-      const rightPizzaId = Number(rawItem?.rightPizzaId);
-      const itemType     = rawItem?.type;
+                const leftPizzaId  = Number(rawItem?.leftPizzaId);
+                const rightPizzaId = Number(rawItem?.rightPizzaId);
+                const itemType     = rawItem?.type;
 
-      return {
-        ...li,
-        ...(itemType ? { type: itemType } : {}),
-        ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
-          ? { leftPizzaId, rightPizzaId }
-          : {}),
-        extras: buildItemExtras(rawItem)
-      };
-    });
+                return {
+                  ...li,
+                  ...(itemType ? { type: itemType } : {}),
+                  ...(Number.isFinite(leftPizzaId) && Number.isFinite(rightPizzaId)
+                    ? { leftPizzaId, rightPizzaId }
+                    : {}),
+                  extras: buildItemExtras(rawItem)
+                };
+              });
 
-    /* ───────── CREAR SALE ───────── */
+              /* ───────── CREAR SALE ───────── */
 
-    const sale = await tx.sale.create({
-      data: {
-        code: await genOrderCode(tx),
-        storeId: Number(cart.storeId),
-        customerId,
-        type: cart.type || 'LOCAL',
-        delivery: cart.delivery || 'PICKUP',
-        customerData: snapshot || cart.customer || {},
-        products: [...lineItemsWithMeta, ...incentiveCartItems], // 👈 incentivo NO afecta totales
-        totalProducts,
-        discounts,
-        total: round2(totalProducts - discounts),
-        extras: extrasFinal,
-        notes: cart.notes || '',
-        channel: cart.channel || 'WEB',
-        status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-        stripeCheckoutSessionId: checkoutId,
-        stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-        address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-        lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
-        lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
-      }
-    });
+              const sale = await tx.sale.create({
+                data: {
+                  code: await genOrderCode(tx),
+                  storeId: Number(cart.storeId),
+                  customerId,
+                  type: cart.type || 'LOCAL',
+                  delivery: cart.delivery || 'PICKUP',
+                  customerData: snapshot || cart.customer || {},
+                  products: [...lineItemsWithMeta, ...incentiveCartItems], // incentivo NO afecta totales
+                  totalProducts,
+                  discounts,
+                  total: round2(totalProducts - discounts),
+                  extras: extrasFinal,
+                  notes: cart.notes || '',
+                  channel: cart.channel || 'WEB',
+                  status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+                  stripeCheckoutSessionId: checkoutId,
+                  stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+                  address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+                  lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+                  lng: snapshot?.lng ?? cart?.customer?.lng ?? null,
+                }
+              });
 
-    /* ───────── BAJAR STOCK ───────── */
+              /* ───────── BAJAR STOCK ───────── */
+              if (payOk) {
+                for (const p of lineItems) {
 
-    if (payOk) {
-      for (const p of lineItems) {
-        await tx.storePizzaStock.update({
-          where: {
-            storeId_pizzaId: {
-              storeId: sale.storeId,
-              pizzaId: Number(p.pizzaId)
-            }
-          },
-          data: { stock: { decrement: Number(p.qty) } }
-        });
-      }
-    }
+                  // ✅ BLINDAJE #1: si pizzaId inválido, NO romper
+                  const pid = Number(p?.pizzaId);
+                  if (!Number.isFinite(pid) || pid <= 0) continue;
 
-    logI('Venta creada desde webhook (cart)', {
-      saleId: sale.id,
-      code: sale.code,
-      payStatus
-    });
+                  await tx.storePizzaStock.update({
+                    where: {
+                      storeId_pizzaId: {
+                        storeId: sale.storeId,
+                        pizzaId: pid
+                      }
+                    },
+                    data: { stock: { decrement: Number(p.qty) } }
+                  });
+                }
+              }
 
-  });
+              logI('Venta creada desde webhook (cart)', {
+                saleId: sale.id,
+                code: sale.code,
+                payStatus
+              });
 
-  return res.json({ received: true });
-}
-          
+            });
+
+            return res.json({ received: true });
+          }
         }
 
         /* ---------- C2) Venta previa: marcar pagada + canje ---------- */
@@ -1488,14 +1487,24 @@ if (cart) {
 
           // Bajar stock solo si pago OK
           if (payOk) {
+
+            // ✅ BLINDAJE #2: parse seguro
             const items = Array.isArray(sale.products)
               ? sale.products
-              : JSON.parse(sale.products || '[]');
+              : parseMaybe(sale.products, []);
 
-            for (const p of items) {
+            for (const p of (Array.isArray(items) ? items : [])) {
+
+              // ✅ BLINDAJE #3: ignorar incentivos
+              if (String(p?.type || '').toUpperCase() === 'INCENTIVE_REWARD') continue;
+
+              // ✅ BLINDAJE #4: si pizzaId inválido, NO romper
+              const pid = Number(p?.pizzaId);
+              if (!Number.isFinite(pid) || pid <= 0) continue;
+
               await tx.storePizzaStock.update({
-                where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: Number(p.pizzaId) } },
-                data:  { stock: { decrement: Number(p.qty) } }
+                where: { storeId_pizzaId: { storeId: sale.storeId, pizzaId: pid } },
+                data:  { stock: { decrement: Number(p.qty || 1) } }
               });
             }
           }
