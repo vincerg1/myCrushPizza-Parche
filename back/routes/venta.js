@@ -1111,6 +1111,17 @@ router.post('/checkout/confirm', async (req, res) => {
         : JSON.parse(fresh.products || '[]');
 
       for (const p of items) {
+
+        // 🔥 Ignorar incentivos
+        if (String(p?.type || '').toUpperCase() === 'INCENTIVE_REWARD') {
+          continue;
+        }
+
+        // 🔥 Seguridad extra
+        if (!Number.isFinite(Number(p?.pizzaId))) {
+          continue;
+        }
+
         await tx.storePizzaStock.update({
           where: {
             storeId_pizzaId: {
