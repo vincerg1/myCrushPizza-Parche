@@ -111,6 +111,10 @@ enum IncentiveTriggerMode {
   FIXED
   SMART_AVG_TICKET
 }
+enum IncentiveStatus {
+  ACTIVE
+  DISABLED
+}
 enum ProductType {
   SELLABLE
   BASE
@@ -477,8 +481,8 @@ model Incentive {
   name            String
 
   triggerMode     IncentiveTriggerMode
-  fixedAmount     Float?          // usado si FIXED
-  percentOverAvg  Float?          // usado si SMART
+  fixedAmount     Float?
+  percentOverAvg  Float?
 
   rewardPizzaId   Int
   rewardPizza     MenuPizza @relation(fields: [rewardPizzaId], references: [id])
@@ -488,7 +492,13 @@ model Incentive {
   startsAt        DateTime?
   endsAt          DateTime?
 
+  // 🔥 NUEVOS CAMPOS DINÁMICOS
+  daysActive      Json?      // [0,1,2,3,4,5,6]
+  windowStart     Int?       // minutos desde 00:00
+  windowEnd       Int?       // minutos desde 00:00
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  sales     Sale[]
+
+  sales           Sale[]
 }

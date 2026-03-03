@@ -2,11 +2,10 @@
 const express = require("express");
 
 module.exports = function (prisma) {
-  const r  = express.Router();
+  const r = express.Router();
 
-  /* ─────────────────────────────────────────────
-     Helpers
-  ───────────────────────────────────────────── */
+  /* ───────────────────────── HELPERS ───────────────────────── */
+
   const asNumberOrNull = (v) => {
     if (v === "" || v === null || v === undefined) return null;
     const n = Number(v);
@@ -19,53 +18,79 @@ module.exports = function (prisma) {
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
-r.get("/ping", (_req, res) => {
-  res.json({ ok: true, t: Date.now() });
-});
+  const cleanDays = (arr) => {
+    if (!Array.isArray(arr)) return null;
+    const cleaned = arr
+      .map(Number)
+      .filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    return cleaned.length ? cleaned : null;
+  };
 
-  /* =========================================================
-     GET ALL INCENTIVES
-  ========================================================= */
+  const isInWindow = (minutesNow, start, end) => {
+    if (start == null || end == null) return true;
+    return start <= end
+      ? minutesNow >= start && minutesNow < end
+      : minutesNow >= start || minutesNow < end;
+  };
+
+  /* ───────────────────────── GET ALL ───────────────────────── */
+
   r.get("/", async (_req, res) => {
     try {
       const incentives = await prisma.incentive.findMany({
         orderBy: { createdAt: "desc" },
       });
-
       res.json(incentives);
     } catch (err) {
-      console.error("GET /api/incentives error:", err);
+      console.error("GET incentives error:", err);
       res.status(500).json({ error: "Error fetching incentives" });
     }
   });
 
-  /* =========================================================
-     GET ACTIVE INCENTIVE
-  ========================================================= */
+  /* ───────────────────────── GET ACTIVE (TIME-DRIVEN) ───────────────────────── */
+
   r.get("/active/one", async (_req, res) => {
     try {
-      const now = new Date();
+      const TZ = process.env.TIMEZONE || "Europe/Madrid";
 
-      const incentive = await prisma.incentive.findFirst({
+      const nowStr = new Date().toLocaleString("sv-SE", { timeZone: TZ });
+      const now = new Date(nowStr.replace(" ", "T"));
+
+      const minutesNow = now.getHours() * 60 + now.getMinutes();
+      const dayNow = now.getDay();
+
+      const incentives = await prisma.incentive.findMany({
         where: {
-          active: true,
+          active: true, // se usa solo como enabled/disabled
           AND: [
             { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
             { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
           ],
         },
+        orderBy: { createdAt: "desc" },
       });
 
-      res.json(incentive || null);
+      for (const inc of incentives) {
+        if (inc.daysActive?.length && !inc.daysActive.includes(dayNow)) {
+          continue;
+        }
+
+        if (!isInWindow(minutesNow, inc.windowStart, inc.windowEnd)) {
+          continue;
+        }
+
+        return res.json(inc);
+      }
+
+      return res.json(null);
     } catch (err) {
-      console.error("GET /api/incentives/active/one error:", err);
+      console.error("GET active incentive error:", err);
       res.status(500).json({ error: "Error fetching active incentive" });
     }
   });
 
-  /* =========================================================
-     CREATE INCENTIVE
-  ========================================================= */
+  /* ───────────────────────── CREATE ───────────────────────── */
+
   r.post("/", async (req, res) => {
     try {
       const {
@@ -77,6 +102,9 @@ r.get("/ping", (_req, res) => {
         active,
         startsAt,
         endsAt,
+        daysActive,
+        windowStart,
+        windowEnd,
       } = req.body || {};
 
       if (!name || !triggerMode || !rewardPizzaId) {
@@ -92,21 +120,15 @@ r.get("/ping", (_req, res) => {
         return res.status(400).json({ error: "Invalid rewardPizzaId" });
       }
 
-      if (triggerMode === "FIXED") {
-        const fa = asNumberOrNull(fixedAmount);
-        if (fa === null || fa <= 0) {
-          return res.status(400).json({ error: "Invalid fixedAmount" });
-        }
+      if (
+        (windowStart != null && windowEnd == null) ||
+        (windowStart == null && windowEnd != null)
+      ) {
+        return res.status(400).json({
+          error: "windowStart and windowEnd must both be defined or both null",
+        });
       }
 
-      if (triggerMode === "SMART_AVG_TICKET") {
-        const p = asNumberOrNull(percentOverAvg);
-        if (p === null || p <= 0) {
-          return res.status(400).json({ error: "Invalid percentOverAvg" });
-        }
-      }
-
-      // Si viene active=true → desactivar otros
       if (active === true) {
         await prisma.incentive.updateMany({
           where: { active: true },
@@ -128,19 +150,21 @@ r.get("/ping", (_req, res) => {
           active: !!active,
           startsAt: asDateOrNull(startsAt),
           endsAt: asDateOrNull(endsAt),
+          daysActive: cleanDays(daysActive),
+          windowStart: asNumberOrNull(windowStart),
+          windowEnd: asNumberOrNull(windowEnd),
         },
       });
 
       res.json(created);
     } catch (err) {
-      console.error("POST /api/incentives error:", err);
+      console.error("POST incentive error:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  /* =========================================================
-     UPDATE INCENTIVE
-  ========================================================= */
+  /* ───────────────────────── UPDATE ───────────────────────── */
+
   r.patch("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -157,6 +181,9 @@ r.get("/ping", (_req, res) => {
         active,
         startsAt,
         endsAt,
+        daysActive,
+        windowStart,
+        windowEnd,
       } = req.body || {};
 
       const data = {};
@@ -184,6 +211,27 @@ r.get("/ping", (_req, res) => {
       if (startsAt !== undefined) data.startsAt = asDateOrNull(startsAt);
       if (endsAt !== undefined) data.endsAt = asDateOrNull(endsAt);
 
+      if (daysActive !== undefined) {
+        data.daysActive = cleanDays(daysActive);
+      }
+
+      if (
+        (windowStart != null && windowEnd == null) ||
+        (windowStart == null && windowEnd != null)
+      ) {
+        return res.status(400).json({
+          error: "windowStart and windowEnd must both be defined or both null",
+        });
+      }
+
+      if (windowStart !== undefined) {
+        data.windowStart = asNumberOrNull(windowStart);
+      }
+
+      if (windowEnd !== undefined) {
+        data.windowEnd = asNumberOrNull(windowEnd);
+      }
+
       if (triggerMode === "FIXED") {
         data.fixedAmount = asNumberOrNull(fixedAmount);
         data.percentOverAvg = null;
@@ -201,58 +249,27 @@ r.get("/ping", (_req, res) => {
 
       res.json(updated);
     } catch (err) {
-      console.error("PATCH /api/incentives/:id error:", err);
+      console.error("PATCH incentive error:", err);
       res.status(500).json({ error: err.message });
     }
   });
 
-  /* =========================================================
-     ACTIVATE INCENTIVE
-  ========================================================= */
-  r.patch("/:id/activate", async (req, res) => {
+  /* ───────────────────────── DELETE ───────────────────────── */
+
+  r.delete("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!Number.isFinite(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid id" });
       }
 
-      await prisma.incentive.updateMany({
-        where: { active: true },
-        data: { active: false },
-      });
-
-      const activated = await prisma.incentive.update({
-        where: { id },
-        data: { active: true },
-      });
-
-      res.json(activated);
+      await prisma.incentive.delete({ where: { id } });
+      res.json({ ok: true });
     } catch (err) {
-      console.error("PATCH /api/incentives/:id/activate error:", err);
+      console.error("DELETE incentive error:", err);
       res.status(500).json({ error: err.message });
     }
   });
-  
-  /* =========================================================
-   DELETE INCENTIVE
-========================================================= */
-r.delete("/:id", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isFinite(id) || id <= 0) {
-      return res.status(400).json({ error: "Invalid id" });
-    }
-
-    await prisma.incentive.delete({
-      where: { id },
-    });
-
-    res.json({ ok: true, id });
-  } catch (err) {
-    console.error("DELETE /api/incentives/:id error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
   return r;
 };
