@@ -28,9 +28,10 @@ module.exports = function (prisma) {
 
   const isInWindow = (minutesNow, start, end) => {
     if (start == null || end == null) return true;
+
     return start <= end
       ? minutesNow >= start && minutesNow < end
-      : minutesNow >= start || minutesNow < end;
+      : minutesNow >= start || minutesNow < end; // cruza medianoche
   };
 
   /* ───────────────────────── GET ALL ───────────────────────── */
@@ -61,13 +62,13 @@ module.exports = function (prisma) {
 
       const incentives = await prisma.incentive.findMany({
         where: {
-          active: true, // se usa solo como enabled/disabled
+          active: true, // enabled
           AND: [
             { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
             { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
           ],
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "desc" }, // el más reciente tiene prioridad
       });
 
       for (const inc of incentives) {
@@ -129,13 +130,6 @@ module.exports = function (prisma) {
         });
       }
 
-      if (active === true) {
-        await prisma.incentive.updateMany({
-          where: { active: true },
-          data: { active: false },
-        });
-      }
-
       const created = await prisma.incentive.create({
         data: {
           name: String(name).trim(),
@@ -147,7 +141,7 @@ module.exports = function (prisma) {
               ? asNumberOrNull(percentOverAvg)
               : null,
           rewardPizzaId: rewardId,
-          active: !!active,
+          active: !!active, // solo enabled/disabled
           startsAt: asDateOrNull(startsAt),
           endsAt: asDateOrNull(endsAt),
           daysActive: cleanDays(daysActive),
@@ -197,13 +191,6 @@ module.exports = function (prisma) {
           return res.status(400).json({ error: "Invalid rewardPizzaId" });
         }
         data.rewardPizzaId = rewardId;
-      }
-
-      if (active === true) {
-        await prisma.incentive.updateMany({
-          where: { active: true, NOT: { id } },
-          data: { active: false },
-        });
       }
 
       if (active != null) data.active = !!active;
