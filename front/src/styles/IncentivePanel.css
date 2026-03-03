@@ -25,9 +25,7 @@
   margin: 0;
 }
 
-/* Add Button (similar to +Add Customer) */
-
-.IncentivePanel-addBtn {
+.IncentivePanel-header button {
   background: #ff6a3d;
   color: #fff;
   border: none;
@@ -39,41 +37,8 @@
   transition: all 0.15s ease;
 }
 
-.IncentivePanel-addBtn:hover {
+.IncentivePanel-header button:hover {
   opacity: 0.9;
-}
-
-/* ======================================================
-   KPI Row
-====================================================== */
-
-.IncentivePanel-kpis {
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-
-.IncentivePanel-kpiCard {
-  flex: 1;
-  min-width: 180px;
-  background: #fff;
-  border: 1px solid #ececec;
-  border-radius: 16px;
-  padding: 18px;
-  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.IncentivePanel-kpiCard span {
-  font-size: 13px;
-  color: #666;
-}
-
-.IncentivePanel-kpiCard strong {
-  font-size: 20px;
-  font-weight: 600;
 }
 
 /* ======================================================
@@ -102,51 +67,27 @@
   border-bottom: none;
 }
 
-/* Columns */
+/* Left text */
 
-.IncentivePanel-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.IncentivePanel-col.center {
-  align-items: center;
-}
-
-/* Text */
-
-.IncentivePanel-name {
+.IncentivePanel-row strong {
   font-weight: 600;
   font-size: 15px;
 }
 
-.IncentivePanel-meta {
+.IncentivePanel-row strong + div {
   font-size: 13px;
   color: #666;
+  margin-top: 4px;
 }
 
-/* Badge */
+/* Actions (right side buttons) */
 
-.IncentivePanel-badge {
-  background: #22c55e;
-  color: #fff;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-weight: 500;
-}
-
-/* ======================================================
-   Actions
-====================================================== */
-
-.IncentivePanel-actions {
+.IncentivePanel-row > div:last-child {
   display: flex;
   gap: 8px;
 }
 
-.IncentivePanel-btn {
+.IncentivePanel-row button {
   padding: 7px 12px;
   border-radius: 10px;
   border: 1px solid #e5e5e5;
@@ -155,68 +96,64 @@
   cursor: pointer;
   transition: all 0.15s ease;
 }
-.IncentivePanel-btn.active {
+
+.IncentivePanel-row button:hover {
+  background: #f5f5f5;
+}
+
+.IncentivePanel-row button:disabled {
   background: #22c55e;
   border-color: #22c55e;
   color: #fff;
   cursor: default;
 }
 
-.IncentivePanel-btn.active:hover {
-  background: #22c55e;
+/* ======================================================
+   MODAL
+====================================================== */
+
+.IncentivePanel-modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
 }
 
-.IncentivePanel-btn:hover {
-  background: #f5f5f5;
-}
-
-.IncentivePanel-btn.danger {
-  border-color: #f3caca;
-  background: #fff5f5;
-  color: #b91c1c;
-}
-
-.IncentivePanel-btn.danger:hover {
-  background: #fee2e2;
+.IncentivePanel-modal {
+  width: 720px;
+  max-width: 95%;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 18px;
+  padding: 30px;
+  box-shadow: 0 20px 45px rgba(16, 24, 40, 0.15);
 }
 
 /* ======================================================
-   Form Section
+   FORM
 ====================================================== */
 
-.IncentivePanel-form {
-  background: #fff;
-  border: 1px solid #ececec;
-  border-radius: 18px;
-  padding: 26px;
-  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.06);
+.IncentivePanel-modal form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
-.IncentivePanel-form h3 {
+.IncentivePanel-modal h3 {
   margin: 0 0 6px 0;
   font-size: 18px;
   font-weight: 600;
 }
 
-/* Fields */
+/* Inputs */
 
-.IncentivePanel-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.IncentivePanel-field label {
-  font-size: 13px;
-  font-weight: 500;
-  color: #444;
-}
-
-.IncentivePanel-field input,
-.IncentivePanel-field select {
+.IncentivePanel-modal input,
+.IncentivePanel-modal select {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid #e2e2e2;
@@ -224,27 +161,53 @@
   transition: border 0.15s ease, box-shadow 0.15s ease;
 }
 
-.IncentivePanel-field input:focus,
-.IncentivePanel-field select:focus {
+.IncentivePanel-modal input:focus,
+.IncentivePanel-modal select:focus {
   outline: none;
   border-color: #ff2e73;
   box-shadow: 0 0 0 3px rgba(255, 46, 115, 0.15);
 }
 
-/* Checkbox */
+/* Days selector */
 
-.IncentivePanel-checkbox {
-  font-size: 14px;
+.IncentivePanel-modal > form > div:nth-of-type(1) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-/* Form Buttons */
+.IncentivePanel-modal label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
 
-.IncentivePanel-formActions {
+/* Time row */
+
+.IncentivePanel-modal > form > div:nth-of-type(2) {
   display: flex;
   gap: 12px;
 }
 
-.IncentivePanel-formActions button {
+.IncentivePanel-modal input[type="time"] {
+  flex: 1;
+}
+
+/* Checkbox row */
+
+.IncentivePanel-modal > form > label {
+  font-size: 14px;
+}
+
+/* Buttons row */
+
+.IncentivePanel-modal > form > div:last-of-type {
+  display: flex;
+  gap: 12px;
+}
+
+.IncentivePanel-modal > form > div:last-of-type button {
   padding: 9px 16px;
   border-radius: 12px;
   border: 1px solid #e5e5e5;
@@ -254,25 +217,34 @@
   transition: all 0.15s ease;
 }
 
-.IncentivePanel-formActions button:hover {
+.IncentivePanel-modal > form > div:last-of-type button:hover {
   background: #f5f5f5;
 }
 
-.IncentivePanel-formActions button:last-child {
+.IncentivePanel-modal > form > div:last-of-type button:last-child {
   background: #ff2e73;
   border-color: #ff2e73;
   color: #fff;
 }
 
-.IncentivePanel-formActions button:last-child:hover {
+.IncentivePanel-modal > form > div:last-of-type button:last-child:hover {
   opacity: 0.9;
 }
 
-/* ======================================================
-   Notes
-====================================================== */
+/* Message */
 
-.IncentivePanel-note {
+.IncentivePanel-modal > form > div:last-child {
   font-size: 13px;
   color: #666;
+}
+
+/* ======================================================
+   Responsive
+====================================================== */
+
+@media (max-width: 640px) {
+  .IncentivePanel-modal {
+    width: 95%;
+    padding: 20px;
+  }
 }

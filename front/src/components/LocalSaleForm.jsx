@@ -221,17 +221,39 @@ const [customIngredients, setCustomIngredients] = useState({});
 const [customOpenSection, setCustomOpenSection] = useState(null);
 
 
-useEffect(() => {
-  api.get("/api/incentives/active/one")
-    .then(r => {
-      if (r.data && r.data.triggerMode === "FIXED") {
-        setActiveIncentive(r.data);
-      } else {
-        setActiveIncentive(null);
-      }
+const TZ = "Europe/Madrid";
+
+const tzNow = () => {
+  const s = new Date().toLocaleString("sv-SE", { timeZone: TZ });
+  return new Date(s.replace(" ", "T"));
+};
+
+const fetchActiveIncentive = useCallback(() => {
+  api
+    .get("/api/incentives/active/one")
+    .then((r) => {
+      if (r.data && r.data.triggerMode === "FIXED") setActiveIncentive(r.data);
+      else setActiveIncentive(null);
     })
     .catch(() => setActiveIncentive(null));
 }, []);
+const [nowMs, setNowMs] = useState(Date.now());
+
+useEffect(() => {
+  const id = setInterval(() => {
+    setNowMs(Date.now());
+  }, 1000); // actualiza cada segundo
+
+  return () => clearInterval(id);
+}, []);
+
+useEffect(() => {
+  fetchActiveIncentive();
+
+  // safety refresh (por si cambias incentivos desde panel)
+  const id = setInterval(fetchActiveIncentive, 60_000);
+  return () => clearInterval(id);
+}, [fetchActiveIncentive]);
 
 
 useEffect(() => {
@@ -978,6 +1000,77 @@ const incentiveProgress =
     ? Math.min(100, (totalBeforeIncentive / INCENTIVE_THRESHOLD) * 100)
     : 0;
 
+
+const formatMs = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  return `${m}m ${String(sec).padStart(2, "0")}s`;
+};
+
+// ms hasta el próximo “corte” del incentivo (min: endsAt vs windowEnd)
+const incentiveTimeLeftMs = useMemo(() => {
+  if (!activeIncentive) return null;
+
+  const now = tzNow();
+  const candidates = [];
+
+  // 1) endsAt global
+  if (activeIncentive.endsAt) {
+    const endAtMs = new Date(activeIncentive.endsAt).getTime();
+    candidates.push(endAtMs - now.getTime());
+  }
+
+  // 2) windowEnd diario (si existe)
+  if (activeIncentive.windowEnd != null) {
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const end = Number(activeIncentive.windowEnd);
+
+    let minsLeft;
+    if (
+      activeIncentive.windowStart != null &&
+      Number(activeIncentive.windowStart) > end
+    ) {
+      // cruza medianoche
+      minsLeft =
+        minutesNow < end
+          ? end - minutesNow
+          : 24 * 60 - minutesNow + end;
+    } else {
+      minsLeft = end - minutesNow;
+    }
+
+    // Ajuste fino por segundos/milisegundos para que sea smooth
+    const msLeft =
+      minsLeft * 60 * 1000 - now.getSeconds() * 1000 - now.getMilliseconds();
+
+    candidates.push(msLeft);
+  }
+
+  if (!candidates.length) return null;
+  return Math.max(0, Math.min(...candidates));
+}, [activeIncentive, nowMs]);
+const refreshedAtZeroRef = useRef(false);
+
+useEffect(() => {
+  if (incentiveTimeLeftMs == null) return;
+
+  if (incentiveTimeLeftMs > 0) {
+    refreshedAtZeroRef.current = false;
+    return;
+  }
+
+  if (refreshedAtZeroRef.current) return;
+  refreshedAtZeroRef.current = true;
+
+  // cuando llega a 0, refresca el incentivo activo (puede devolver null)
+  fetchActiveIncentive();
+}, [incentiveTimeLeftMs, fetchActiveIncentive]);
+
+
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
   const getImg = (it) => it?.image || "";
@@ -1035,9 +1128,17 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
   >
     {!incentiveUnlocked ? (
       <>
-        <div className="lsf-incentive__text">
-          🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
-          <b> {incentiveRewardName} de regalo =)</b>
+        <div className="lsf-incentive__row">
+          <div className="lsf-incentive__text">
+            🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
+            <b> {incentiveRewardName}</b>
+          </div>
+
+          {incentiveTimeLeftMs != null && (
+            <div className="lsf-incentive__time-inline">
+               Últimos: {formatMs(incentiveTimeLeftMs)}
+            </div>
+          )}
         </div>
 
         <div className="lsf-incentive__bar">
@@ -1048,8 +1149,16 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
         </div>
       </>
     ) : (
-      <div className="lsf-incentive__unlocked">
-        🎉 ¡{incentiveRewardName} desbloqueado!
+      <div className="lsf-incentive__row">
+        <div className="lsf-incentive__unlocked">
+          🎉 ¡{incentiveRewardName} desbloqueado!
+        </div>
+
+        {incentiveTimeLeftMs != null && (
+          <div className="lsf-incentive__time-inline">
+            Termina en: {formatMs(incentiveTimeLeftMs)}
+          </div>
+        )}
       </div>
     )}
   </div>

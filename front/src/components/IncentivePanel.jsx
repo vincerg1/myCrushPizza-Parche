@@ -20,7 +20,10 @@ export default function IncentivePanel() {
     rewardPizzaId: "",
     active: false,
     startsAt: "",
-    endsAt : "",
+    endsAt: "",
+    daysActive: [],
+    windowStart: "",
+    windowEnd: "",
   });
 
   /* ───────────────────────── LOAD ───────────────────────── */
@@ -40,7 +43,9 @@ export default function IncentivePanel() {
   const loadPizzas = async () => {
     try {
       const { data } = await api.get("/api/pizzas");
-      const active = Array.isArray(data) ? data.filter((p) => p.status === "ACTIVE") : [];
+      const active = Array.isArray(data)
+        ? data.filter((p) => p.status === "ACTIVE")
+        : [];
       setPizzas(active);
     } catch {
       setPizzas([]);
@@ -52,7 +57,7 @@ export default function IncentivePanel() {
     loadPizzas();
   }, []);
 
-  /* ───────────────────────── FORM ───────────────────────── */
+  /* ───────────────────────── HELPERS ───────────────────────── */
 
   const onChange = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -68,17 +73,34 @@ export default function IncentivePanel() {
       active: false,
       startsAt: "",
       endsAt: "",
+      daysActive: [],
+      windowStart: "",
+      windowEnd: "",
     });
   };
 
+  const toMinutes = (hhmm) => {
+    if (!hhmm) return null;
+    const [h, m] = hhmm.split(":").map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  };
+
+  const minutesToHHMM = (mins) => {
+    if (mins == null) return "";
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  };
+
+  /* ───────────────────────── FORM OPEN/CLOSE ───────────────────────── */
+
   const openCreate = () => {
     resetForm();
-    setEditingId(null);
     setShowForm(true);
   };
 
   const openEdit = (inc) => {
-    setMsg("");
     setEditingId(inc.id);
     setForm({
       name: inc.name || "",
@@ -89,6 +111,9 @@ export default function IncentivePanel() {
       active: !!inc.active,
       startsAt: inc.startsAt ? inc.startsAt.slice(0, 16) : "",
       endsAt: inc.endsAt ? inc.endsAt.slice(0, 16) : "",
+      daysActive: Array.isArray(inc.daysActive) ? inc.daysActive : [],
+      windowStart: minutesToHHMM(inc.windowStart),
+      windowEnd: minutesToHHMM(inc.windowEnd),
     });
     setShowForm(true);
   };
@@ -98,19 +123,24 @@ export default function IncentivePanel() {
     setShowForm(false);
   };
 
+  /* ───────────────────────── SUBMIT ───────────────────────── */
+
   const submit = async (e) => {
     e.preventDefault();
     setMsg("");
 
-    if (!form.name?.trim()) return setMsg("Nombre requerido.");
-    if (!form.rewardPizzaId) return setMsg("Selecciona producto premio.");
+    if (!form.name?.trim()) return setMsg("Name required.");
+    if (!form.rewardPizzaId) return setMsg("Select reward pizza.");
 
     if (form.triggerMode === "FIXED" && !Number(form.fixedAmount)) {
-      return setMsg("Monto fijo inválido.");
+      return setMsg("Invalid fixed amount.");
     }
 
-    if (form.triggerMode === "SMART_AVG_TICKET" && !Number(form.percentOverAvg)) {
-      return setMsg("Percent over average inválido.");
+    if (
+      form.triggerMode === "SMART_AVG_TICKET" &&
+      !Number(form.percentOverAvg)
+    ) {
+      return setMsg("Invalid percent over average.");
     }
 
     setSaving(true);
@@ -123,7 +153,12 @@ export default function IncentivePanel() {
         active: !!form.active,
         startsAt: form.startsAt || null,
         endsAt: form.endsAt || null,
-        ...(form.triggerMode === "FIXED" && { fixedAmount: Number(form.fixedAmount) }),
+        daysActive: form.daysActive,
+        windowStart: toMinutes(form.windowStart),
+        windowEnd: toMinutes(form.windowEnd),
+        ...(form.triggerMode === "FIXED" && {
+          fixedAmount: Number(form.fixedAmount),
+        }),
         ...(form.triggerMode === "SMART_AVG_TICKET" && {
           percentOverAvg: Number(form.percentOverAvg),
         }),
@@ -131,18 +166,14 @@ export default function IncentivePanel() {
 
       if (editingId) {
         await api.patch(`/api/incentives/${editingId}`, payload);
-        setMsg("Incentivo actualizado.");
       } else {
         await api.post("/api/incentives", payload);
-        setMsg("Incentivo creado.");
       }
 
       await loadIncentives();
-      // si quieres que se quede abierto tras guardar, comenta estas 2 líneas:
-      resetForm();
-      setShowForm(false);
+      closeForm();
     } catch {
-      setMsg("Error guardando incentivo.");
+      setMsg("Error saving incentive.");
     } finally {
       setSaving(false);
     }
@@ -151,167 +182,179 @@ export default function IncentivePanel() {
   /* ───────────────────────── ACTIONS ───────────────────────── */
 
   const activate = async (id) => {
-    try {
-      await api.patch(`/api/incentives/${id}/activate`);
-      await loadIncentives();
-    } catch {
-      // opcional
-    }
+    await api.patch(`/api/incentives/${id}/activate`);
+    await loadIncentives();
   };
 
   const remove = async (id) => {
-    if (!window.confirm("¿Eliminar este incentivo?")) return;
-    try {
-      await api.delete(`/api/incentives/${id}`);
-      await loadIncentives();
-      if (editingId === id) closeForm();
-    } catch {
-      // opcional
-    }
+    if (!window.confirm("Delete this incentive?")) return;
+    await api.delete(`/api/incentives/${id}`);
+    await loadIncentives();
   };
 
   /* ───────────────────────── RENDER ───────────────────────── */
 
   return (
     <div className="IncentivePanel">
-      {/* ───────── HEADER ───────── */}
       <div className="IncentivePanel-header">
         <h2>Incentives</h2>
-
-        <button className="IncentivePanel-addBtn" onClick={openCreate}>
-          + Add Incentive
-        </button>
+        <button onClick={openCreate}>+ Add Incentive</button>
       </div>
 
-      {/* ───────── KPI ROW (placeholder futuro) ───────── */}
-      <div className="IncentivePanel-kpis">
-        <div className="IncentivePanel-kpiCard">
-          <span>Total Incentives</span>
-          <strong>{incentives.length}</strong>
-        </div>
-
-        <div className="IncentivePanel-kpiCard">
-          <span>Active</span>
-          <strong>{incentives.filter((i) => i.active).length}</strong>
-        </div>
-      </div>
-
-      {/* ───────── HISTÓRICO ───────── */}
       <div className="IncentivePanel-history">
-        {loading && <div className="IncentivePanel-note">Loading...</div>}
+        {loading && <div>Loading...</div>}
 
         {!loading &&
           incentives.map((i) => (
             <div key={i.id} className="IncentivePanel-row">
-              <div className="IncentivePanel-col">
-                <div className="IncentivePanel-name">{i.name}</div>
-                <div className="IncentivePanel-meta">
-                  {i.triggerMode === "FIXED" ? `€${i.fixedAmount}` : `${i.percentOverAvg}% over avg`}
+              <div>
+                <strong>{i.name}</strong>
+                <div>
+                  {i.triggerMode === "FIXED"
+                    ? `€${i.fixedAmount}`
+                    : `${i.percentOverAvg}% over avg`}
                 </div>
               </div>
 
-    
-              <div className="IncentivePanel-actions">
-
+              <div>
                 <button
-                  className={`IncentivePanel-btn ${i.active ? "active" : ""}`}
-                  onClick={() => !i.active && activate(i.id)}
                   disabled={i.active}
+                  onClick={() => activate(i.id)}
                 >
                   {i.active ? "Active" : "Activate"}
                 </button>
-
-                <button
-                  className="IncentivePanel-btn"
-                  onClick={() => openEdit(i)}
-                >
-                  Edit
-                </button>
-
-                <button
-                  className="IncentivePanel-btn danger"
-                  onClick={() => remove(i.id)}
-                >
-                  Delete
-                </button>
-
+                <button onClick={() => openEdit(i)}>Edit</button>
+                <button onClick={() => remove(i.id)}>Delete</button>
               </div>
             </div>
           ))}
       </div>
 
-      {/* ───────── FORM ───────── */}
       {showForm && (
-        <form onSubmit={submit} className="IncentivePanel-form">
-          <h3>{editingId ? "Edit Incentive" : "Create Incentive"}</h3>
+        <div className="IncentivePanel-modalOverlay">
+          <div className="IncentivePanel-modal">
+            <form onSubmit={submit}>
+              <h3>{editingId ? "Edit Incentive" : "Create Incentive"}</h3>
 
-          <div className="IncentivePanel-field">
-            <label>Name</label>
-            <input value={form.name} onChange={(e) => onChange("name", e.target.value)} />
-          </div>
-
-          <div className="IncentivePanel-field">
-            <label>Trigger type</label>
-            <select value={form.triggerMode} onChange={(e) => onChange("triggerMode", e.target.value)}>
-              <option value="FIXED">Fixed amount</option>
-              <option value="SMART_AVG_TICKET">% over average</option>
-            </select>
-          </div>
-
-          {form.triggerMode === "FIXED" && (
-            <div className="IncentivePanel-field">
-              <label>Minimum amount (€)</label>
               <input
-                type="number"
-                value={form.fixedAmount}
-                onChange={(e) => onChange("fixedAmount", e.target.value)}
+                placeholder="Name"
+                value={form.name}
+                onChange={(e) => onChange("name", e.target.value)}
               />
-            </div>
-          )}
 
-          {form.triggerMode === "SMART_AVG_TICKET" && (
-            <div className="IncentivePanel-field">
-              <label>% over average</label>
-              <input
-                type="number"
-                value={form.percentOverAvg}
-                onChange={(e) => onChange("percentOverAvg", e.target.value)}
-              />
-            </div>
-          )}
-
-          <div className="IncentivePanel-field">
-            <label>Reward pizza</label>
-            <select value={form.rewardPizzaId} onChange={(e) => onChange("rewardPizzaId", e.target.value)}>
-              <option value="">Select a pizza…</option>
-              {pizzas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id} · {p.name}
+              <select
+                value={form.triggerMode}
+                onChange={(e) =>
+                  onChange("triggerMode", e.target.value)
+                }
+              >
+                <option value="FIXED">Fixed amount</option>
+                <option value="SMART_AVG_TICKET">
+                  % over average
                 </option>
-              ))}
-            </select>
-          </div>
+              </select>
 
-          <div className="IncentivePanel-checkbox">
-            <label>
-              <input
-                type="checkbox"
-                checked={form.active}
-                onChange={(e) => onChange("active", e.target.checked)}
-              />
-              Activate on save
-            </label>
-          </div>
+              {form.triggerMode === "FIXED" && (
+                <input
+                  type="number"
+                  placeholder="Minimum amount"
+                  value={form.fixedAmount}
+                  onChange={(e) =>
+                    onChange("fixedAmount", e.target.value)
+                  }
+                />
+              )}
 
-          <div className="IncentivePanel-formActions">
-            <button type="button" onClick={closeForm}>
-              Cancel
-            </button>
-            <button disabled={saving}>{saving ? "Saving..." : editingId ? "Update" : "Create"}</button>
-          </div>
+              {form.triggerMode === "SMART_AVG_TICKET" && (
+                <input
+                  type="number"
+                  placeholder="% over average"
+                  value={form.percentOverAvg}
+                  onChange={(e) =>
+                    onChange("percentOverAvg", e.target.value)
+                  }
+                />
+              )}
 
-          {msg && <div className="IncentivePanel-note">{msg}</div>}
-        </form>
+              <select
+                value={form.rewardPizzaId}
+                onChange={(e) =>
+                  onChange("rewardPizzaId", e.target.value)
+                }
+              >
+                <option value="">Select reward pizza…</option>
+                {pizzas.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+
+              {/* DAYS */}
+              <div>
+                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d, idx) => (
+                  <label key={idx}>
+                    <input
+                      type="checkbox"
+                      checked={form.daysActive.includes(idx)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onChange("daysActive", [...form.daysActive, idx]);
+                        } else {
+                          onChange(
+                            "daysActive",
+                            form.daysActive.filter((x) => x !== idx)
+                          );
+                        }
+                      }}
+                    />
+                    {d}
+                  </label>
+                ))}
+              </div>
+
+              {/* TIME */}
+              <div>
+                <input
+                  type="time"
+                  value={form.windowStart}
+                  onChange={(e) =>
+                    onChange("windowStart", e.target.value)
+                  }
+                />
+                <input
+                  type="time"
+                  value={form.windowEnd}
+                  onChange={(e) =>
+                    onChange("windowEnd", e.target.value)
+                  }
+                />
+              </div>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) =>
+                    onChange("active", e.target.checked)
+                  }
+                />
+                Activate on save
+              </label>
+
+              <div>
+                <button type="button" onClick={closeForm}>
+                  Cancel
+                </button>
+                <button disabled={saving}>
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+
+              {msg && <div>{msg}</div>}
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

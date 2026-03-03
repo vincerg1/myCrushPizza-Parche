@@ -3,10 +3,12 @@
 .lsf-wrapper * {
   box-sizing: border-box;
 }
+
 .lsf-wrapper {
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden; 
+  overflow-x: clip; /* 🔥 en vez de hidden */
+  overflow-y: visible; /* 🔥 permite respirar vertical */
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   will-change: transform;
 }
@@ -1200,6 +1202,9 @@
   background: linear-gradient(135deg, #fff4d6, #d4f806);
   border: 1px solid #d4f806;
   font-size: 14px;
+  transform: translateZ(0);      /* 🔥 fuerza layer GPU */
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .lsf-incentive__text {
@@ -1230,16 +1235,13 @@
 
 @keyframes incentiveBreath {
   0% {
-    transform: scale(1);
-    box-shadow: 0 0 0 rgba(249, 38, 114, 0);
+    transform: translateZ(0) scale(1);
   }
   50% {
-    transform: scale(1.015);
-    box-shadow: 0 0 18px rgba(249, 38, 114, 0.25);
+    transform: translateZ(0) scale(1.0020); /* 🔥 menos exagerado */
   }
   100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 rgba(249, 38, 114, 0);
+    transform: translateZ(0) scale(1);
   }
 }
 
@@ -1316,7 +1318,48 @@
   opacity: 0.7;
   min-width: 50px;
 }
+.lsf-incentive__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
+.lsf-incentive__time-inline {
+  font-weight: 800;
+  font-size: 14px;
+  white-space: nowrap;
+
+background: linear-gradient(
+  90deg,
+  #f92672,
+  #ff8c42,
+  #4285f4,
+  #f92672
+);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+
+  animation: crushTimeFlow 4s linear infinite;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+@keyframes crushTimeFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 300% 50%;
+  }
+}
+.lsf-incentive__time-inline {
+  text-shadow:
+    0 0 6px rgba(249, 38, 114, 0.35),
+    0 0 12px rgba(26, 115, 232, 0.25);
+}
 @keyframes expandFade {
   from {
     opacity: 0;
