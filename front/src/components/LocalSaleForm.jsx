@@ -251,7 +251,7 @@ useEffect(() => {
   fetchActiveIncentive();
 
   // safety refresh (por si cambias incentivos desde panel)
-  const id = setInterval(fetchActiveIncentive, 60_000);
+  const id = setInterval(fetchActiveIncentive, 20_000);
   return () => clearInterval(id);
 }, [fetchActiveIncentive]);
 
@@ -1066,8 +1066,16 @@ useEffect(() => {
   if (refreshedAtZeroRef.current) return;
   refreshedAtZeroRef.current = true;
 
-  // cuando llega a 0, refresca el incentivo activo (puede devolver null)
+  // 🔥 refetch inmediato
   fetchActiveIncentive();
+
+  // 🔥 segundo refetch 2 segundos después (cubre edge timing)
+  const retry = setTimeout(() => {
+    fetchActiveIncentive();
+  }, 2000);
+
+  return () => clearTimeout(retry);
+
 }, [incentiveTimeLeftMs, fetchActiveIncentive]);
 
 
