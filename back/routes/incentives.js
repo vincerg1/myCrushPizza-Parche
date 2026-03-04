@@ -31,7 +31,7 @@ module.exports = function (prisma) {
 
     return start <= end
       ? minutesNow >= start && minutesNow < end
-      : minutesNow >= start || minutesNow < end; // cruza medianoche
+      : minutesNow >= start || minutesNow < end;
   };
 
   /* ───────────────────────── GET ALL ───────────────────────── */
@@ -39,8 +39,9 @@ module.exports = function (prisma) {
   r.get("/", async (_req, res) => {
     try {
       const incentives = await prisma.incentive.findMany({
-        orderBy: { createdAt: "desc" },
+        orderBy: { windowStart: "asc" },
       });
+
       res.json(incentives);
     } catch (err) {
       console.error("GET incentives error:", err);
@@ -48,47 +49,90 @@ module.exports = function (prisma) {
     }
   });
 
-  /* ───────────────────────── GET ACTIVE (TIME-DRIVEN) ───────────────────────── */
+  /* ───────────────────────── GET ACTIVE (TIME DRIVEN) ───────────────────────── */
 
-  r.get("/active/one", async (_req, res) => {
-    try {
-      const TZ = process.env.TIMEZONE || "Europe/Madrid";
+r.get("/active/one", async (_req, res) => {
+  try {
+    const TZ = process.env.TIMEZONE || "Europe/Madrid";
 
-      const nowStr = new Date().toLocaleString("sv-SE", { timeZone: TZ });
-      const now = new Date(nowStr.replace(" ", "T"));
+    const now = new Date(
+      new Date().toLocaleString("en-US", { timeZone: TZ })
+    );
 
-      const minutesNow = now.getHours() * 60 + now.getMinutes();
-      const dayNow = now.getDay();
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const dayNow = now.getDay();
 
-      const incentives = await prisma.incentive.findMany({
-        where: {
-          active: true, // enabled
-          AND: [
-            { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-            { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-          ],
-        },
-        orderBy: { createdAt: "desc" }, // el más reciente tiene prioridad
-      });
+    const incentives = await prisma.incentive.findMany({
+      where: {
+        active: true,
+      },
+      orderBy: {
+        windowStart: "asc",
+      },
+    });
 
-      for (const inc of incentives) {
-        if (inc.daysActive?.length && !inc.daysActive.includes(dayNow)) {
-          continue;
+    let active = null;
+    let next = null;
+    let nextStartsInMs = null;
+
+    for (const inc of incentives) {
+
+      // fecha válida
+      if (inc.startsAt && inc.startsAt > now) {
+        const diff = inc.startsAt.getTime() - now.getTime();
+
+        if (nextStartsInMs == null || diff < nextStartsInMs) {
+          next = inc;
+          nextStartsInMs = diff;
         }
 
-        if (!isInWindow(minutesNow, inc.windowStart, inc.windowEnd)) {
-          continue;
-        }
-
-        return res.json(inc);
+        continue;
       }
 
-      return res.json(null);
-    } catch (err) {
-      console.error("GET active incentive error:", err);
-      res.status(500).json({ error: "Error fetching active incentive" });
+      if (inc.endsAt && inc.endsAt < now) {
+        continue;
+      }
+
+      // día válido
+      if (inc.daysActive?.length && !inc.daysActive.includes(dayNow)) {
+        continue;
+      }
+
+      // incentivo activo
+      if (isInWindow(minutesNow, inc.windowStart, inc.windowEnd)) {
+        active = inc;
+        break;
+      }
+
+      // calcular próximo inicio dentro del día
+if (inc.windowStart != null && inc.windowStart > minutesNow) {
+
+  const minsUntil = inc.windowStart - minutesNow;
+  const ms = minsUntil * 60 * 1000;
+
+        if (nextStartsInMs == null || ms < nextStartsInMs) {
+          next = inc;
+          nextStartsInMs = ms;
+        }
+      }
     }
-  });
+
+    return res.json({
+      active,
+      next: next
+        ? {
+            id: next.id,
+            name: next.name,
+            startsInMs: nextStartsInMs,
+          }
+        : null,
+    });
+
+  } catch (err) {
+    console.error("GET active incentive error:", err);
+    res.status(500).json({ error: "Error fetching incentives" });
+  }
+});
 
   /* ───────────────────────── CREATE ───────────────────────── */
 
@@ -141,7 +185,7 @@ module.exports = function (prisma) {
               ? asNumberOrNull(percentOverAvg)
               : null,
           rewardPizzaId: rewardId,
-          active: !!active, // solo enabled/disabled
+          active: !!active,
           startsAt: asDateOrNull(startsAt),
           endsAt: asDateOrNull(endsAt),
           daysActive: cleanDays(daysActive),
@@ -151,6 +195,7 @@ module.exports = function (prisma) {
       });
 
       res.json(created);
+
     } catch (err) {
       console.error("POST incentive error:", err);
       res.status(500).json({ error: err.message });
@@ -162,6 +207,7 @@ module.exports = function (prisma) {
   r.patch("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
+
       if (!Number.isFinite(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid id" });
       }
@@ -187,9 +233,11 @@ module.exports = function (prisma) {
 
       if (rewardPizzaId != null) {
         const rewardId = Number(rewardPizzaId);
+
         if (!Number.isFinite(rewardId) || rewardId <= 0) {
           return res.status(400).json({ error: "Invalid rewardPizzaId" });
         }
+
         data.rewardPizzaId = rewardId;
       }
 
@@ -235,6 +283,7 @@ module.exports = function (prisma) {
       });
 
       res.json(updated);
+
     } catch (err) {
       console.error("PATCH incentive error:", err);
       res.status(500).json({ error: err.message });
@@ -246,12 +295,15 @@ module.exports = function (prisma) {
   r.delete("/:id", async (req, res) => {
     try {
       const id = Number(req.params.id);
+
       if (!Number.isFinite(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid id" });
       }
 
       await prisma.incentive.delete({ where: { id } });
+
       res.json({ ok: true });
+
     } catch (err) {
       console.error("DELETE incentive error:", err);
       res.status(500).json({ error: err.message });
