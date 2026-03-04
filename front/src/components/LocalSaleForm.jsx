@@ -204,6 +204,7 @@ export default function LocalSaleForm({
   const [showAllHalfExtrasB, setShowAllHalfExtrasB] = useState(false);
   const [openHalfExtrasA, setOpenHalfExtrasA] = useState(false);
   const [openHalfExtrasB, setOpenHalfExtrasB] = useState(false);
+  const [nextIncentiveMs, setNextIncentiveMs] = useState(null);
   const [customer, setCustomer] = useState(null);
   const [dragX, setDragX] = useState(0);
   const dragActive = useRef(false);
@@ -229,13 +230,26 @@ const tzNow = () => {
 };
 
 const fetchActiveIncentive = useCallback(() => {
-  api
-    .get("/api/incentives/active/one")
+
+  api.get("/api/incentives/active/one")
     .then((r) => {
-      if (r.data && r.data.triggerMode === "FIXED") setActiveIncentive(r.data);
-      else setActiveIncentive(null);
+
+      const inc = r.data?.active || null;
+
+      if (inc && inc.triggerMode === "FIXED") {
+        setActiveIncentive(inc);
+      } else {
+        setActiveIncentive(null);
+      }
+
+      setNextIncentiveMs(r.data?.next?.startsInMs ?? null);
+
     })
-    .catch(() => setActiveIncentive(null));
+    .catch(() => {
+      setActiveIncentive(null);
+      setNextIncentiveMs(null);
+    });
+
 }, []);
 const [nowMs, setNowMs] = useState(Date.now());
 
@@ -1003,11 +1017,15 @@ const incentiveProgress =
 
 const formatMs = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
+
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
 
-  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (h > 0) {
+    return `${h}h ${String(m).padStart(2, "0")}m ${String(sec).padStart(2, "0")}s`;
+  }
+
   return `${m}m ${String(sec).padStart(2, "0")}s`;
 };
 
@@ -1078,6 +1096,27 @@ useEffect(() => {
 
 }, [incentiveTimeLeftMs, fetchActiveIncentive]);
 
+useEffect(() => {
+
+  if (nextIncentiveMs == null) return;
+
+  const id = setInterval(() => {
+    setNextIncentiveMs(prev => {
+      if (prev == null) return null;
+      return Math.max(prev - 1000, 0);
+    });
+  }, 1000);
+
+  return () => clearInterval(id);
+
+}, [nextIncentiveMs]);
+useEffect(() => {
+
+  if (nextIncentiveMs !== 0) return;
+
+  fetchActiveIncentive();
+
+}, [nextIncentiveMs, fetchActiveIncentive]);
 
   const cartCount = cart.reduce((n, l) => n + Number(l.qty || 0), 0);
   if (!storeId && !isAdmin && !forcedStoreId) return <p className="msg">Select store…</p>;
@@ -1128,49 +1167,73 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
     <>
     
     {/* ───────── INCENTIVE BANNER ───────── */}
-{INCENTIVE_THRESHOLD != null && (
-  <div
-    className={`lsf-incentive ${
-      !incentiveUnlocked ? "is-breathing" : ""
-    }`}
-  >
-    {!incentiveUnlocked ? (
-      <>
-        <div className="lsf-incentive__row">
-          <div className="lsf-incentive__text">
-            🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un
-            <b> {incentiveRewardName}</b>
-          </div>
+<div
+  className={`lsf-incentive ${
+    INCENTIVE_THRESHOLD != null && !incentiveUnlocked ? "is-breathing" : ""
+  }`}
+>
 
-          {incentiveTimeLeftMs != null && (
-            <div className="lsf-incentive__time-inline">
-               Últimos: {formatMs(incentiveTimeLeftMs)}
-            </div>
-          )}
-        </div>
+{/* ───── NO HAY INCENTIVO ACTIVO ───── */}
+{INCENTIVE_THRESHOLD == null ? (
 
-        <div className="lsf-incentive__bar">
-          <div
-            className="lsf-incentive__fill"
-            style={{ width: `${incentiveProgress}%` }}
-          />
-        </div>
-      </>
-    ) : (
-      <div className="lsf-incentive__row">
-        <div className="lsf-incentive__unlocked">
-          🎉 ¡{incentiveRewardName} desbloqueado!
-        </div>
+  <div className="lsf-incentive__row lsf-incentive__row--waiting">
 
-        {incentiveTimeLeftMs != null && (
-          <div className="lsf-incentive__time-inline">
-            Termina en: {formatMs(incentiveTimeLeftMs)}
-          </div>
-        )}
+    <div className="lsf-incentive__text">
+      🍕  Próximo incentivo en camino:
+    </div>
+
+    {nextIncentiveMs != null && (
+      <div className="lsf-incentive__time-badge">
+        ⏱ Disponible en {formatMs(nextIncentiveMs)}
       </div>
     )}
+
   </div>
+
+) : !incentiveUnlocked ? (
+
+<>
+  <div className="lsf-incentive__row">
+
+    <div className="lsf-incentive__text">
+      🎁 Añade €{incentiveRemaining.toFixed(2)} y tendrás un <b>{incentiveRewardName}</b>
+    </div>
+
+    {incentiveTimeLeftMs != null && (
+      <div className="lsf-incentive__time-badge">
+        ⏱ {formatMs(incentiveTimeLeftMs)}
+      </div>
+    )}
+
+  </div>
+
+  <div className="lsf-incentive__bar">
+    <div
+      className="lsf-incentive__fill"
+      style={{ width: `${incentiveProgress}%` }}
+    />
+  </div>
+</>
+
+) : (
+
+  <div className="lsf-incentive__row">
+
+    <div className="lsf-incentive__unlocked">
+      🎉 ¡{incentiveRewardName} desbloqueado!
+    </div>
+
+    {incentiveTimeLeftMs != null && (
+      <div className="lsf-incentive__time-badge">
+        ⏱ {formatMs(incentiveTimeLeftMs)}
+      </div>
+    )}
+
+  </div>
+
 )}
+
+</div>
         <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         <div className="lsf-top">
           <div className="lsf-top__title">

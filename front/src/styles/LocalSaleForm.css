@@ -1212,6 +1212,9 @@
   margin-bottom: 8px;
   font-style: italic;
   color: #f92672;
+    flex: 1;
+    min-width:0;
+  max-width:75%;
 }
 
 .lsf-incentive__bar {
@@ -1299,7 +1302,6 @@
   flex-direction: column;
   gap: 8px;
 }
-
 .lsf-custom-item__expanded {
   margin-top: 10px;
   padding: 10px 12px;
@@ -1311,54 +1313,80 @@
   flex-wrap: wrap;
   animation: expandFade 0.2s ease-in-out;
 }
-
 .lsf-custom-item__selected {
   font-weight: 600;
   font-size: 13px;
   opacity: 0.7;
   min-width: 50px;
 }
-.lsf-incentive__row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+.lsf-incentive__row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+/* SOLO cuando no hay incentivo activo */
+.lsf-incentive__row--waiting{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  gap:4px;              /* menos espacio */
 }
 
-.lsf-incentive__time-inline {
-  font-weight: 800;
-  font-size: 14px;
-  white-space: nowrap;
-
-background: linear-gradient(
-  90deg,
-  #f92672,
-  #ff8c42,
-  #4285f4,
-  #f92672
-);
-  background-size: 300% 300%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-
-  animation: crushTimeFlow 4s linear infinite;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+/* texto */
+.lsf-incentive__text--waiting{
+  font-weight:600;
+  line-height:0.75;      /* compacta el interlineado */
+  margin:0;
 }
-@keyframes crushTimeFlow {
-  0% {
-    background-position: 0% 50%;
+
+/* badge */
+.lsf-incentive__row--waiting .lsf-incentive__time-badge{
+  align-self:center;
+  margin-top:-5px;       /* separación mínima */
+}
+
+/* MOBILE */
+@media (max-width:640px){
+
+  .lsf-incentive__text--waiting{
+    font-size:14px;
   }
-  100% {
-    background-position: 300% 50%;
+
+  .lsf-incentive__row--waiting .lsf-incentive__time-badge{
+    font-size:12px;
+    padding:4px 10px;
   }
+
 }
-.lsf-incentive__time-inline {
-  text-shadow:
-    0 0 6px rgba(249, 38, 114, 0.35),
-    0 0 12px rgba(26, 115, 232, 0.25);
+
+
+
+.lsf-incentive__text{
+  flex:1;
+  min-width:0;
+  line-height:1.2;
+}
+.lsf-incentive__time-badge{
+  flex-shrink:0;
+  background:#ff2e73;
+  color: #dff306;
+  padding:4px 8px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+  font-style: italic;
+
+}
+@media (min-width: 768px){
+
+  .lsf-incentive__time-badge{
+    margin-bottom:10px;
+  }
+
 }
 @keyframes expandFade {
   from {
@@ -1398,3 +1426,4 @@ background: linear-gradient(
   }
 
 }
+
