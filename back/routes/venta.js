@@ -717,252 +717,366 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
   }
 });
 router.post('/checkout-session', async (req, res) => {
+
   if (!stripeReady){
     logW('checkout-session llamado sin Stripe listo');
     return res.status(503).json({ error:'Stripe no configurado' });
   }
 
   try{
+
     const { orderId, code, cart } = req.body || {};
 
     /* ---------- B1) Venta previa ---------- */
-if (orderId || code){
-  const where = orderId ? { id:Number(orderId) } : { code:String(code) };
-  const sale = await prisma.sale.findUnique({ where });
-  if (!sale)  return res.status(404).json({ error:'Pedido no existe' });
-  if (sale.status === 'PAID') return res.status(400).json({ error:'Pedido ya pagado' });
 
-  let restrictedInfo = { restricted:false };
-  const snapPhone = sale?.customerData?.phone || null;
-  if (snapPhone) {
-    restrictedInfo = await getRestrictionByPhone(prisma, snapPhone);
-  } else if (sale.customerId) {
-    const c = await prisma.customer.findUnique({
-      where: { id: sale.customerId },
-      select: { phone:true, isRestricted:true, restrictionReason:true, code:true }
-    });
-    restrictedInfo = {
-      restricted: !!c?.isRestricted,
-      reason: c?.restrictionReason || null,
-      code: c?.code || null
-    };
-  }
-  if (restrictedInfo.restricted) {
-    return res.status(403).json({ error:'restricted', code: restrictedInfo.code, reason: restrictedInfo.reason });
-  }
+    if (orderId || code){
 
-  const productsJson = Array.isArray(sale.products) ? sale.products : parseMaybe(sale.products, []);
-  const chargeableProducts = productsJson.filter(
-    p => String(p?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
-  );
-  const extrasJson = Array.isArray(sale.extras) ? sale.extras : parseMaybe(sale.extras, []);
+      const where = orderId ? { id:Number(orderId) } : { code:String(code) };
 
-  let sessionUrl = null;
+      const sale = await prisma.sale.findUnique({ where });
 
-  await prisma.$transaction(async (tx) => {
+      if (!sale) return res.status(404).json({ error:'Pedido no existe' });
 
-    await assertStock(tx, sale.storeId, chargeableProducts);
+      if (sale.status === 'PAID')
+        return res.status(400).json({ error:'Pedido ya pagado' });
 
-    const { lineItems, total } =
-      await recalcTotals(tx, sale.storeId, chargeableProducts);
+      let restrictedInfo = { restricted:false };
 
-    const ids = [...new Set(lineItems.map(li => Number(li.pizzaId)).filter(Boolean))];
-    let nameById = new Map();
-    if (ids.length){
-      const pizzas = await tx.menuPizza.findMany({
-        where:{ id:{ in: ids } },
-        select:{ id:true, name:true }
-      });
-      nameById = new Map(pizzas.map(p => [p.id, p.name]));
-    }
+      const snapPhone = sale?.customerData?.phone || null;
 
-    const currency = String(sale.currency || 'EUR').toLowerCase();
+      if (snapPhone){
 
-    const totalProductsOriginal = Number(total);
-    const discountAmount = Number(sale.discounts || 0);
-    const discountFraction = (totalProductsOriginal > 0 && discountAmount > 0)
-      ? (discountAmount / totalProductsOriginal)
-      : 0;
+        restrictedInfo = await getRestrictionByPhone(prisma, snapPhone);
 
-    const productLines = lineItems.map(li => {
-      const qty = Math.max(1, Number(li.qty || 1));
-      const baseName = `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
-      const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
-      const unitCents = Math.round(Number(li.price) * 100);
+      } else if (sale.customerId){
 
-      const discountedCents = discountFraction > 0
-        ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
-        : unitCents;
-
-      return {
-        quantity: qty,
-        price_data: {
-          currency,
-          unit_amount: discountedCents,
-          product_data: {
-            name: displayName,
-            metadata: { pizzaId:String(li.pizzaId ?? ''), size:String(li.size ?? '') }
+        const c = await prisma.customer.findUnique({
+          where: { id: sale.customerId },
+          select: {
+            phone:true,
+            isRestricted:true,
+            restrictionReason:true,
+            code:true
           }
-        }
-      };
-    });
+        });
 
-    const extrasArray = Array.isArray(extrasJson) ? extrasJson : [];
-    const extrasLineItems = [];
-    let extrasOtherCents = 0;
+        restrictedInfo = {
+          restricted: !!c?.isRestricted,
+          reason: c?.restrictionReason || null,
+          code: c?.code || null
+        };
 
-    for (const ex of extrasArray){
-      const exCode = String(ex?.code || '').toUpperCase();
-      if (exCode === 'COUPON' || exCode === 'DELIVERY_FEE') continue;
-
-      const amt = toPrice(ex?.amount);
-      if (!Number.isFinite(amt)) continue;
-
-      const cents = Math.round(amt * 100);
-      if (cents <= 0) continue;
-
-      extrasOtherCents += cents;
-
-      extrasLineItems.push({
-        quantity: 1,
-        price_data: {
-          currency,
-          unit_amount: cents,
-          product_data: {
-            name: String(ex?.label || ex?.code || 'Extra'),
-            metadata: { extraCode: String(ex?.code || '') }
-          }
-        }
-      });
-    }
-
-    const safeArr = v => Array.isArray(v) ? v : [];
-    const safeNum = v => {
-      const n = toPrice(v);
-      return Number.isFinite(n) ? n : NaN;
-    };
-
-    const embeddedMap = new Map();
-
-    for (const p of safeArr(chargeableProducts)){
-      const qty = Math.max(1, Number(p?.qty || 1));
-      const emb = safeArr(p?.extras);
-
-      for (const ex of emb){
-
-        const label = String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
-        const amtUnit = safeNum(ex?.amount);
-
-        if (
-          String(ex?.type || '').toUpperCase() === 'INCENTIVE_REWARD' ||
-          String(ex?.code || '').toUpperCase() === 'INCENTIVE_REWARD'
-        ) continue;
-
-        if (!Number.isFinite(amtUnit) || amtUnit <= 0) continue;
-
-        const cents = Math.round(amtUnit * 100) * qty;
-        const prev = embeddedMap.get(label) || 0;
-        embeddedMap.set(label, prev + cents);
       }
-    }
 
-    let embeddedExtrasCents = 0;
-
-    for (const [label, cents] of embeddedMap.entries()){
-      if (cents <= 0) continue;
-
-      embeddedExtrasCents += cents;
-
-      extrasLineItems.push({
-        quantity: 1,
-        price_data: {
-          currency,
-          unit_amount: cents,
-          product_data: {
-            name: `+ ${label}`,
-            metadata: { kind: 'EMBEDDED_ITEM_EXTRA' }
-          }
-        }
-      });
-    }
-
-    extrasOtherCents += embeddedExtrasCents;
-
-    const pmTypes = ['card'];
-    if (process.env.STRIPE_ENABLE_LINK === '1') pmTypes.push('link');
-    if (process.env.STRIPE_ENABLE_KLARNA === '1') pmTypes.push('klarna');
-
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      payment_method_types: pmTypes,
-      line_items: [
-        ...productLines,
-        ...extrasLineItems,
-      ],
-      customer_email: sale.customerData?.email || undefined,
-      billing_address_collection: 'auto',
-      locale: 'es',
-      success_url: `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
-      metadata: { saleId: String(sale.id), saleCode: sale.code || '', type: sale.type, delivery: sale.delivery }
-    });
-
-    const productsCentsSent = productLines.reduce(
-      (s, li) =>
-        s +
-        (Number(li.price_data?.unit_amount || 0) * Number(li.quantity || 0)),
-      0
-    );
-
-    const totalForDb =
-      (productsCentsSent + extrasOtherCents) / 100;
-
-    await tx.sale.update({
-      where:{ id:sale.id },
-      data : {
-        total: round2(totalForDb),
-        stripeCheckoutSessionId: session.id,
-        status:'AWAITING_PAYMENT'
+      if (restrictedInfo.restricted){
+        return res.status(403).json({
+          error:'restricted',
+          code: restrictedInfo.code,
+          reason: restrictedInfo.reason
+        });
       }
-    });
 
-    logI('→ Stripe session creada (venta previa)', {
-      saleId: sale.id,
-      productsCentsSent,
-      extrasOtherCents,
-      embeddedExtrasCents,
-      totalForDb
-    });
+      const productsJson =
+        Array.isArray(sale.products)
+          ? sale.products
+          : parseMaybe(sale.products, []);
 
-    sessionUrl = session.url;
-  });
+      const chargeableProducts = productsJson.filter(
+        p => String(p?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
+      );
 
-  return res.json({ url: sessionUrl });
-}
+      const extrasJson =
+        Array.isArray(sale.extras)
+          ? sale.extras
+          : parseMaybe(sale.extras, []);
 
-    /* ---------- B2) Modo carrito (pagar primero) ---------- */
-    if (cart?.customer?.phone) {
+      let sessionUrl = null;
+
+      await prisma.$transaction(async (tx) => {
+
+        await assertStock(tx, sale.storeId, chargeableProducts);
+
+        const { lineItems, total } =
+          await recalcTotals(tx, sale.storeId, chargeableProducts);
+
+        const ids = [...new Set(
+          lineItems.map(li => Number(li.pizzaId)).filter(Boolean)
+        )];
+
+        let nameById = new Map();
+
+        if (ids.length){
+
+          const pizzas = await tx.menuPizza.findMany({
+            where:{ id:{ in: ids }},
+            select:{ id:true, name:true }
+          });
+
+          nameById = new Map(pizzas.map(p => [p.id, p.name]));
+        }
+
+        const currency = String(sale.currency || 'EUR').toLowerCase();
+
+        const totalProductsOriginal = Number(total);
+
+        const discountAmount = Number(sale.discounts || 0);
+
+        const discountFraction =
+          (totalProductsOriginal > 0 && discountAmount > 0)
+            ? (discountAmount / totalProductsOriginal)
+            : 0;
+
+        const productLines = lineItems.map(li => {
+
+          const qty = Math.max(1, Number(li.qty || 1));
+
+          const baseName =
+            `${(nameById.get(Number(li.pizzaId)) || `#${li.pizzaId}`)}${li.size ? ` (${li.size})` : ''}`;
+
+          const displayName = qty > 1 ? `${baseName} ×${qty}` : baseName;
+
+          const unitCents = Math.round(Number(li.price) * 100);
+
+          const discountedCents = discountFraction > 0
+            ? Math.max(0, Math.round(unitCents * (1 - discountFraction)))
+            : unitCents;
+
+          return {
+            quantity: qty,
+            price_data: {
+              currency,
+              unit_amount: discountedCents,
+              product_data: {
+                name: displayName,
+                metadata: {
+                  pizzaId:String(li.pizzaId ?? ''),
+                  size:String(li.size ?? '')
+                }
+              }
+            }
+          };
+
+        });
+
+        const extrasArray = Array.isArray(extrasJson) ? extrasJson : [];
+
+        const extrasLineItems = [];
+
+        let extrasOtherCents = 0;
+
+        for (const ex of extrasArray){
+
+          const exCode = String(ex?.code || '').toUpperCase();
+
+          // ❗ Cupón NO se manda a Stripe
+          if (exCode === 'COUPON') continue;
+
+          const amt = toPrice(ex?.amount);
+
+          if (!Number.isFinite(amt)) continue;
+
+          const cents = Math.round(amt * 100);
+
+          if (cents === 0) continue;
+
+          if (cents < 0) continue;
+
+          extrasOtherCents += cents;
+
+          extrasLineItems.push({
+            quantity: 1,
+            price_data: {
+              currency,
+              unit_amount: cents,
+              product_data: {
+                name:
+                  exCode === 'DELIVERY_FEE'
+                    ? (String(ex?.label || '').trim() || 'Gastos de envío')
+                    : String(ex?.label || ex?.code || 'Extra'),
+                metadata: {
+                  extraCode: String(ex?.code || '')
+                }
+              }
+            }
+          });
+
+        }
+
+        const safeArr = v => Array.isArray(v) ? v : [];
+
+        const safeNum = v => {
+          const n = toPrice(v);
+          return Number.isFinite(n) ? n : NaN;
+        };
+
+        const embeddedMap = new Map();
+
+        for (const p of safeArr(chargeableProducts)){
+
+          const qty = Math.max(1, Number(p?.qty || 1));
+
+          const emb = safeArr(p?.extras);
+
+          for (const ex of emb){
+
+            const label =
+              String(ex?.label || ex?.name || ex?.code || 'Extra').trim();
+
+            const amtUnit = safeNum(ex?.amount);
+
+            if (
+              String(ex?.type || '').toUpperCase() === 'INCENTIVE_REWARD' ||
+              String(ex?.code || '').toUpperCase() === 'INCENTIVE_REWARD'
+            ) continue;
+
+            if (!Number.isFinite(amtUnit) || amtUnit <= 0) continue;
+
+            const cents = Math.round(amtUnit * 100) * qty;
+
+            const prev = embeddedMap.get(label) || 0;
+
+            embeddedMap.set(label, prev + cents);
+
+          }
+
+        }
+
+        let embeddedExtrasCents = 0;
+
+        for (const [label, cents] of embeddedMap.entries()){
+
+          if (cents <= 0) continue;
+
+          embeddedExtrasCents += cents;
+
+          extrasLineItems.push({
+            quantity: 1,
+            price_data: {
+              currency,
+              unit_amount: cents,
+              product_data: {
+                name: `+ ${label}`,
+                metadata: { kind:'EMBEDDED_ITEM_EXTRA' }
+              }
+            }
+          });
+
+        }
+
+        extrasOtherCents += embeddedExtrasCents;
+
+        const pmTypes = ['card'];
+
+        if (process.env.STRIPE_ENABLE_LINK === '1')
+          pmTypes.push('link');
+
+        if (process.env.STRIPE_ENABLE_KLARNA === '1')
+          pmTypes.push('klarna');
+
+        const session = await stripe.checkout.sessions.create({
+
+          mode: 'payment',
+
+          payment_method_types: pmTypes,
+
+          line_items: [
+            ...productLines,
+            ...extrasLineItems
+          ],
+
+          customer_email: sale.customerData?.email || undefined,
+
+          billing_address_collection: 'auto',
+
+          locale: 'es',
+
+          success_url:
+            `${FRONT_BASE_URL}/venta/result?status=success&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+
+          cancel_url:
+            `${FRONT_BASE_URL}/venta/result?status=cancel&order=${encodeURIComponent(sale.code)}&session_id={CHECKOUT_SESSION_ID}`,
+
+          metadata: {
+            saleId: String(sale.id),
+            saleCode: sale.code || '',
+            type: sale.type,
+            delivery: sale.delivery
+          }
+
+        });
+
+        const productsCentsSent = productLines.reduce(
+          (s, li) =>
+            s + (
+              Number(li.price_data?.unit_amount || 0) *
+              Number(li.quantity || 0)
+            ),
+          0
+        );
+
+        const totalForDb =
+          (productsCentsSent + extrasOtherCents) / 100;
+
+        await tx.sale.update({
+          where:{ id:sale.id },
+          data : {
+            total: round2(totalForDb),
+            stripeCheckoutSessionId: session.id,
+            status:'AWAITING_PAYMENT'
+          }
+        });
+
+        logI('→ Stripe session creada (venta previa)', {
+          saleId: sale.id,
+          productsCentsSent,
+          extrasOtherCents,
+          embeddedExtrasCents,
+          totalForDb
+        });
+
+        sessionUrl = session.url;
+
+      });
+
+      return res.json({ url: sessionUrl });
+
+    }
+
+    /* ---------- B2) Modo carrito ---------- */
+
+    if (cart?.customer?.phone){
+
       const r = await getRestrictionByPhone(prisma, cart.customer.phone);
-      if (r.restricted) {
-        return res.status(403).json({ error: 'restricted', code: r.code, reason: r.reason });
+
+      if (r.restricted){
+        return res.status(403).json({
+          error:'restricted',
+          code:r.code,
+          reason:r.reason
+        });
       }
+
     }
 
-    if (!cart) return res.status(400).json({ error: 'Falta orderId/code o cart' });
+    if (!cart)
+      return res.status(400).json({ error:'Falta orderId/code o cart' });
 
     if (!Array.isArray(cart.items) || !cart.items.length || !cart.storeId){
-      return res.status(400).json({ error: 'cart inválido' });
+      return res.status(400).json({ error:'cart inválido' });
     }
 
     const totalCents = Math.round(Number(cart?.totals?.total) * 100);
 
     if (!Number.isFinite(totalCents) || totalCents <= 0){
-      return res.status(400).json({ error: 'total inválido' });
+      return res.status(400).json({ error:'total inválido' });
     }
 
     const session = await stripe.checkout.sessions.create({
+
       mode: 'payment',
+
       payment_method_types: ['card'],
+
       line_items: [{
         price_data: {
           currency: 'eur',
@@ -971,13 +1085,19 @@ if (orderId || code){
         },
         quantity: 1
       }],
-      success_url: `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url : `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+
+      success_url:
+        `${FRONT_BASE_URL}/venta/result?status=success&session_id={CHECKOUT_SESSION_ID}`,
+
+      cancel_url:
+        `${FRONT_BASE_URL}/venta/result?status=cancel&session_id={CHECKOUT_SESSION_ID}`,
+
       locale:'es',
+
       metadata: {
         cart: JSON.stringify({
           storeId: cart.storeId,
-          type   : cart.type,
+          type: cart.type,
           delivery: cart.delivery,
           channel: cart.channel || 'WEB',
           customer: cart.customer || null,
@@ -987,16 +1107,22 @@ if (orderId || code){
           totals: cart.totals || null
         })
       }
+
     });
 
     logI('→ Stripe session creada (modo cart)', { id:session.id });
 
     return res.json({ url: session.url });
 
-  } catch (e) {
-    logE('[POST /api/venta/checkout-session] error', e);
-    res.status(400).json({ error:e.message });
   }
+  catch (e){
+
+    logE('[POST /api/venta/checkout-session] error', e);
+
+    res.status(400).json({ error:e.message });
+
+  }
+
 });
 router.post('/checkout/confirm', async (req, res) => {
   if (!stripeReady) {
