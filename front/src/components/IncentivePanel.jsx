@@ -1,9 +1,9 @@
-// src/components/IncentivePanel.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import api from "../setupAxios";
 import "../styles/IncentivePanel.css";
 
 export default function IncentivePanel() {
+
   const [incentives, setIncentives] = useState([]);
   const [pizzas, setPizzas] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,8 @@ export default function IncentivePanel() {
 
   /* ───────────────────────── HELPERS ───────────────────────── */
 
-  const onChange = (k, v) => setForm((prev) => ({ ...prev, [k]: v }));
+  const onChange = (k, v) =>
+    setForm((prev) => ({ ...prev, [k]: v }));
 
   const resetForm = () => {
     setEditingId(null);
@@ -93,6 +94,82 @@ export default function IncentivePanel() {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   };
 
+  /* ───────────────────────── GRID SCHEDULE ───────────────────────── */
+
+  const allDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  const hours = useMemo(() => {
+
+    const set = new Set();
+
+    incentives.forEach((inc) => {
+
+      if (inc.windowStart == null || inc.windowEnd == null) return;
+
+      const startHour = Math.floor(inc.windowStart / 60);
+      const endHour = Math.ceil(inc.windowEnd / 60);
+
+      for (let h = startHour; h < endHour; h++) {
+        set.add(h);
+      }
+
+    });
+
+    if (set.size === 0) return [];
+
+    return Array.from(set).sort((a,b)=>a-b);
+
+  }, [incentives]);
+
+  const days = useMemo(()=>{
+
+    const set = new Set();
+
+    incentives.forEach((inc)=>{
+
+      if (!inc.daysActive || inc.daysActive.length === 0) {
+        for (let i=0;i<7;i++) set.add(i);
+        return;
+      }
+
+      inc.daysActive.forEach(d => set.add(d));
+
+    });
+
+    return Array.from(set).sort((a,b)=>a-b);
+
+  },[incentives]);
+
+  const cellActive = (hour, dayIndex) => {
+
+    const startMin = hour * 60;
+    const endMin = startMin + 60;
+
+    for (let idx = 0; idx < incentives.length; idx++) {
+
+      const inc = incentives[idx];
+
+      if (!inc.active) continue;
+
+      const daysActive =
+        inc.daysActive?.length
+          ? inc.daysActive
+          : [0,1,2,3,4,5,6];
+
+      if (!daysActive.includes(dayIndex)) continue;
+
+      if (inc.windowStart == null || inc.windowEnd == null)
+        return { name: inc.name, color: idx + 1 };
+
+      if (startMin < inc.windowEnd && endMin > inc.windowStart) {
+        return { name: inc.name, color: idx + 1 };
+      }
+
+    }
+
+    return null;
+  };
+
   /* ───────────────────────── FORM OPEN/CLOSE ───────────────────────── */
 
   const openCreate = () => {
@@ -109,12 +186,13 @@ export default function IncentivePanel() {
       percentOverAvg: inc.percentOverAvg ?? "",
       rewardPizzaId: inc.rewardPizzaId ?? "",
       active: !!inc.active,
-      startsAt: inc.startsAt ? inc.startsAt.slice(0, 16) : "",
-      endsAt: inc.endsAt ? inc.endsAt.slice(0, 16) : "",
+      startsAt: inc.startsAt ? inc.startsAt.slice(0,16) : "",
+      endsAt: inc.endsAt ? inc.endsAt.slice(0,16) : "",
       daysActive: Array.isArray(inc.daysActive) ? inc.daysActive : [],
       windowStart: minutesToHHMM(inc.windowStart),
       windowEnd: minutesToHHMM(inc.windowEnd),
     });
+
     setShowForm(true);
   };
 
@@ -126,26 +204,26 @@ export default function IncentivePanel() {
   /* ───────────────────────── SUBMIT ───────────────────────── */
 
   const submit = async (e) => {
+
     e.preventDefault();
     setMsg("");
 
-    if (!form.name?.trim()) return setMsg("Name required.");
-    if (!form.rewardPizzaId) return setMsg("Select reward pizza.");
+    if (!form.name?.trim())
+      return setMsg("Name required.");
 
-    if (form.triggerMode === "FIXED" && !Number(form.fixedAmount)) {
+    if (!form.rewardPizzaId)
+      return setMsg("Select reward pizza.");
+
+    if (form.triggerMode === "FIXED" && !Number(form.fixedAmount))
       return setMsg("Invalid fixed amount.");
-    }
 
-    if (
-      form.triggerMode === "SMART_AVG_TICKET" &&
-      !Number(form.percentOverAvg)
-    ) {
+    if (form.triggerMode === "SMART_AVG_TICKET" && !Number(form.percentOverAvg))
       return setMsg("Invalid percent over average.");
-    }
 
     setSaving(true);
 
     try {
+
       const payload = {
         name: form.name.trim(),
         triggerMode: form.triggerMode,
@@ -172,8 +250,16 @@ export default function IncentivePanel() {
 
       await loadIncentives();
       closeForm();
-    } catch {
-      setMsg("Error saving incentive.");
+
+    } catch (err) {
+
+      const apiMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Error saving incentive.";
+
+      setMsg(apiMsg);
+
     } finally {
       setSaving(false);
     }
@@ -196,19 +282,24 @@ export default function IncentivePanel() {
 
   return (
     <div className="IncentivePanel">
+
       <div className="IncentivePanel-header">
         <h2>Incentives</h2>
         <button onClick={openCreate}>+ Add Incentive</button>
       </div>
 
       <div className="IncentivePanel-history">
+
         {loading && <div>Loading...</div>}
 
         {!loading &&
           incentives.map((i) => (
+
             <div key={i.id} className="IncentivePanel-row">
+
               <div>
                 <strong>{i.name}</strong>
+
                 <div>
                   {i.triggerMode === "FIXED"
                     ? `€${i.fixedAmount}`
@@ -223,30 +314,107 @@ export default function IncentivePanel() {
                 >
                   {i.active ? "Active" : "Activate"}
                 </button>
-                <button onClick={() => openEdit(i)}>Edit</button>
-                <button onClick={() => remove(i.id)}>Delete</button>
+
+                <button onClick={() => openEdit(i)}>
+                  Edit
+                </button>
+
+                <button onClick={() => remove(i.id)}>
+                  Delete
+                </button>
               </div>
+
             </div>
-          ))}
+        ))}
       </div>
+
+      {/* ───────────── SCHEDULE GRID ───────────── */}
+
+      <div className="IncentivePanel-scheduleGrid">
+
+        <h3>Active Schedule</h3>
+
+        {hours.length === 0 && (
+          <div className="IncentivePanel-noSchedule">
+            No active schedule
+          </div>
+        )}
+
+        {hours.length > 0 && (
+        <table>
+
+          <thead>
+            <tr>
+              <th>Hour</th>
+              {days.map((dayIndex)=>(
+                <th key={dayIndex}>{allDays[dayIndex]}</th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+
+            {hours.map((h)=>(
+
+              <tr key={h}>
+
+                <td className="hourCell">
+                  {String(h).padStart(2,"0")}:00
+                </td>
+
+                {days.map((dayIndex)=>{
+
+                  const active = cellActive(h,dayIndex);
+
+                  return (
+                    <td
+                      key={dayIndex}
+                      className={
+                        active
+                          ? `scheduleCell incentive-${active.color}`
+                          : "scheduleCell"
+                      }
+                      title={active?.name || ""}
+                    />
+                  );
+
+                })}
+
+              </tr>
+
+            ))}
+
+          </tbody>
+
+        </table>
+        )}
+
+      </div>
+
+      {/* ───────────── FORM MODAL ───────────── */}
 
       {showForm && (
         <div className="IncentivePanel-modalOverlay">
+
           <div className="IncentivePanel-modal">
+
             <form onSubmit={submit}>
-              <h3>{editingId ? "Edit Incentive" : "Create Incentive"}</h3>
+
+              <h3>
+                {editingId
+                  ? "Edit Incentive"
+                  : "Create Incentive"}
+              </h3>
 
               <input
                 placeholder="Name"
                 value={form.name}
-                onChange={(e) => onChange("name", e.target.value)}
+                onChange={(e)=>onChange("name",e.target.value)}
               />
 
               <select
                 value={form.triggerMode}
-                onChange={(e) =>
-                  onChange("triggerMode", e.target.value)
-                }
+                onChange={(e)=>onChange("triggerMode",e.target.value)}
               >
                 <option value="FIXED">Fixed amount</option>
                 <option value="SMART_AVG_TICKET">
@@ -259,9 +427,7 @@ export default function IncentivePanel() {
                   type="number"
                   placeholder="Minimum amount"
                   value={form.fixedAmount}
-                  onChange={(e) =>
-                    onChange("fixedAmount", e.target.value)
-                  }
+                  onChange={(e)=>onChange("fixedAmount",e.target.value)}
                 />
               )}
 
@@ -270,92 +436,107 @@ export default function IncentivePanel() {
                   type="number"
                   placeholder="% over average"
                   value={form.percentOverAvg}
-                  onChange={(e) =>
-                    onChange("percentOverAvg", e.target.value)
-                  }
+                  onChange={(e)=>onChange("percentOverAvg",e.target.value)}
                 />
               )}
 
               <select
                 value={form.rewardPizzaId}
-                onChange={(e) =>
-                  onChange("rewardPizzaId", e.target.value)
-                }
+                onChange={(e)=>onChange("rewardPizzaId",e.target.value)}
               >
                 <option value="">Select reward pizza…</option>
-                {pizzas.map((p) => (
+
+                {pizzas.map((p)=>(
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
+
               </select>
 
               {/* DAYS */}
+
               <div>
-                {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d, idx) => (
+                {allDays.map((d,idx)=>(
                   <label key={idx}>
+
                     <input
                       type="checkbox"
                       checked={form.daysActive.includes(idx)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          onChange("daysActive", [...form.daysActive, idx]);
+                      onChange={(e)=>{
+
+                        if (e.target.checked){
+                          onChange(
+                            "daysActive",
+                            [...form.daysActive, idx]
+                          );
                         } else {
                           onChange(
                             "daysActive",
-                            form.daysActive.filter((x) => x !== idx)
+                            form.daysActive.filter(x=>x!==idx)
                           );
                         }
+
                       }}
                     />
+
                     {d}
+
                   </label>
                 ))}
               </div>
 
               {/* TIME */}
+
               <div>
+
                 <input
                   type="time"
                   value={form.windowStart}
-                  onChange={(e) =>
-                    onChange("windowStart", e.target.value)
-                  }
+                  onChange={(e)=>onChange("windowStart",e.target.value)}
                 />
+
                 <input
                   type="time"
                   value={form.windowEnd}
-                  onChange={(e) =>
-                    onChange("windowEnd", e.target.value)
-                  }
+                  onChange={(e)=>onChange("windowEnd",e.target.value)}
                 />
+
               </div>
 
               <label>
                 <input
                   type="checkbox"
                   checked={form.active}
-                  onChange={(e) =>
-                    onChange("active", e.target.checked)
-                  }
+                  onChange={(e)=>onChange("active",e.target.checked)}
                 />
                 Activate on save
               </label>
 
               <div>
-                <button type="button" onClick={closeForm}>
+
+                <button
+                  type="button"
+                  onClick={closeForm}
+                >
                   Cancel
                 </button>
+
                 <button disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </button>
+
               </div>
 
               {msg && <div>{msg}</div>}
+
             </form>
+
           </div>
+
         </div>
       )}
+
     </div>
   );
 }

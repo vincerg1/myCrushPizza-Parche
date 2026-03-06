@@ -53,8 +53,6 @@
   box-shadow: 0 12px 28px rgba(16, 24, 40, 0.06);
 }
 
-/* Row */
-
 .IncentivePanel-row {
   display: grid;
   grid-template-columns: 2fr auto;
@@ -67,8 +65,6 @@
   border-bottom: none;
 }
 
-/* Left text */
-
 .IncentivePanel-row strong {
   font-weight: 600;
   font-size: 15px;
@@ -79,8 +75,6 @@
   color: #666;
   margin-top: 4px;
 }
-
-/* Actions (right side buttons) */
 
 .IncentivePanel-row > div:last-child {
   display: flex;
@@ -150,8 +144,6 @@
   font-weight: 600;
 }
 
-/* Inputs */
-
 .IncentivePanel-modal input,
 .IncentivePanel-modal select {
   padding: 10px 12px;
@@ -168,8 +160,6 @@
   box-shadow: 0 0 0 3px rgba(255, 46, 115, 0.15);
 }
 
-/* Days selector */
-
 .IncentivePanel-modal > form > div:nth-of-type(1) {
   display: flex;
   flex-wrap: wrap;
@@ -183,8 +173,6 @@
   font-size: 13px;
 }
 
-/* Time row */
-
 .IncentivePanel-modal > form > div:nth-of-type(2) {
   display: flex;
   gap: 12px;
@@ -194,13 +182,9 @@
   flex: 1;
 }
 
-/* Checkbox row */
-
 .IncentivePanel-modal > form > label {
   font-size: 14px;
 }
-
-/* Buttons row */
 
 .IncentivePanel-modal > form > div:last-of-type {
   display: flex;
@@ -231,11 +215,137 @@
   opacity: 0.9;
 }
 
-/* Message */
-
 .IncentivePanel-modal > form > div:last-child {
   font-size: 13px;
   color: #666;
+}
+
+/* ======================================================
+   SCHEDULE GRID (HORARIO)
+====================================================== */
+
+.IncentivePanel-schedule {
+  background: #fff;
+  border-radius: 18px;
+  padding: 24px;
+  border: 1px solid #ececec;
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.06);
+}
+
+.IncentivePanel-schedule h3 {
+  margin-bottom: 18px;
+}
+
+.scheduleGrid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.scheduleGrid th {
+  text-align: center;
+  padding: 8px;
+  background: #f7f7f7;
+  border-bottom: 2px solid #eee;
+}
+
+.hourCell {
+  width: 70px;
+  text-align: right;
+  padding-right: 10px;
+  font-weight: 500;
+  color: #777;
+}
+
+.scheduleCell {
+  height: 26px;
+  border: 1px solid #f0f0f0;
+  transition: background 0.15s ease;
+}
+/* ======================================================
+   INCENTIVE COLORS
+====================================================== */
+
+/* incentive 1 */
+
+.scheduleCell.incentive-1 {
+  background: #ffe082;
+}
+
+.scheduleCell.incentive-1:hover {
+  background: #ffd54f;
+}
+
+/* incentive 2 */
+
+.scheduleCell.incentive-2 {
+  background: #f8bbd0;
+}
+
+.scheduleCell.incentive-2:hover {
+  background: #f48fb1;
+}
+
+/* incentive 3 */
+
+.scheduleCell.incentive-3 {
+  background: #bbdefb;
+}
+
+.scheduleCell.incentive-3:hover {
+  background: #90caf9;
+}
+
+/* incentive 4 */
+
+.scheduleCell.incentive-4 {
+  background: #c8e6c9;
+}
+
+.scheduleCell.incentive-4:hover {
+  background: #a5d6a7;
+}
+
+/* incentive 5 */
+
+.scheduleCell.incentive-5 {
+  background: #e1bee7;
+}
+
+.scheduleCell.incentive-5:hover {
+  background: #ce93d8;
+}
+
+/* incentive 6 */
+
+.scheduleCell.incentive-6 {
+  background: #ffccbc;
+}
+
+.scheduleCell.incentive-6:hover {
+  background: #ffab91;
+}
+
+/* incentive 7 */
+
+.scheduleCell.incentive-7 {
+  background: #d7ccc8;
+}
+
+.scheduleCell.incentive-7:hover {
+  background: #bcaaa4;
+}
+
+/* active incentive */
+
+.scheduleCell.active {
+  background: #ffd34d;
+}
+
+/* hover */
+
+.scheduleCell.active:hover {
+  background: #ffc107;
 }
 
 /* ======================================================

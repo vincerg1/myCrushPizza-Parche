@@ -118,7 +118,142 @@ function StockModal({ store, onClose }) {
     </div>
   );
 }
+function StoreHoursModal({ store, onClose }) {
 
+  const [rows, setRows] = useState([]);
+
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+  ];
+
+  useEffect(() => {
+    if (!store?.id) return;
+    load();
+  }, [store?.id]);
+
+  const load = async () => {
+    const { data } = await api.get(`/api/store-hours/${store.id}`);
+    setRows(data || []);
+  };
+
+  const addSlot = async (day) => {
+    await api.post(`/api/store-hours`, {
+      storeId: store.id,
+      dayOfWeek: day,
+      openTime: 1140,
+      closeTime: 1380
+    });
+    load();
+  };
+
+  const update = async (id, field, value) => {
+    await api.patch(`/api/store-hours/${id}`, {
+      [field]: Number(value)
+    });
+    load();
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Delete slot?")) return;
+    await api.delete(`/api/store-hours/${id}`);
+    load();
+  };
+
+  const grouped = useMemo(() => {
+    const map = {};
+    days.forEach((_, i) => map[i] = []);
+    rows.forEach(r => map[r.dayOfWeek].push(r));
+    return map;
+  }, [rows]);
+
+  const toTime = (m) => {
+    const h = String(Math.floor(m / 60)).padStart(2,"0");
+    const min = String(m % 60).padStart(2,"0");
+    return `${h}:${min}`;
+  };
+
+  const toMinutes = (t) => {
+    const [h,m] = t.split(":");
+    return Number(h)*60 + Number(m);
+  };
+
+  return (
+    <div className="sc-modalBack" onMouseDown={onClose}>
+      <div className="sc-modalBox" onMouseDown={e => e.stopPropagation()}>
+
+        <header className="sc-modalHead">
+          <h3>Hours – {store.storeName}</h3>
+          <button className="sc-iconBtn" onClick={onClose}>✕</button>
+        </header>
+
+        <div className="sc-modalBody">
+
+          {days.map((d,dayIndex)=>(
+            <div key={dayIndex} className="sc-hoursDay">
+
+              <div className="sc-hoursDayHead">
+                <strong>{d}</strong>
+
+                <button
+                  className="table-btn small"
+                  onClick={()=>addSlot(dayIndex)}
+                >
+                  + slot
+                </button>
+              </div>
+
+              {grouped[dayIndex].map(slot=>(
+                <div key={slot.id} className="sc-hoursRow">
+
+                  <input
+                    type="time"
+                    value={toTime(slot.openTime)}
+                    onChange={(e)=>
+                      update(slot.id,"openTime",toMinutes(e.target.value))
+                    }
+                  />
+
+                  <span>—</span>
+
+                  <input
+                    type="time"
+                    value={toTime(slot.closeTime)}
+                    onChange={(e)=>
+                      update(slot.id,"closeTime",toMinutes(e.target.value))
+                    }
+                  />
+
+                  <button
+                    className="table-btn danger"
+                    onClick={()=>remove(slot.id)}
+                  >
+                    ✕
+                  </button>
+
+                </div>
+              ))}
+
+            </div>
+          ))}
+
+        </div>
+
+        <footer className="sc-modalFooter">
+          <button className="sc-btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+
+      </div>
+    </div>
+  );
+}
 /* ─────────────── MAIN ─────────────── */
 export default function StoreCreator() {
   const emptyStore = {
@@ -130,6 +265,7 @@ export default function StoreCreator() {
   const [customers, setCustomers] = useState([]);
   const [showCust, setShowCust] = useState(false);
   const [stockModal, setStockModal] = useState(null);
+  const [hoursModal, setHoursModal] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyStore);
 
@@ -209,6 +345,7 @@ export default function StoreCreator() {
                 <th>Address</th>
                 <th>Status</th>
                 <th>Stock</th>
+                <th>Hours</th>
               </tr>
             </thead>
             <tbody>
@@ -233,6 +370,14 @@ export default function StoreCreator() {
                       Ver stock
                     </button>
                   </td>
+                  <td>
+                  <button
+                    className="table-btn hours"
+                    onClick={() => setHoursModal(s)}
+                  >
+                    Hours
+                  </button>
+                </td>
                 </tr>
               ))}
             </tbody>
@@ -406,6 +551,12 @@ export default function StoreCreator() {
 
 
       {stockModal && <StockModal store={stockModal} onClose={() => setStockModal(null)} />}
+        {hoursModal && (
+  <StoreHoursModal
+    store={hoursModal}
+    onClose={() => setHoursModal(null)}
+  />
+)}
     </>
   );
 }
