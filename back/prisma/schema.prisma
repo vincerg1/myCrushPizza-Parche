@@ -188,6 +188,7 @@ model Store {
   sales           Sale[]
   redemptions     CouponRedemption[] @relation("StoreToRedemptions")
   games           Game[]
+  hours           StoreHours[]   
 }
 model StorePizzaStock {
   storeId   Int
@@ -501,4 +502,16 @@ model Incentive {
   updatedAt       DateTime @updatedAt
 
   sales           Sale[]
+}
+model StoreHours {
+  id        Int      @id @default(autoincrement())
+
+  storeId   Int
+  store     Store    @relation(fields:[storeId], references:[id], onDelete: Cascade)
+
+  dayOfWeek Int
+  openTime  Int
+  closeTime Int
+
+  createdAt DateTime @default(now())
 }

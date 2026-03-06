@@ -33,6 +33,50 @@ module.exports = function (prisma) {
       ? minutesNow >= start && minutesNow < end
       : minutesNow >= start || minutesNow < end;
   };
+  const windowsOverlap = (aStart, aEnd, bStart, bEnd) => {
+
+  if (aStart == null || aEnd == null || bStart == null || bEnd == null) {
+    return true;
+  }
+
+  const aCross = aStart > aEnd;
+  const bCross = bStart > bEnd;
+
+  const expand = (start, end) => {
+    if (start <= end) return [[start, end]];
+    return [[start, 1440], [0, end]];
+  };
+
+  const aParts = expand(aStart, aEnd);
+  const bParts = expand(bStart, bEnd);
+
+  for (const [as, ae] of aParts) {
+    for (const [bs, be] of bParts) {
+      if (as < be && bs < ae) return true;
+    }
+  }
+
+  return false;
+  };
+  const incentiveCollision = (newInc, existing) => {
+
+  const daysA = newInc.daysActive || [];
+  const daysB = existing.daysActive || [];
+
+  const shareDay =
+    !daysA.length ||
+    !daysB.length ||
+    daysA.some((d) => daysB.includes(d));
+
+  if (!shareDay) return false;
+
+  return windowsOverlap(
+    newInc.windowStart,
+    newInc.windowEnd,
+    existing.windowStart,
+    existing.windowEnd
+  );
+};
 
   /* ───────────────────────── GET ALL ───────────────────────── */
 
@@ -173,6 +217,26 @@ if (inc.windowStart != null && inc.windowStart > minutesNow) {
           error: "windowStart and windowEnd must both be defined or both null",
         });
       }
+      const existing = await prisma.incentive.findMany({
+  where: { active: true },
+});
+
+for (const inc of existing) {
+  if (
+    incentiveCollision(
+      {
+        daysActive: cleanDays(daysActive),
+        windowStart: asNumberOrNull(windowStart),
+        windowEnd: asNumberOrNull(windowEnd),
+      },
+      inc
+    )
+  ) {
+    return res.status(409).json({
+      error: `Horario en conflicto con incentivo "${inc.name}"`,
+    });
+  }
+}
 
       const created = await prisma.incentive.create({
         data: {
@@ -276,7 +340,29 @@ if (inc.windowStart != null && inc.windowStart > minutesNow) {
         data.percentOverAvg = asNumberOrNull(percentOverAvg);
         data.fixedAmount = null;
       }
+const existing = await prisma.incentive.findMany({
+  where: {
+    active: true,
+    NOT: { id },
+  },
+});
 
+for (const inc of existing) {
+  if (
+    incentiveCollision(
+      {
+        daysActive: data.daysActive ?? inc.daysActive,
+        windowStart: data.windowStart ?? inc.windowStart,
+        windowEnd: data.windowEnd ?? inc.windowEnd,
+      },
+      inc
+    )
+  ) {
+    return res.status(409).json({
+      error: `Horario en conflicto con incentivo "${inc.name}"`,
+    });
+  }
+}
       const updated = await prisma.incentive.update({
         where: { id },
         data,
