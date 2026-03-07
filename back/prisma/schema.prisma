@@ -232,6 +232,9 @@ model Sale {
   id                      Int            @id @default(autoincrement())
   code                    String         @unique
   date                    DateTime       @default(now())
+
+  scheduledFor            DateTime?      // 🕒 pedido programado
+
   deliveredAt             DateTime?
   storeId                 Int
   customerId              Int?
@@ -254,9 +257,11 @@ model Sale {
   lng                     Float?
   stripePaymentIntentId   String?        @unique @db.VarChar(191)
   stripeCheckoutSessionId String?        @unique @db.VarChar(191)
+
   incentiveId Int?
   incentive   Incentive? @relation(fields: [incentiveId], references: [id])
   incentiveAmount Float? @default(0)
+
   store    Store     @relation(fields: [storeId], references: [id])
   customer Customer? @relation("CustomerSales", fields: [customerId], references: [id])
 

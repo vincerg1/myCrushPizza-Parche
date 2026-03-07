@@ -165,6 +165,7 @@ module.exports = (prisma) => {
       products,
       extras = [],
       notes = '',
+      scheduledFor, 
 
       // ✅ INCENTIVE (viene del front)
       incentiveId: incentiveIdBody,
@@ -411,7 +412,9 @@ const totalProducts = round2(
             discounts,
             total,
             notes,
-
+            scheduledFor: scheduledFor
+              ? new Date(scheduledFor)
+              : null,
             // ✅ Incentivo persistido (informativo, no afecta total)
             incentiveId: incentiveIdBody != null ? Number(incentiveIdBody) : null,
             incentiveAmount: incentiveAmountBody != null ? round2(Number(incentiveAmountBody)) : 0,
@@ -504,22 +507,41 @@ console.log('🟢 SALE SAVED:', JSON.stringify(sale, null, 2));
     }
   });
   /* ─────────────── GET /api/sales/pending ─────────────── */
-  r.get('/pending', auth(), async (_, res) => {
-    try {
-      const list = await prisma.sale.findMany({
-        where: {
-          processed: false,
-          NOT: { status: 'AWAITING_PAYMENT' }
-        },
-        orderBy: { date: 'asc' },
-        include: { customer: { select: { code: true } } }
-      });
-      res.json(list);
-    } catch (e) {
-      console.error('[GET /pending]', e);
-      res.status(500).json({ error: 'internal' });
-    }
-  });
+r.get('/pending', auth(), async (_, res) => {
+  try {
+
+    const now = new Date();
+
+    const list = await prisma.sale.findMany({
+      where: {
+        processed: false,
+
+        NOT: { status: 'AWAITING_PAYMENT' },
+
+        OR: [
+          { scheduledFor: null },      // pedido normal
+          { scheduledFor: { lte: now } } // pedido programado cuya hora ya llegó
+        ]
+      },
+
+      orderBy: [
+        { scheduledFor: 'asc' }, // primero los programados más cercanos
+        { date: 'asc' }          // luego los normales por orden de llegada
+      ],
+
+      include: {
+        customer: { select: { code: true } }
+      }
+
+    });
+
+    res.json(list);
+
+  } catch (e) {
+    console.error('[GET /pending]', e);
+    res.status(500).json({ error: 'internal' });
+  }
+});
   /* ─────────────── GET /api/sales/today ─────────────── */
   r.get('/today', auth(), async (req, res) => {
     try {
