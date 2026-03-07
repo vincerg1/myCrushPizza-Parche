@@ -375,7 +375,8 @@ router.post('/pedido', async (req, res) => {
     notes = '',
     channel = 'WHATSAPP',
     coupon: rawCoupon,
-    couponCode: rawCouponCode
+    couponCode: rawCouponCode,
+    scheduledFor
   } = req.body || {};
   const chargeableRawItems = (Array.isArray(items) ? items : []).filter(
   it => String(it?.type || '').toUpperCase() !== 'INCENTIVE_REWARD'
@@ -692,6 +693,7 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
           total: saleTotal,
           extras: extrasFinal,
           notes,
+          scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
           channel,
           status: 'AWAITING_PAYMENT',
           address_1: snapshot?.address_1 ?? null,
@@ -1542,6 +1544,7 @@ router.post(
                   total: round2(totalProducts - discounts),
                   extras: extrasFinal,
                   notes: cart.notes || '',
+                  scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
                   channel: cart.channel || 'WEB',
                   status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
