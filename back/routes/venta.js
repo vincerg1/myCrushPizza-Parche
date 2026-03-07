@@ -681,22 +681,27 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
       const sale = await tx.sale.create({
         data: {
           code: await genOrderCode(tx),
-          storeId: Number(storeId),
+          storeId: Number(cart.storeId),
           customerId,
-          type,
-          delivery,
-          customerData: snapshot,
-          products: [...lineItemsWithExtras, ...incentiveRawItems],
+          type: cart.type || 'LOCAL',
+          delivery: cart.delivery || 'PICKUP',
+          customerData: snapshot || cart.customer || {},
+          products: [...lineItemsWithMeta, ...incentiveCartItems],
           totalProducts,
           discounts,
-          total: saleTotal,
+          total: round2(totalProducts - discounts),
           extras: extrasFinal,
-          notes,
-          channel,
-          status: 'AWAITING_PAYMENT',
-          address_1: snapshot?.address_1 ?? null,
-          lat: snapshot?.lat ?? null,
-          lng: snapshot?.lng ?? null
+          notes: cart.notes || '',
+          scheduledFor: cart.scheduledFor
+          ? new Date(cart.scheduledFor)
+          : null,
+          channel: cart.channel || 'WEB',
+          status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
+          stripeCheckoutSessionId: checkoutId,
+          stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
+          address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
+          lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
+          lng: snapshot?.lng ?? cart?.customer?.lng ?? null
         }
       });
 
@@ -1542,6 +1547,9 @@ router.post(
                   total: round2(totalProducts - discounts),
                   extras: extrasFinal,
                   notes: cart.notes || '',
+                  scheduledFor: cart.scheduledFor
+                  ? new Date(cart.scheduledFor)
+                  : null,
                   channel: cart.channel || 'WEB',
                   status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
