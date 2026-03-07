@@ -1355,7 +1355,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
           <div className="lsf-top__actions">
 
-            <button
+            {/* <button
               type="button"
               className={`lsf-cartbtn__count lsf-schedulebtn ${scheduledAt ? "is-active" : ""}`}
               onClick={() => setScheduleModalOpen(true)}
@@ -1363,7 +1363,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             {scheduledAt
               ? `🕒 ${formatScheduledLabel(scheduledAt)}`
               : "🕒 Programar"}
-            </button>
+            </button> */}
 
             <button
               type="button"
