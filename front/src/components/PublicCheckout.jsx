@@ -66,12 +66,22 @@ export default function PublicCheckout() {
   });
 
 useEffect(() => {
+
   if (pending?.items?.length) {
+
     console.log(
       "🧪 PENDING STRUCTURE →",
-      JSON.stringify(pending.items, null, 2)
+      JSON.stringify(pending, null, 2)
     );
+
+    console.log(
+      pending?.scheduledFor
+        ? "🕒 PEDIDO PROGRAMADO → " + pending.scheduledFor
+        : "⚡ PEDIDO INMEDIATO"
+    );
+
   }
+
 }, [pending]);
 
 

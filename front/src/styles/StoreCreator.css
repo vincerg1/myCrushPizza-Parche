@@ -502,3 +502,64 @@
   padding-top: 12px;
   border-top: 1px solid #eee;
 }
+
+/* APPLY BUTTON */
+
+.applyAll{
+  background:#f4f4f4;
+  border:1px solid #ddd;
+  padding:8px 14px;
+  border-radius:10px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .2s;
+}
+
+.applyAll:hover{
+  background:#ececec;
+}
+
+.applyAll.active{
+  background:#ff7a3d;
+  color:white;
+  border-color:#ff7a3d;
+}
+
+/* HOURS ROW */
+
+.sc-hoursRow{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin:6px 0;
+}
+
+/* TIME SELECT */
+
+.timeSelect{
+  padding:4px 6px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  background:white;
+  font-size:14px;
+}
+
+.timeSelect:focus{
+  outline:none;
+  border-color:#ff7a3d;
+}
+
+/* DAY TITLE */
+
+.sc-hoursDay strong{
+  font-size:15px;
+}
+
+/* SLOT BUTTON */
+
+.sc-hoursDayHead{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:12px;
+}

@@ -120,135 +120,392 @@ function StockModal({ store, onClose }) {
 }
 function StoreHoursModal({ store, onClose }) {
 
-  const [rows, setRows] = useState([]);
+  const [rows,setRows] = useState([]);
+  const [localRows,setLocalRows] = useState([]);
+const [appliedAllDays,setAppliedAllDays] = useState(false);
 
   const days = [
-    "Sunday",
     "Monday",
     "Tuesday",
     "Wednesday",
     "Thursday",
     "Friday",
-    "Saturday"
+    "Saturday",
+    "Sunday"
   ];
 
-  useEffect(() => {
-    if (!store?.id) return;
-    load();
-  }, [store?.id]);
+  const dayMap = {
+    Monday:1,
+    Tuesday:2,
+    Wednesday:3,
+    Thursday:4,
+    Friday:5,
+    Saturday:6,
+    Sunday:0
+  };
 
-  const load = async () => {
-    const { data } = await api.get(`/api/store-hours/${store.id}`);
+  useEffect(()=>{
+    load();
+  },[store?.id]);
+
+  const load = async ()=>{
+    const {data} = await api.get(`/api/store-hours/${store.id}`);
     setRows(data || []);
+    setLocalRows(data || []);
   };
 
-  const addSlot = async (day) => {
-    await api.post(`/api/store-hours`, {
-      storeId: store.id,
-      dayOfWeek: day,
-      openTime: 1140,
-      closeTime: 1380
-    });
-    load();
-  };
+  /* ───────── helpers ───────── */
 
-  const update = async (id, field, value) => {
-    await api.patch(`/api/store-hours/${id}`, {
-      [field]: Number(value)
-    });
-    load();
-  };
-
-  const remove = async (id) => {
-    if (!window.confirm("Delete slot?")) return;
-    await api.delete(`/api/store-hours/${id}`);
-    load();
-  };
-
-  const grouped = useMemo(() => {
-    const map = {};
-    days.forEach((_, i) => map[i] = []);
-    rows.forEach(r => map[r.dayOfWeek].push(r));
-    return map;
-  }, [rows]);
-
-  const toTime = (m) => {
-    const h = String(Math.floor(m / 60)).padStart(2,"0");
-    const min = String(m % 60).padStart(2,"0");
+  const toTime = (m)=>{
+    const h = String(Math.floor(m/60)).padStart(2,"0");
+    const min = String(m%60).padStart(2,"0");
     return `${h}:${min}`;
   };
 
-  const toMinutes = (t) => {
-    const [h,m] = t.split(":");
-    return Number(h)*60 + Number(m);
+  const hours = [...Array(24)].map((_,i)=>i);
+
+  const minutes = [0,15,30,45];
+
+  const updateLocal = (id,field,value)=>{
+    setLocalRows(prev =>
+      prev.map(r =>
+        r.id === id
+          ? { ...r, [field]: value }
+          : r
+      )
+    );
   };
 
+  /* ───────── slots by day ───────── */
+
+  const slotsByDay = {};
+
+  days.forEach(d=>slotsByDay[d]=[]);
+
+  localRows.forEach(r=>{
+    const name = Object.keys(dayMap).find(
+      k=>dayMap[k]===r.dayOfWeek
+    );
+    if(name) slotsByDay[name].push(r);
+  });
+
+  /* ───────── add slot ───────── */
+
+  const addSlot = (day)=>{
+
+    const newSlot = {
+      id:`tmp-${Math.random()}`,
+      storeId:store.id,
+      dayOfWeek:dayMap[day],
+      openTime:1140,
+      closeTime:1380,
+      isNew:true
+    };
+
+    setLocalRows(prev=>[...prev,newSlot]);
+  };
+
+  /* ───────── delete slot ───────── */
+
+  const removeSlot = (id)=>{
+    setLocalRows(prev => prev.filter(r=>r.id!==id));
+  };
+
+  /* ───────── APPLY HELPERS ───────── */
+
+const applyWeekdays = () => {
+
+  const mondaySlots = localRows.filter(
+    r => r.dayOfWeek === dayMap["Monday"]
+  );
+
+  if (!mondaySlots.length) return;
+
+  const weekdays = [
+    dayMap["Tuesday"],
+    dayMap["Wednesday"],
+    dayMap["Thursday"],
+    dayMap["Friday"]
+  ];
+
+  const newRows = [];
+
+  weekdays.forEach(day => {
+
+    mondaySlots.forEach(slot => {
+
+      newRows.push({
+        ...slot,
+        id:`tmp-${Math.random()}`,
+        dayOfWeek:day,
+        isNew:true
+      });
+
+    });
+
+  });
+
+  setLocalRows(prev => [
+
+    ...prev.filter(r =>
+      !weekdays.includes(r.dayOfWeek)
+    ),
+
+    ...newRows
+
+  ]);
+
+};
+
+const applyAllDays = () => {
+
+  const monday = dayMap["Monday"];
+
+  /* slots de Monday */
+  const mondaySlots = localRows.filter(
+    r => r.dayOfWeek === monday
+  );
+
+  if (!mondaySlots.length) return;
+
+  /* generar slots nuevos */
+  const newRows = [];
+
+  Object.values(dayMap).forEach(day => {
+
+    if (day === monday) return;
+
+    mondaySlots.forEach(slot => {
+
+      newRows.push({
+        ...slot,
+        id: `tmp-${crypto.randomUUID()}`,
+        dayOfWeek: day,
+        isNew: true
+      });
+
+    });
+
+  });
+
+  /* reconstruir lista */
+  setLocalRows(prev => {
+
+    const mondayOnly = prev.filter(
+      r => r.dayOfWeek === monday
+    );
+
+    return [
+      ...mondayOnly,
+      ...newRows
+    ];
+
+  });
+
+  setAppliedAllDays(true);
+
+};
+
+  /* ───────── SAVE ───────── */
+
+  const save = async ()=>{
+
+    const originalIds = rows.map(r=>r.id);
+
+    const currentIds = localRows
+      .filter(r=>!String(r.id).startsWith("tmp"))
+      .map(r=>r.id);
+
+    const deleted = originalIds.filter(
+      id=>!currentIds.includes(id)
+    );
+
+    /* delete removed */
+
+    for(const id of deleted){
+      await api.delete(`/api/store-hours/${id}`);
+    }
+
+    /* create new */
+
+    for(const r of localRows){
+      if(String(r.id).startsWith("tmp")){
+        await api.post("/api/store-hours",{
+          storeId:store.id,
+          dayOfWeek:r.dayOfWeek,
+          openTime:r.openTime,
+          closeTime:r.closeTime
+        });
+      }
+    }
+
+    /* update existing */
+
+    for(const r of localRows){
+      if(!String(r.id).startsWith("tmp")){
+        await api.patch(`/api/store-hours/${r.id}`,{
+          openTime:r.openTime,
+          closeTime:r.closeTime
+        });
+      }
+    }
+
+    load();
+  };
+
+  /* ───────── UI ───────── */
+
   return (
+
     <div className="sc-modalBack" onMouseDown={onClose}>
-      <div className="sc-modalBox" onMouseDown={e => e.stopPropagation()}>
+      <div className="sc-modalBox" onMouseDown={e=>e.stopPropagation()}>
 
         <header className="sc-modalHead">
           <h3>Hours – {store.storeName}</h3>
           <button className="sc-iconBtn" onClick={onClose}>✕</button>
         </header>
+          <div style={{display:"flex",gap:"10px",marginBottom:"15px"}}>
 
+           
+
+        <button
+          className={`sc-btn applyAll ${appliedAllDays ? "active" : ""}`}
+          onClick={applyAllDays}
+        >
+          Apply to all days
+        </button>
+
+          </div>
         <div className="sc-modalBody">
 
-          {days.map((d,dayIndex)=>(
-            <div key={dayIndex} className="sc-hoursDay">
+          {days.map(day=>(
+
+            <div key={day} className="sc-hoursDay">
 
               <div className="sc-hoursDayHead">
-                <strong>{d}</strong>
+                <strong>{day}</strong>
 
                 <button
-                  className="table-btn small"
-                  onClick={()=>addSlot(dayIndex)}
+                  className="table-btn"
+                  onClick={()=>addSlot(day)}
                 >
-                  + slot
+                  + Add slot
                 </button>
               </div>
 
-              {grouped[dayIndex].map(slot=>(
-                <div key={slot.id} className="sc-hoursRow">
+              {slotsByDay[day].map(slot=>{
 
-                  <input
-                    type="time"
-                    value={toTime(slot.openTime)}
-                    onChange={(e)=>
-                      update(slot.id,"openTime",toMinutes(e.target.value))
-                    }
-                  />
+                const openH = Math.floor(slot.openTime/60);
+                const openM = slot.openTime%60;
 
-                  <span>—</span>
+                const closeH = Math.floor(slot.closeTime/60);
+                const closeM = slot.closeTime%60;
 
-                  <input
-                    type="time"
-                    value={toTime(slot.closeTime)}
-                    onChange={(e)=>
-                      update(slot.id,"closeTime",toMinutes(e.target.value))
-                    }
-                  />
+                return(
 
-                  <button
-                    className="table-btn danger"
-                    onClick={()=>remove(slot.id)}
-                  >
-                    ✕
-                  </button>
+                  <div key={slot.id} className="sc-hoursRow">
 
-                </div>
-              ))}
+                    {/* open hour */}
+
+                    <select
+                      value={openH}
+                      onChange={e=>updateLocal(
+                        slot.id,
+                        "openTime",
+                        Number(e.target.value)*60 + openM
+                      )}
+                    >
+                      {hours.map(h=>(
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+
+                    :
+
+                    <select
+                      value={openM}
+                      onChange={e=>updateLocal(
+                        slot.id,
+                        "openTime",
+                        openH*60 + Number(e.target.value)
+                      )}
+                    >
+                      {minutes.map(m=>(
+                        <option key={m} value={m}>{String(m).padStart(2,"0")}</option>
+                      ))}
+                    </select>
+
+                    <span>—</span>
+
+                    {/* close hour */}
+
+                    <select
+                      value={closeH}
+                      onChange={e=>updateLocal(
+                        slot.id,
+                        "closeTime",
+                        Number(e.target.value)*60 + closeM
+                      )}
+                    >
+                      {hours.map(h=>(
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+
+                    :
+
+                    <select
+                      value={closeM}
+                      onChange={e=>updateLocal(
+                        slot.id,
+                        "closeTime",
+                        closeH*60 + Number(e.target.value)
+                      )}
+                    >
+                      {minutes.map(m=>(
+                        <option key={m} value={m}>{String(m).padStart(2,"0")}</option>
+                      ))}
+                    </select>
+
+                    <button
+                      className="table-btn danger"
+                      onClick={()=>removeSlot(slot.id)}
+                    >
+                      ✕
+                    </button>
+
+                  </div>
+
+                );
+
+              })}
 
             </div>
+
           ))}
 
         </div>
 
         <footer className="sc-modalFooter">
-          <button className="sc-btn ghost" onClick={onClose}>
-            Close
-          </button>
-        </footer>
+
+  <button
+    className="sc-btn ghost"
+    onClick={onClose}
+  >
+    Cancel
+  </button>
+
+  <button
+    className="sc-btn primary"
+    onClick={async ()=>{
+      await save();
+      onClose();
+    }}
+  >
+    Save & Close
+  </button>
+
+</footer>
 
       </div>
     </div>

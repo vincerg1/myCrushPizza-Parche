@@ -28,6 +28,12 @@
   justify-content: space-between;
   margin-bottom: 10px;
 }
+
+.lsf-top__actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
 .lsf-top__title {
   font-weight: 800;
   font-size: 18px;
@@ -184,6 +190,36 @@
   line-height: 1.2;
   padding-right: 24px; /* espacio al final antes de repetir */
   animation: lsf-ticker 5s linear infinite;
+}
+
+.lsf-days-grid{
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+}
+
+.lsf-day-chip{
+
+padding:10px 14px;
+border-radius:10px;
+border:1px solid #ddd;
+background:white;
+font-weight:600;
+cursor:pointer;
+transition:all .15s ease;
+
+}
+
+.lsf-day-chip:hover{
+background:#f5f5f5;
+}
+
+.lsf-day-chip.is-selected{
+
+background:#d4f806;
+border-color:#c2e300;
+color:#000;
+
 }
 @keyframes lsf-ticker {
   0%   { transform: translateX(50%); }
@@ -1345,7 +1381,91 @@
 /* badge */
 .lsf-incentive__row--waiting .lsf-incentive__time-badge{
   align-self:center;
-  margin-top:-5px;       /* separación mínima */
+  margin-top:-5px;      
+}
+
+.lsf-schedulebtn {
+  border: 1px solid #e7e7e7;
+   background: #e7e7e7;
+  color:#fff;
+  padding:10px 12px;
+  border-radius:12px;
+  font-size:13px;
+  cursor:pointer;
+  color:black;
+}
+
+.lsf-schedulebtn.is-active{
+  background:#dff306;
+}
+
+.lsf-schedule{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.lsf-schedule__days{
+  display:flex;
+  gap:10px;
+}
+
+.lsf-schedule__section{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.lsf-schedule__footer{
+  display:flex;
+  justify-content:space-between;
+}
+.lsf-date{
+  width:100%;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #ddd;
+  font-size:14px;
+}
+
+.lsf-hours-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+}
+
+.lsf-hour-chip{
+  border:1px solid #e7e7e7;
+  border-radius:999px;
+  padding:8px 12px;
+  font-weight:700;
+  background:white;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+
+.lsf-hour-chip:hover{
+  background:#f4f4f4;
+}
+
+.lsf-hour-chip.is-selected{
+  background:#4285f4;
+  color:white;
+  border-color:#4285f4;
+}
+
+.lsf-schedule__label{
+  font-weight:700;
+  margin-bottom:6px;
+}
+
+.lsf-schedule__section{
+  margin-bottom:18px;
+}
+
+.lsf-schedule__footer{
+  display:flex;
+  justify-content:space-between;
 }
 
 /* MOBILE */

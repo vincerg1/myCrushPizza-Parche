@@ -52,6 +52,98 @@ function Modal({ open, title, onClose, children, className = "" }) {
 }
 
 /* ───────── Helpers ───────── */
+const minutesToHHMM = (m) => {
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  return `${String(h).padStart(2,"0")}:${String(min).padStart(2,"0")}`;
+};
+const formatScheduledLabel = (date) => {
+
+  if (!date) return "";
+
+  const d = new Date(date);
+
+  const now = new Date();
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  const time = d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+
+  if (target.getTime() === today.getTime()) {
+    return time;
+  }
+
+  if (target.getTime() === tomorrow.getTime()) {
+    return `Mañana ${time}`;
+  }
+
+  return d.toLocaleDateString([], {
+    weekday: "short",
+    day: "2-digit",
+    month: "short"
+  }) + ` ${time}`;
+};
+const generateScheduleDays = (count = 5) => {
+
+  const days = [];
+  const now = new Date();
+
+  for (let i = 0; i < count; i++) {
+
+    const d = new Date(now);
+    d.setDate(now.getDate() + i);
+
+    let label;
+
+    if (i === 0) label = "Hoy";
+    else if (i === 1) label = "Mañana";
+    else {
+      label = d.toLocaleDateString("es-ES", {
+        weekday: "short",
+        day: "numeric"
+      });
+    }
+
+    days.push({
+      date: d,
+      label
+    });
+
+  }
+
+  return days;
+
+};
+const generateSlots = (date, hours) => {
+
+  if (!date || !hours?.length) return [];
+
+  const day = date.getDay();
+
+  const dayConfig = hours.find(h => Number(h.dayOfWeek) === day);
+
+  if (!dayConfig) return [];
+
+  const open = Number(dayConfig.openTime);
+  const close = Number(dayConfig.closeTime);
+
+  const interval = 15; // minutos
+
+  const slots = [];
+
+  for (let m = open; m <= close; m += interval) {
+    slots.push(m);
+  }
+
+  return slots;
+};
 const parseMaybeJSON = (v, fallback) => {
   try {
     return typeof v === "string" ? JSON.parse(v) : v ?? fallback;
@@ -206,6 +298,9 @@ export default function LocalSaleForm({
   const [openHalfExtrasB, setOpenHalfExtrasB] = useState(false);
   const [nextIncentiveMs, setNextIncentiveMs] = useState(null);
   const [customer, setCustomer] = useState(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState(null);
+  const [storeHours, setStoreHours] = useState([]);
   const [dragX, setDragX] = useState(0);
   const dragActive = useRef(false);
   const [tick, setTick] = useState(false);
@@ -521,7 +616,20 @@ const HALF_CATEGORY_ID = 3; // ← SOLO PIZZAS
       })
       .catch(() => setMenu([]));
   }, [storeId]);
+useEffect(() => {
 
+  if (!storeId) return;
+
+  api
+    .get(`/api/store-hours/${storeId}`)
+    .then(r => {
+      setStoreHours(Array.isArray(r.data) ? r.data : []);
+    })
+    .catch(() => {
+      setStoreHours([]);
+    });
+
+}, [storeId]);
   // Extras: SOLO por category === "extras" (o flags opcionales)
   const isExtraItem = (m) => {
     if (m?.isExtra === true) return true;
@@ -661,6 +769,10 @@ useEffect(() => {
   }
 }, [sizeOptions]);
   const current = menu.find((m) => m.pizzaId === Number(sel.pizzaId));
+  const scheduleSlots = useMemo(() => {
+  return generateSlots(scheduledAt, storeHours);
+}, [scheduledAt, storeHours]);
+const scheduleDays = useMemo(() => generateScheduleDays(5), []);
   const currentCategoryId = useMemo(() => {
     if (!current || !categoriesDb.length) return null;
 
@@ -1236,19 +1348,35 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 </div>
         <div className={compact ? "lsf-wrapper compact lsf-mobile" : "lsf-wrapper lsf-mobile"}>
         <div className="lsf-top">
+
           <div className="lsf-top__title">
             {compact ? "Selecciona productos" : "Local sale"}
           </div>
 
-              <button
+          <div className="lsf-top__actions">
+
+            <button
+              type="button"
+              className={`lsf-cartbtn__count lsf-schedulebtn ${scheduledAt ? "is-active" : ""}`}
+              onClick={() => setScheduleModalOpen(true)}
+            >
+            {scheduledAt
+              ? `🕒 ${formatScheduledLabel(scheduledAt)}`
+              : "🕒 Programar"}
+            </button>
+
+            <button
               type="button"
               className={`lsf-cartbtn ${cartCount > 0 ? "is-active" : ""}`}
               onClick={() => setCartOpen(true)}
               aria-label="Abrir carrito"
             >
-            🛒 <span className="lsf-cartbtn__count">{cartCount}</span>
-            <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
-          </button>
+              🛒 <span className="lsf-cartbtn__count">{cartCount}</span>
+              <span className="lsf-cartbtn__total">€{total.toFixed(2)}</span>
+            </button>
+
+          </div>
+
         </div>
 
 
@@ -1462,7 +1590,12 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             });
             }}
           >
-            PAY NOW
+            {scheduledAt
+          ? `PAY NOW • ${new Date(scheduledAt).toLocaleTimeString([],{
+              hour:'2-digit',
+              minute:'2-digit'
+            })}`
+          : "PAY NOW"}
           </button>
         </div>
       )}
@@ -1688,7 +1821,17 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
                 {/* FOOTER ECONÓMICO CORRECTO */}
                 <div className="lsf-cartfoot">
-
+                  {scheduledAt && (
+                    <div className="lsf-cartfoot__scheduled">
+                      🕒 Pedido programado para{" "}
+                      {new Date(scheduledAt).toLocaleString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        day: "2-digit",
+                        month: "2-digit"
+                      })}
+                    </div>
+                  )}
                   {/* Subtotal bruto */}
                   <div className="lsf-cartfoot__line">
                     Subtotal: €{grossTotal.toFixed(2)}
@@ -1730,7 +1873,9 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
                         onConfirmCart({
                           storeId: Number(storeId),
-
+                          scheduledFor: scheduledAt
+                              ? new Date(scheduledAt).toISOString()
+                              : null,
                           items: cart.map((c) => ({
                             ...c,
                             extras: extrasArrayForItem(c),
@@ -1756,47 +1901,54 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                           }))
                         );
 
-                        const payload = {
-                          storeId,
-                          type: forcedStoreId ? "DELIVERY" : "LOCAL",
-                          delivery: forcedStoreId ? "COURIER" : "PICKUP",
+                          const payload = {
+                            storeId,
 
-                          customerId: customerId ?? null,
+                            type: forcedStoreId ? "DELIVERY" : "LOCAL",
+                            delivery: forcedStoreId ? "COURIER" : "PICKUP",
 
-                          customer: customer
-                            ? {
-                                id: customer.id ?? null,
-                                name: customer.name ?? null,
-                                phone: customer.phone ?? null,
-                                address_1: customer.address_1 ?? customer.address ?? null,
-                                observations: customer.observations ?? null,
-                                lat: customer.lat ?? null,
-                                lng: customer.lng ?? null,
-                              }
-                            : null,
+                            // 🕒 pedido programado
+                            scheduledFor: scheduledAt ? new Date(scheduledAt).toISOString() : null,
 
-                        products: cart
-                          .filter(c => c.type !== "INCENTIVE_REWARD")
-                          .map((c) => ({
-                            pizzaId: c.pizzaId,
-                            size: c.size,
-                            qty: c.qty,
-                            price: c.price,
-                            extras: extrasArrayForItem(c),
-                          })),
+                            customerId: customerId ?? null,
 
-                          totalProducts: grossTotal,
-                          discounts: discount,
-                          total,
-                          extras: aggregatedExtras,
-                          incentiveId: incentiveAmount > 0 ? activeIncentive?.id : null,
-                          incentiveAmount: incentiveAmount > 0 ? incentiveAmount : 0,
-                        };
+                            customer: customer
+                              ? {
+                                  id: customer.id ?? null,
+                                  name: customer.name ?? null,
+                                  phone: customer.phone ?? null,
+                                  address_1: customer.address_1 ?? customer.address ?? null,
+                                  observations: customer.observations ?? null,
+                                  lat: customer.lat ?? null,
+                                  lng: customer.lng ?? null,
+                                }
+                              : null,
+
+                            products: cart
+                              .filter(c => c.type !== "INCENTIVE_REWARD")
+                              .map((c) => ({
+                                pizzaId: c.pizzaId,
+                                size: c.size,
+                                qty: c.qty,
+                                price: c.price,
+                                extras: extrasArrayForItem(c),
+                              })),
+
+                            totalProducts: grossTotal,
+                            discounts: discount,
+                            total,
+
+                            extras: aggregatedExtras,
+
+                            incentiveId: incentiveAmount > 0 ? activeIncentive?.id : null,
+                            incentiveAmount: incentiveAmount > 0 ? incentiveAmount : 0,
+                          };
 
                         await api.post("/api/sales", payload);
 
                         setToast("Sale saved ✓");
                         setCart([]);
+                        setScheduledAt(null);
                         setCartOpen(false);
                         setTimeout(() => onDone(), 600);
 
@@ -2374,7 +2526,133 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             </div>
           </Modal>
 
+<Modal
+  open={scheduleModalOpen}
+  title="Programar pedido"
+  onClose={() => setScheduleModalOpen(false)}
+  className="lsf-modal--center"
+>
+  <div className="lsf-schedule">
 
+    {/* FECHA */}
+    <div className="lsf-schedule__section">
+
+      <div className="lsf-schedule__label">Fecha</div>
+
+<div className="lsf-days-grid">
+
+  {scheduleDays.map((d,i) => {
+
+    const selected =
+      scheduledAt &&
+      new Date(scheduledAt).toDateString() === d.date.toDateString();
+
+    return (
+      <button
+        key={i}
+        className={`lsf-day-chip ${selected ? "is-selected" : ""}`}
+        onClick={() => {
+
+          const newDate = new Date(d.date);
+
+          if (scheduledAt) {
+            const prev = new Date(scheduledAt);
+            newDate.setHours(prev.getHours());
+            newDate.setMinutes(prev.getMinutes());
+          }
+
+          setScheduledAt(newDate);
+
+        }}
+      >
+        {d.label}
+      </button>
+    );
+
+  })}
+
+</div>
+
+    </div>
+
+    {/* HORAS */}
+    {scheduledAt && scheduleSlots.length > 0 && (
+
+      <div className="lsf-schedule__section">
+
+        <div className="lsf-schedule__label">Hora</div>
+
+        <div className="lsf-hours-grid">
+
+          {scheduleSlots.map((m) => {
+
+            const h = Math.floor(m / 60);
+            const min = m % 60;
+
+            const label = minutesToHHMM(m);
+
+            const selected =
+              scheduledAt &&
+              scheduledAt.getHours() === h &&
+              scheduledAt.getMinutes() === min;
+
+            return (
+
+              <button
+                key={m}
+                className={`lsf-hour-chip ${selected ? "is-selected" : ""}`}
+                onClick={() => {
+
+                  const d = new Date(scheduledAt);
+
+                  d.setHours(h);
+                  d.setMinutes(min);
+
+                  setScheduledAt(d);
+
+                }}
+              >
+                {label}
+              </button>
+
+            );
+
+          })}
+
+        </div>
+
+      </div>
+
+    )}
+
+    {/* FOOTER */}
+    <div className="lsf-schedule__footer">
+
+      <button
+        className="lsf-btn lsf-btn--ghost"
+        onClick={() => {
+          setScheduledAt(null);
+          setScheduleModalOpen(false);
+        }}
+      >
+        Cancelar
+      </button>
+
+        <button
+          className="lsf-btn lsf-btn--primary"
+          onClick={() => {
+            if (!scheduledAt) return;
+            setScheduleModalOpen(false);
+          }}
+          disabled={!scheduledAt}
+        >
+        Confirmar
+      </button>
+
+    </div>
+
+  </div>
+</Modal>
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>
   );

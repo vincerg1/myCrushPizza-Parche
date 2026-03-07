@@ -91,7 +91,11 @@ export default function PendingTable() {
 
         const { data } = await api.get("/api/sales/pending", { params });
         console.log("PENDING SALES", data);
-        const arr = Array.isArray(data) ? data : [];
+        const arr = (Array.isArray(data) ? data : []).sort((a, b) => {
+        const ta = a.scheduledFor ? new Date(a.scheduledFor) : new Date(a.date);
+        const tb = b.scheduledFor ? new Date(b.scheduledFor) : new Date(b.date);
+        return ta - tb;
+      });
 
         lastFetchAtRef.current = new Date().toISOString();
 
@@ -449,8 +453,19 @@ const renderItemsLines = (sale) => {
             {rows.map((s) => (
               <tr key={s.id}>
                 <td>{s.code}</td>
-                <td>{moment(s.date).format("DD/MM/YY HH:mm")}</td>
-                <td>{s.type}</td>
+                <td>
+                  {s.scheduledFor
+                    ? `🕒 ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
+                    : moment(s.date).format("DD/MM/YY HH:mm")}
+                </td>
+                <td>
+                  {s.type}
+                  {s.scheduledFor && (
+                    <span style={{ marginLeft: 6, fontSize: 12, color: "#f92672" }}>
+                      (PROGRAMADO)
+                    </span>
+                  )}
+                </td>
                 <td>{storeById[s.storeId] || s.storeName || "-"}</td>
                 <td>{fmtProducts(s)}</td>
                 <td>{s.customerData?.name ?? "-"}</td>
@@ -495,7 +510,11 @@ const renderItemsLines = (sale) => {
 
                 <div className="row">
                   <strong>Date</strong>
-                  <span>{moment(s.date).format("DD/MM HH:mm")}</span>
+                  <span>
+                    {s.scheduledFor
+                      ? `🕒 ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
+                      : moment(s.date).format("DD/MM HH:mm")}
+                  </span>
                 </div>
 
                 <div className="row">

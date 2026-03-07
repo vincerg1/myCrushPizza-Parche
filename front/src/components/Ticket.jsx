@@ -55,12 +55,24 @@ export default function Ticket({ order, autoPrint = false }) {
   }, [autoPrint]);
 
   const f = moment(order.date).locale("es");
+    const scheduled = order.scheduledFor ? moment(order.scheduledFor).locale("es") : null;
 
+    const scheduledLabel = scheduled
+      ? scheduled.format("DD/MM HH:mm")
+      : null;
+
+    const isScheduled = Boolean(order.scheduledFor);
   const safeExtras = (arr) => Array.isArray(arr) ? arr : [];
 
   return (
     <div className="ticket">
       <div className="ticket-header">
+        {isScheduled && (
+          <div className="ticket-scheduled">
+            🕒 PEDIDO PROGRAMADO<br />
+            {scheduledLabel}
+          </div>
+        )}
         <strong>{store?.storeName || "Pizzería"}</strong><br />
         {f.format("DD/MM/YY HH:mm")}<br />
         {order.customerCode || `CUS-${order.customerId}`}<br />
