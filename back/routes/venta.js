@@ -693,7 +693,9 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
           total: saleTotal,
           extras: extrasFinal,
           notes,
-          scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+          scheduledFor: scheduledFor
+            ? new Date(scheduledFor)
+            : null,
           channel,
           status: 'AWAITING_PAYMENT',
           address_1: snapshot?.address_1 ?? null,
@@ -1106,7 +1108,8 @@ router.post('/checkout-session', async (req, res) => {
           items: cart.items,
           extras: cart.extras || [],
           coupon: cart.coupon || null,
-          totals: cart.totals || null
+          totals: cart.totals || null,
+          scheduledFor: cart.scheduledFor || null
         })
       }
 
@@ -1544,7 +1547,9 @@ router.post(
                   total: round2(totalProducts - discounts),
                   extras: extrasFinal,
                   notes: cart.notes || '',
-                  scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+                  scheduledFor: cart?.scheduledFor
+                  ? new Date(cart.scheduledFor)
+                  : null,
                   channel: cart.channel || 'WEB',
                   status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
