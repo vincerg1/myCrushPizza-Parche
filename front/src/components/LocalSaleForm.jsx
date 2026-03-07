@@ -1572,7 +1572,9 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
             onConfirmCart({
               storeId: Number(storeId),
-
+              scheduledFor: scheduledAt
+                  ? new Date(scheduledAt).toISOString()
+                  : null,
               items: cart.map((c) => ({
                 ...c,
 
