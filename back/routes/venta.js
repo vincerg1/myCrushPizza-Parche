@@ -678,7 +678,28 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
         saleTotal
       });
 
-const sale = await tx.sale.create
+      const sale = await tx.sale.create({
+        data: {
+          code: await genOrderCode(tx),
+          storeId: Number(storeId),
+          customerId,
+          type,
+          delivery,
+          customerData: snapshot,
+          products: [...lineItemsWithExtras, ...incentiveRawItems],
+          totalProducts,
+          discounts,
+          total: saleTotal,
+          extras: extrasFinal,
+          notes,
+          channel,
+          status: 'AWAITING_PAYMENT',
+          address_1: snapshot?.address_1 ?? null,
+          lat: snapshot?.lat ?? null,
+          lng: snapshot?.lng ?? null
+        }
+      });
+
       return sale;
     });
 
@@ -1521,9 +1542,6 @@ router.post(
                   total: round2(totalProducts - discounts),
                   extras: extrasFinal,
                   notes: cart.notes || '',
-                  scheduledFor: cart.scheduledFor
-              ? new Date(cart.scheduledFor)
-              : null,
                   channel: cart.channel || 'WEB',
                   status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
