@@ -678,33 +678,7 @@ const lineItemsWithExtras = lineItems.map((li, idx) => {
         saleTotal
       });
 
-      const sale = await tx.sale.create({
-        data: {
-          code: await genOrderCode(tx),
-          storeId: Number(cart.storeId),
-          customerId,
-          type: cart.type || 'LOCAL',
-          delivery: cart.delivery || 'PICKUP',
-          customerData: snapshot || cart.customer || {},
-          products: [...lineItemsWithMeta, ...incentiveCartItems],
-          totalProducts,
-          discounts,
-          total: round2(totalProducts - discounts),
-          extras: extrasFinal,
-          notes: cart.notes || '',
-          scheduledFor: cart.scheduledFor
-          ? new Date(cart.scheduledFor)
-          : null,
-          channel: cart.channel || 'WEB',
-          status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
-          stripeCheckoutSessionId: checkoutId,
-          stripePaymentIntentId: paymentIntent ? String(paymentIntent) : null,
-          address_1: snapshot?.address_1 ?? cart?.customer?.address_1 ?? null,
-          lat: snapshot?.lat ?? cart?.customer?.lat ?? null,
-          lng: snapshot?.lng ?? cart?.customer?.lng ?? null
-        }
-      });
-
+const sale = await tx.sale.create
       return sale;
     });
 
@@ -1548,8 +1522,8 @@ router.post(
                   extras: extrasFinal,
                   notes: cart.notes || '',
                   scheduledFor: cart.scheduledFor
-                  ? new Date(cart.scheduledFor)
-                  : null,
+              ? new Date(cart.scheduledFor)
+              : null,
                   channel: cart.channel || 'WEB',
                   status: payOk ? 'PAID' : 'AWAITING_PAYMENT',
                   stripeCheckoutSessionId: checkoutId,
