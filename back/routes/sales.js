@@ -166,8 +166,6 @@ module.exports = (prisma) => {
       extras = [],
       notes = '',
       scheduledFor, 
-
-      // ✅ INCENTIVE (viene del front)
       incentiveId: incentiveIdBody,
       incentiveAmount: incentiveAmountBody,
     } = req.body;
@@ -359,9 +357,7 @@ module.exports = (prisma) => {
 
       const topLevelExtras = extras.map(sanitizeExtra).filter(Boolean);
       let extrasAll = [...nestedExtras, ...topLevelExtras];
-console.log('🟠 NESTED EXTRAS:', JSON.stringify(nestedExtras, null, 2));
-console.log('🟠 TOP LEVEL EXTRAS:', JSON.stringify(topLevelExtras, null, 2));
-console.log('🟠 EXTRAS ALL (final):', JSON.stringify(extrasAll, null, 2));
+
 const totalProducts = round2(
   chargeableProducts.reduce((t, p) => t + Number(p.price) * Number(p.qty), 0)
 );
