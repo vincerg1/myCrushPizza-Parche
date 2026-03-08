@@ -1355,7 +1355,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
           <div className="lsf-top__actions">
 
-            {/* <button
+            <button
               type="button"
               className={`lsf-cartbtn__count lsf-schedulebtn ${scheduledAt ? "is-active" : ""}`}
               onClick={() => setScheduleModalOpen(true)}
@@ -1363,7 +1363,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             {scheduledAt
               ? `🕒 ${formatScheduledLabel(scheduledAt)}`
               : "🕒 Programar"}
-            </button> */}
+            </button>
 
             <button
               type="button"
@@ -1569,7 +1569,15 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
               const extrasMapForItem = (line) =>
                 Object.fromEntries((line.extras || []).map((e) => [e.id, true]));
-
+              console.log("🧪 LSF → onConfirmCart payload", {
+                storeId: Number(storeId),
+                scheduledAt,
+                scheduledFor: scheduledAt
+                  ? new Date(scheduledAt).toISOString()
+                  : null,
+                cart,
+                total
+              });
             onConfirmCart({
               storeId: Number(storeId),
               scheduledFor: scheduledAt
@@ -1872,7 +1880,15 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
 
                       if (onConfirmCart) {
                         if (!storeId) return alert("Select store");
-
+                        console.log("🧪 LSF → onConfirmCart payload", {
+                          storeId: Number(storeId),
+                          scheduledAt,
+                          scheduledFor: scheduledAt
+                            ? new Date(scheduledAt).toISOString()
+                            : null,
+                          cart,
+                          total
+                        });
                         onConfirmCart({
                           storeId: Number(storeId),
                           scheduledFor: scheduledAt

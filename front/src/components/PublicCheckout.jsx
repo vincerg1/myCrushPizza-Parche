@@ -1649,6 +1649,9 @@ if (couponOk && coupon?.code) {
       type: isDelivery ? "DELIVERY" : "LOCAL",
       delivery: isDelivery ? "COURIER" : "PICKUP",
       channel: "WHATSAPP",
+        scheduledFor: pending?.scheduledFor
+    ? new Date(pending.scheduledFor).toISOString()
+    : null,
       customer: isDelivery
   ? {
       phone: customer?.phone,
@@ -1674,12 +1677,12 @@ if (couponOk && coupon?.code) {
       ...(validCouponCode ? { coupon: validCouponCode } : {}),
       notes: "",
     };
-
+    console.log("🚀 ORDER PAYLOAD", payload);
     const { data: created } = await api.post("/api/venta/pedido", payload);
     console.log("🚨 PAYLOAD FINAL /api/venta/pedido", {
-  payload,
-  customerState: customer,
-  hasObservations: customer?.observations,
+    payload,
+    customerState: customer,
+    hasObservations: customer?.observations,
 });
     const { data: pay } = await api.post("/api/venta/checkout-session", {
       orderId: created?.id,
