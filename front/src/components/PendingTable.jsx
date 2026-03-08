@@ -8,8 +8,7 @@ import "../styles/PendingTable.css";
 import api from "../setupAxios";
 import { useAuth } from "./AuthContext";
 
-const FALLBACK_POLL_MS = 10_000; // fallback polling every 10 seconds
-
+const FALLBACK_POLL_MS = 10_000; 
 export default function PendingTable() {
   const ENABLE_SSE = false;
 
@@ -17,12 +16,14 @@ export default function PendingTable() {
   const [menu, setMenu] = useState([]);
   const [stores, setStores] = useState([]);
   const [view, setView] = useState(null);
-
+  const [toastMsg, setToastMsg] = useState(null);
+  const [bubble, setBubble] = useState(null);
   const [loading, setLoading] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(null); // (si lo usas en otro lado, lo respetamos)
-
   const audioRef = useRef(null);
-  const prevIdsRef = useRef(new Set());
+  const prevIdsRef = useRef(
+  new Set(JSON.parse(localStorage.getItem("seenOrders") || "[]"))
+);
   const [alertOrders, setAlertOrders] = useState([]);
   const [isRinging, setIsRinging] = useState(false);
   const [needSoundUnlock, setNeedSoundUnlock] = useState(false);
@@ -111,11 +112,19 @@ export default function PendingTable() {
           return arr;
         });
 
-        prevIdsRef.current = new Set([...prevIdsRef.current, ...idsNow]);
+        const updated = new Set([...prevIdsRef.current, ...idsNow]);
+
+        prevIdsRef.current = updated;
+
+        localStorage.setItem(
+          "seenOrders",
+          JSON.stringify(Array.from(updated))
+        );
 
         if (newOnes.length > 0) {
           setAlertOrders((prev) => [...prev, ...newOnes]);
           await ringStart();
+          setTimeout(ringStop, 4000);
         }
       } catch (e) {
         if (e?.response?.status === 401) {
@@ -204,6 +213,19 @@ export default function PendingTable() {
   }, [alertOrders.length, view]);
 
   /* ---------- helpers render ---------- */
+
+  const showBubble = (id, msg) => {
+  setBubble({ id, msg });
+
+  setTimeout(() => {
+    setBubble(null);
+  }, 1800);
+};
+
+  const showToast = (msg) => {
+  setToastMsg(msg);
+  setTimeout(() => setToastMsg(null), 2500);
+};
   const nameById = useMemo(() => {
     const m = {};
     (menu || []).forEach((p) => {
@@ -355,7 +377,14 @@ const renderItemsLines = (sale) => {
     })
     .join(", ");
 };
+const canBeReady = (sale) => {
+  if (!sale?.scheduledFor) return true;
 
+  const now = new Date();
+  const scheduled = new Date(sale.scheduledFor);
+
+  return scheduled <= now;
+};
 
   const markReady = async (id) => {
     try {
@@ -470,9 +499,24 @@ const renderItemsLines = (sale) => {
                 <td>{fmtProducts(s)}</td>
                 <td>{s.customerData?.name ?? "-"}</td>
                 <td>{s.customerData?.phone ?? "-"}</td>
-                <td>
-                  <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
-                </td>
+                  <td style={{ position: "relative" }}>
+                    <button
+                      onClick={() => {
+                        if (!canBeReady(s)) {
+                          showBubble(s.id, "Espera el momento 🧘");
+                          return;
+                        }
+
+                        requestConfirmReady(s.id);
+                      }}
+                    >
+                      {canBeReady(s) ? "Ready" : "🕒"}
+                    </button>
+
+                    {bubble?.id === s.id && (
+                      <div className="ready-bubble">{bubble.msg}</div>
+                    )}
+                  </td>
                 <td>
                   <button onClick={() => setView(s)}>Ver</button>
                 </td>
@@ -572,7 +616,24 @@ const renderItemsLines = (sale) => {
                   <span>{s.customerData?.phone ?? "-"}</span>
                 </div>
 
-                <button onClick={() => requestConfirmReady(s.id)}>Ready</button>
+                  <td style={{ position: "relative" }}>
+<button
+  className={!canBeReady(s) ? "btn-programmed" : ""}
+  onClick={() => {
+    if (!canBeReady(s)) {
+      showBubble(s.id, "Espera el momento 🧘");
+      return;
+    }
+    requestConfirmReady(s.id);
+  }}
+>
+  {canBeReady(s) ? "Ready" : "🕒 PROGRAMADO"}
+</button>
+
+                    {bubble?.id === s.id && (
+                      <div className="ready-bubble">{bubble.msg}</div>
+                    )}
+                  </td>
                 <button onClick={() => setView(s)}>Ver</button>
               </article>
             ))}
@@ -640,8 +701,85 @@ const renderItemsLines = (sale) => {
           </div>
         </div>
       )}
-
+        {toastMsg && (
+          <div className="pt-toast">
+            {toastMsg}
+          </div>
+        )}
       <style>{`
+      .ready-bubble{
+            position:absolute;
+            left:50%;
+            bottom:110%;
+            transform:translateX(-50%);
+            background:#111;
+            color:#fff;
+            padding:6px 10px;
+            border-radius:10px;
+            font-size:12px;
+            white-space:nowrap;
+            pointer-events:none;
+            animation:bubbleFloat 1.8s ease forwards;
+            box-shadow:0 4px 10px rgba(0,0,0,0.3);
+          }
+
+          /* pequeño triángulo tipo bocadillo */
+          .ready-bubble::after{
+            content:"";
+            position:absolute;
+            left:50%;
+            bottom:-6px;
+            transform:translateX(-50%);
+            border-width:6px;
+            border-style:solid;
+            border-color:#111 transparent transparent transparent;
+          }
+
+          @keyframes bubbleFloat{
+            0%{
+              opacity:0;
+              transform:translate(-50%,10px) scale(0.9);
+            }
+
+            20%{
+              opacity:1;
+              transform:translate(-50%,0) scale(1);
+            }
+
+            80%{
+              opacity:1;
+            }
+
+            100%{
+              opacity:0;
+              transform:translate(-50%,-25px) scale(0.95);
+            }
+          }
+      .pt-toast{
+        position:fixed;
+        bottom:24px;
+        left:50%;
+        transform:translateX(-50%);
+        background:#111;
+        color:#fff;
+        padding:10px 16px;
+        border-radius:8px;
+        font-size:14px;
+        box-shadow:0 4px 14px #0005;
+        animation:toastIn .25s ease;
+        z-index:2000;
+      }
+
+      @keyframes toastIn{
+        from{
+          opacity:0;
+          transform:translate(-50%,10px);
+        }
+        to{
+          opacity:1;
+          transform:translate(-50%,0);
+        }
+      }
         .sound-toast{
           position:fixed; right:12px; top:12px; z-index:1000;
           background:#fff3cd; border:1px solid #ffeeba; color:#7a5d00;

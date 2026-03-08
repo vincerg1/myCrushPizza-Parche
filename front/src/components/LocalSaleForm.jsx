@@ -76,19 +76,19 @@ const formatScheduledLabel = (date) => {
     minute: "2-digit"
   });
 
-  if (target.getTime() === today.getTime()) {
-    return time;
-  }
+ if (target.getTime() === today.getTime()) {
+  return `Hoy ${time} hrs`;
+}
 
   if (target.getTime() === tomorrow.getTime()) {
-    return `Mañana ${time}`;
+    return `Mañana ${time} hrs `;
   }
 
   return d.toLocaleDateString([], {
     weekday: "short",
     day: "2-digit",
     month: "short"
-  }) + ` ${time}`;
+  }) + ` ${time} hrs`;
 };
 const generateScheduleDays = (count = 5) => {
 
@@ -127,18 +127,28 @@ const generateSlots = (date, hours) => {
 
   const day = date.getDay();
 
-  const dayConfig = hours.find(h => Number(h.dayOfWeek) === day);
+  const dayConfig = hours.find(
+    h => Number(h.dayOfWeek) === day
+  );
 
   if (!dayConfig) return [];
 
   const open = Number(dayConfig.openTime);
   const close = Number(dayConfig.closeTime);
 
-  const interval = 15; // minutos
+  const PREP_BUFFER = 30; // minutos de preparación
 
+  let start = open + PREP_BUFFER;
+
+  // 🔴 si el buffer empuja después del cierre
+  if (start >= close) {
+    start = open;
+  }
+
+  const interval = 15;
   const slots = [];
 
-  for (let m = open; m <= close; m += interval) {
+  for (let m = start; m <= close; m += interval) {
     slots.push(m);
   }
 
@@ -2544,133 +2554,133 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
             </div>
           </Modal>
 
-<Modal
-  open={scheduleModalOpen}
-  title="Programar pedido"
-  onClose={() => setScheduleModalOpen(false)}
-  className="lsf-modal--center"
->
-  <div className="lsf-schedule">
-
-    {/* FECHA */}
-    <div className="lsf-schedule__section">
-
-      <div className="lsf-schedule__label">Fecha</div>
-
-<div className="lsf-days-grid">
-
-  {scheduleDays.map((d,i) => {
-
-    const selected =
-      scheduledAt &&
-      new Date(scheduledAt).toDateString() === d.date.toDateString();
-
-    return (
-      <button
-        key={i}
-        className={`lsf-day-chip ${selected ? "is-selected" : ""}`}
-        onClick={() => {
-
-          const newDate = new Date(d.date);
-
-          if (scheduledAt) {
-            const prev = new Date(scheduledAt);
-            newDate.setHours(prev.getHours());
-            newDate.setMinutes(prev.getMinutes());
-          }
-
-          setScheduledAt(newDate);
-
-        }}
+      <Modal
+        open={scheduleModalOpen}
+        title="Programar pedido"
+        onClose={() => setScheduleModalOpen(false)}
+        className="lsf-modal--center"
       >
-        {d.label}
-      </button>
-    );
+        <div className="lsf-schedule">
 
-  })}
+          {/* FECHA */}
+          <div className="lsf-schedule__section">
 
-</div>
+            <div className="lsf-schedule__label">Fecha</div>
 
-    </div>
+      <div className="lsf-days-grid">
 
-    {/* HORAS */}
-    {scheduledAt && scheduleSlots.length > 0 && (
+        {scheduleDays.map((d,i) => {
 
-      <div className="lsf-schedule__section">
+          const selected =
+            scheduledAt &&
+            new Date(scheduledAt).toDateString() === d.date.toDateString();
 
-        <div className="lsf-schedule__label">Hora</div>
+          return (
+            <button
+              key={i}
+              className={`lsf-day-chip ${selected ? "is-selected" : ""}`}
+              onClick={() => {
 
-        <div className="lsf-hours-grid">
+                const newDate = new Date(d.date);
 
-          {scheduleSlots.map((m) => {
+                if (scheduledAt) {
+                  const prev = new Date(scheduledAt);
+                  newDate.setHours(prev.getHours());
+                  newDate.setMinutes(prev.getMinutes());
+                }
 
-            const h = Math.floor(m / 60);
-            const min = m % 60;
+                setScheduledAt(newDate);
 
-            const label = minutesToHHMM(m);
+              }}
+            >
+              {d.label}
+            </button>
+          );
 
-            const selected =
-              scheduledAt &&
-              scheduledAt.getHours() === h &&
-              scheduledAt.getMinutes() === min;
-
-            return (
-
-              <button
-                key={m}
-                className={`lsf-hour-chip ${selected ? "is-selected" : ""}`}
-                onClick={() => {
-
-                  const d = new Date(scheduledAt);
-
-                  d.setHours(h);
-                  d.setMinutes(min);
-
-                  setScheduledAt(d);
-
-                }}
-              >
-                {label}
-              </button>
-
-            );
-
-          })}
-
-        </div>
+        })}
 
       </div>
 
-    )}
+          </div>
 
-    {/* FOOTER */}
-    <div className="lsf-schedule__footer">
+          {/* HORAS */}
+          {scheduledAt && scheduleSlots.length > 0 && (
 
-      <button
-        className="lsf-btn lsf-btn--ghost"
-        onClick={() => {
-          setScheduledAt(null);
-          setScheduleModalOpen(false);
-        }}
-      >
-        Cancelar
-      </button>
+            <div className="lsf-schedule__section">
 
-        <button
-          className="lsf-btn lsf-btn--primary"
-          onClick={() => {
-            if (!scheduledAt) return;
-            setScheduleModalOpen(false);
-          }}
-          disabled={!scheduledAt}
-        >
-        Confirmar
-      </button>
+              <div className="lsf-schedule__label">Hora</div>
 
-    </div>
+              <div className="lsf-hours-grid">
 
-  </div>
-</Modal>
+                {scheduleSlots.map((m) => {
+
+                  const h = Math.floor(m / 60);
+                  const min = m % 60;
+
+                  const label = minutesToHHMM(m);
+
+                  const selected =
+                    scheduledAt &&
+                    scheduledAt.getHours() === h &&
+                    scheduledAt.getMinutes() === min;
+
+                  return (
+
+                    <button
+                      key={m}
+                      className={`lsf-hour-chip ${selected ? "is-selected" : ""}`}
+                      onClick={() => {
+
+                        const d = new Date(scheduledAt);
+
+                        d.setHours(h);
+                        d.setMinutes(min);
+
+                        setScheduledAt(d);
+
+                      }}
+                    >
+                      {label}
+                    </button>
+
+                  );
+
+                })}
+
+              </div>
+
+            </div>
+
+          )}
+
+          {/* FOOTER */}
+          <div className="lsf-schedule__footer">
+
+            <button
+              className="lsf-btn lsf-btn--ghost"
+              onClick={() => {
+                setScheduledAt(null);
+                setScheduleModalOpen(false);
+              }}
+            >
+              Cancelar
+            </button>
+
+              <button
+                className="lsf-btn lsf-btn--primary"
+                onClick={() => {
+                  if (!scheduledAt) return;
+                  setScheduleModalOpen(false);
+                }}
+                disabled={!scheduledAt}
+              >
+              Confirmar
+            </button>
+
+          </div>
+
+        </div>
+      </Modal>
       <Toast msg={toast} onClose={() => setToast(null)} />
     </>
   );

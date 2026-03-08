@@ -10,12 +10,67 @@
   --pos-text-soft: #555;
 }
 
+.order-card button.btn-programmed,
+.orders button.btn-programmed{
+  background: var(--pos-primary) !important;
+  color: #fff !important;
+  border: none !important;
+  font-weight:700;
+}
+
+.ready-bubble{
+  position:fixed;
+  background:#111;
+  color:#fff;
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:12px;
+  white-space:nowrap;
+  pointer-events:none;
+  animation:bubbleFloat 1.8s ease forwards;
+  box-shadow:0 4px 10px rgba(0,0,0,0.3);
+  z-index:2000;
+}
+
+.ready-bubble::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-6px;
+  transform:translateX(-50%);
+  border-width:6px;
+  border-style:solid;
+  border-color:#111 transparent transparent transparent;
+}
+
+@keyframes bubbleFloat{
+  0%{
+    opacity:0;
+    transform:translateY(10px) scale(0.9);
+  }
+
+  20%{
+    opacity:1;
+    transform:translateY(0) scale(1);
+  }
+
+  80%{
+    opacity:1;
+  }
+
+  100%{
+    opacity:0;
+    transform:translateY(-25px) scale(0.95);
+  }
+}
+
 /* ===============================
    TABLE (DESKTOP LEGACY)
 ================================ */
 .orders {
   width:100%;
   border-collapse:collapse;
+    overflow: visible !important;
 }
 .orders th,
 .orders td {
@@ -23,6 +78,7 @@
   padding:4px;
   text-align:center;
   font-size:.85rem;
+  overflow: visible !important;
 }
 .orders th {
   background:#fafafa;

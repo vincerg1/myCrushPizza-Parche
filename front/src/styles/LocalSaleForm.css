@@ -42,7 +42,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid #e7e7e7;
+  border: 0.25px solid #f92672;
   background: #fff;
   padding: 8px 10px;
   border-radius: 12px;
@@ -1386,17 +1386,17 @@ color:#000;
 
 .lsf-schedulebtn {
   border: 1px solid #e7e7e7;
-   background: #e7e7e7;
-  color:#fff;
+  background: #4285f4;
   padding:10px 12px;
   border-radius:12px;
   font-size:13px;
   cursor:pointer;
-  color:black;
+  color:#dff306;
 }
 
 .lsf-schedulebtn.is-active{
   background:#dff306;
+  color:#4285f4;
 }
 
 .lsf-schedule{
@@ -1449,9 +1449,9 @@ color:#000;
 }
 
 .lsf-hour-chip.is-selected{
-  background:#4285f4;
-  color:white;
-  border-color:#4285f4;
+  background:#d4f806;
+  border-color:#d4f806;
+  color:#000;
 }
 
 .lsf-schedule__label{
@@ -1470,6 +1470,22 @@ color:#000;
 
 /* MOBILE */
 @media (max-width:640px){
+   
+     .lsf-schedulebtn{
+    width:42px;
+    height:42px;
+    padding:0;
+    font-size:0;              /* oculta el texto */
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .lsf-schedulebtn::before{
+    content:"🕒";
+    font-size:20px;
+    line-height:1;
+  }
 
   .lsf-incentive__text--waiting{
     font-size:14px;
