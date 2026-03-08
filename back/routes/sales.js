@@ -506,23 +506,15 @@ console.log('🟢 SALE SAVED:', JSON.stringify(sale, null, 2));
 r.get('/pending', auth(), async (_, res) => {
   try {
 
-    const now = new Date();
-
     const list = await prisma.sale.findMany({
       where: {
         processed: false,
-
-        NOT: { status: 'AWAITING_PAYMENT' },
-
-        OR: [
-          { scheduledFor: null },      // pedido normal
-          { scheduledFor: { lte: now } } // pedido programado cuya hora ya llegó
-        ]
+        NOT: { status: 'AWAITING_PAYMENT' }
       },
 
       orderBy: [
-        { scheduledFor: 'asc' }, // primero los programados más cercanos
-        { date: 'asc' }          // luego los normales por orden de llegada
+        { scheduledFor: { sort: 'asc', nulls: 'last' } },
+        { date: 'asc' }
       ],
 
       include: {
@@ -591,13 +583,35 @@ r.get('/pending', auth(), async (_, res) => {
     }
   });
   /* ─────────────── PATCH /api/sales/:id/ready ─────────────── */
- r.patch('/:id/ready', auth(), async (req, res) => {
+r.patch('/:id/ready', auth(), async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: 'id inválido' });
 
-    // marcar como procesado
-    const sale = await prisma.sale.update({
+    // ───── buscar venta primero ─────
+    const sale = await prisma.sale.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { phone: true, name: true } }
+      }
+    });
+
+    if (!sale) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    // ───── bloquear READY si es programado y aún no llega la hora ─────
+    const now = new Date();
+
+    if (sale.scheduledFor && new Date(sale.scheduledFor) > now) {
+      return res.status(400).json({
+        error: 'ORDER_NOT_READY_YET',
+        message: 'Este pedido está programado y aún no ha llegado su hora.'
+      });
+    }
+
+    // ───── marcar como procesado ─────
+    const updated = await prisma.sale.update({
       where: { id },
       data: { processed: true },
       include: {
@@ -606,7 +620,7 @@ r.get('/pending', auth(), async (_, res) => {
     });
 
     // ───── Mensaje según tipo ─────
-    const type = (sale.type || '').toUpperCase();
+    const type = (updated.type || '').toUpperCase();
 
     let statusMsg = 'Tu pedido está listo.';
     if (type === 'DELIVERY') {
@@ -618,13 +632,13 @@ r.get('/pending', auth(), async (_, res) => {
     // ───── SMS (best-effort) ─────
     try {
       const phone =
-        sale?.customer?.phone ||
-        sale?.customerData?.phone ||
+        updated?.customer?.phone ||
+        updated?.customerData?.phone ||
         null;
 
       if (phone) {
-        const who   = sale?.customer?.name || sale?.customerData?.name || '';
-        const code  = sale?.code ? ` (${sale.code})` : '';
+        const who  = updated?.customer?.name || updated?.customerData?.name || '';
+        const code = updated?.code ? ` (${updated.code})` : '';
         await sendSMS(phone, `¡${who || 'Hola'}! ${statusMsg}${code}`);
       }
     } catch (smsErr) {
@@ -632,6 +646,7 @@ r.get('/pending', auth(), async (_, res) => {
     }
 
     res.json({ ok: true, message: statusMsg });
+
   } catch (e) {
     console.error('[PATCH /api/sales/:id/ready]', e);
     res.status(400).json({ error: 'No se pudo marcar como listo' });
