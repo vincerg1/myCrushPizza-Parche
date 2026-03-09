@@ -484,7 +484,7 @@ const canBeReady = (sale) => {
                 <td>{s.code}</td>
                 <td>
                   {s.scheduledFor
-                    ? `🕒 ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
+                    ? `⏱ ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
                     : moment(s.date).format("DD/MM/YY HH:mm")}
                 </td>
                 <td>
@@ -510,7 +510,7 @@ const canBeReady = (sale) => {
                         requestConfirmReady(s.id);
                       }}
                     >
-                      {canBeReady(s) ? "Ready" : "🕒"}
+                      {canBeReady(s) ? "Ready" : "⏱"}
                     </button>
 
                     {bubble?.id === s.id && (
@@ -556,7 +556,7 @@ const canBeReady = (sale) => {
                   <strong>Date</strong>
                   <span>
                     {s.scheduledFor
-                      ? `🕒 ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
+                      ? `⏱ ${moment(s.scheduledFor).format("DD/MM HH:mm")}`
                       : moment(s.date).format("DD/MM HH:mm")}
                   </span>
                 </div>
@@ -627,7 +627,7 @@ const canBeReady = (sale) => {
     requestConfirmReady(s.id);
   }}
 >
-  {canBeReady(s) ? "Ready" : "🕒 PROGRAMADO"}
+  {canBeReady(s) ? "Ready" : "⏱ PROGRAMADO"}
 </button>
 
                     {bubble?.id === s.id && (

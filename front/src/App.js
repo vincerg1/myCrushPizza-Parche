@@ -7,8 +7,6 @@ import CustomerInfo from "./components/CustomerInfo";
 import PublicCheckout from "./components/PublicCheckout";
 import { useAuth } from "./components/AuthContext";
 import PaymentResult from "./components/PaymentResult";
-
-// NUEVO: páginas legales SPA
 import PrivacyPage from "./components/PrivacyPage";
 import TermsPage from "./components/TermsPage";
 import DataDeletionPage from "./components/DataDeletionPage";

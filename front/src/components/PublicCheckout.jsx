@@ -76,7 +76,7 @@ useEffect(() => {
 
     console.log(
       pending?.scheduledFor
-        ? "🕒 PEDIDO PROGRAMADO → " + pending.scheduledFor
+        ? "⏱ PEDIDO PROGRAMADO → " + pending.scheduledFor
         : "⚡ PEDIDO INMEDIATO"
     );
 

@@ -69,7 +69,7 @@ export default function Ticket({ order, autoPrint = false }) {
       <div className="ticket-header">
         {isScheduled && (
           <div className="ticket-scheduled">
-            🕒 PEDIDO PROGRAMADO<br />
+            ⏱ PEDIDO PROGRAMADO<br />
             {scheduledLabel}
           </div>
         )}

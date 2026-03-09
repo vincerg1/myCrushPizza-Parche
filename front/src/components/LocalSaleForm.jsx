@@ -77,18 +77,18 @@ const formatScheduledLabel = (date) => {
   });
 
  if (target.getTime() === today.getTime()) {
-  return `Hoy ${time} hrs`;
+  return `Hoy ${time}`;
 }
 
   if (target.getTime() === tomorrow.getTime()) {
-    return `Mañana ${time} hrs `;
+    return `Mañana ${time}`;
   }
 
   return d.toLocaleDateString([], {
     weekday: "short",
     day: "2-digit",
     month: "short"
-  }) + ` ${time} hrs`;
+  }) + ` ${time}`;
 };
 const generateScheduleDays = (count = 5) => {
 
@@ -1371,8 +1371,8 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
               onClick={() => setScheduleModalOpen(true)}
             >
             {scheduledAt
-              ? `🕒 ${formatScheduledLabel(scheduledAt)}`
-              : "🕒 Programar"}
+              ? `⏱ ${formatScheduledLabel(scheduledAt)}`
+              : "⏱ Programar"}
             </button>
 
             <button
@@ -1843,7 +1843,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                 <div className="lsf-cartfoot">
                   {scheduledAt && (
                     <div className="lsf-cartfoot__scheduled">
-                      🕒 Pedido programado para{" "}
+                      ⏱ Pedido programado para{" "}
                       {new Date(scheduledAt).toLocaleString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -1935,7 +1935,7 @@ const isMargaritaReady = hasBase && hasSize && hasSauce && hasCheese;
                             type: forcedStoreId ? "DELIVERY" : "LOCAL",
                             delivery: forcedStoreId ? "COURIER" : "PICKUP",
 
-                            // 🕒 pedido programado
+                            // ⏱ pedido programado
                             scheduledFor: scheduledAt ? new Date(scheduledAt).toISOString() : null,
 
                             customerId: customerId ?? null,
