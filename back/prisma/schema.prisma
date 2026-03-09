@@ -233,7 +233,7 @@ model Sale {
   code                    String         @unique
   date                    DateTime       @default(now())
 
-  scheduledFor            DateTime?      // 🕒 pedido programado
+  scheduledFor            DateTime?      // ⏱ pedido programado
 
   deliveredAt             DateTime?
   storeId                 Int
