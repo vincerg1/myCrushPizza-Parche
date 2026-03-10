@@ -513,10 +513,18 @@ const applyAllDays = () => {
 }
 /* ─────────────── MAIN ─────────────── */
 export default function StoreCreator() {
-  const emptyStore = {
-    storeName: "", address: "", latitude: "", longitude: "",
-    city: "", zipCode: "", email: "", tlf: ""
-  };
+const emptyStore = {
+  storeName: "",
+  address: "",
+  latitude: "",
+  longitude: "",
+  city: "",
+  zipCode: "",
+  email: "",
+  tlf: "",
+  acceptsReservations: false,
+  reservationCapacity: ""
+};
 
   const [stores, setStores] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -525,6 +533,7 @@ export default function StoreCreator() {
   const [hoursModal, setHoursModal] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyStore);
+  const [editingStore, setEditingStore] = useState(null);
 
   /* LOAD */
   useEffect(() => {
@@ -538,14 +547,29 @@ export default function StoreCreator() {
   }, []);
 
   /* CRUD */
-  const submitStore = async e => {
-    e.preventDefault();
-    await api.post("/api/stores", form);
-    const { data } = await api.get("/api/stores");
-    setStores(data || []);
-    setForm(emptyStore);
-    setShowAdd(false);
+const submitStore = async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    ...form,
+    reservationCapacity: form.acceptsReservations
+      ? Number(form.reservationCapacity || 0)
+      : null
   };
+
+  if (editingStore) {
+    await api.patch(`/api/stores/${editingStore}`, payload);
+  } else {
+    await api.post("/api/stores", payload);
+  }
+
+  const { data } = await api.get("/api/stores");
+
+  setStores(data || []);
+  setForm(emptyStore);
+  setEditingStore(null);
+  setShowAdd(false);
+};
 
   const toggleActive = async (id, next) => {
     await api.patch(`/api/stores/${id}/active`, { active: next });
@@ -557,6 +581,25 @@ export default function StoreCreator() {
     await api.delete(`/api/stores/${id}`);
     setStores(s => s.filter(t => t.id !== id));
   };
+
+  const editStore = (store) => {
+  setEditingStore(store.id);
+
+  setForm({
+    storeName: store.storeName || "",
+    address: store.address || "",
+    latitude: store.latitude || "",
+    longitude: store.longitude || "",
+    city: store.city || "",
+    zipCode: store.zipCode || "",
+    email: store.email || "",
+    tlf: store.tlf || "",
+    acceptsReservations: store.acceptsReservations || false,
+    reservationCapacity: store.reservationCapacity || ""
+  });
+
+  setShowAdd(true);
+};
 
   /* MAP */
   const center = useMemo(() => {
@@ -597,6 +640,7 @@ export default function StoreCreator() {
             <thead>
               <tr>
                 <th>Del</th>
+                <th>Edit</th>
                 <th>Name</th>
                 <th>City</th>
                 <th>Address</th>
@@ -611,6 +655,14 @@ export default function StoreCreator() {
                   <td>
                     <button className="table-btn danger" onClick={() => deleteStore(s.id)}>✕</button>
                   </td>
+                  <td>
+                  <button
+                    className="table-btn edit"
+                    onClick={() => editStore(s)}
+                  >
+                    ✎
+                  </button>
+                </td>
                   <td>{s.storeName}</td>
                   <td>{s.city}</td>
                   <td>{s.address}</td>
@@ -688,10 +740,15 @@ export default function StoreCreator() {
     >
       {/* HEADER */}
       <header className="sc-modalHead">
-        <h3 className="sc-modalTitle">Add store</h3>
+       <h3 className="sc-modalTitle">
+          {editingStore ? "Edit store" : "Add store"}
+        </h3>
         <button
           className="sc-iconBtn"
-          onClick={() => setShowAdd(false)}
+          onClick={() => {
+            setShowAdd(false);
+            setEditingStore(null);
+          }}
         >
           ✕
         </button>
@@ -786,7 +843,42 @@ export default function StoreCreator() {
             }
           />
         </div>
+          {/* RESERVATIONS */}
+          <div className="sc-field">
+            <label className="sc-label">Accept reservations</label>
 
+               <button
+                  type="button"
+                  className={`sc-toggle ${form.acceptsReservations ? "on" : ""}`}
+                  onClick={() =>
+                    setForm((p) => ({
+                      ...p,
+                      acceptsReservations: !p.acceptsReservations
+                    }))
+                  }
+                >
+                  <span className="sc-toggle-knob"></span>
+                </button>
+          </div>
+
+          {form.acceptsReservations && (
+            <div className="sc-field">
+              <label className="sc-label">Reservation capacity (people)</label>
+
+              <input
+                type="number"
+                className="sc-input"
+                min="1"
+                value={form.reservationCapacity}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    reservationCapacity: e.target.value
+                  }))
+                }
+              />
+            </div>
+          )}
         {/* FOOTER */}
         <div className="sc-modalFooter">
           <button

@@ -1038,7 +1038,6 @@ border-radius: 20px;
   text-transform: uppercase;
   position: relative;
 
-  /* Degradado animado dentro del texto */
   background: linear-gradient(
     90deg,
     #d4f806 0%,
