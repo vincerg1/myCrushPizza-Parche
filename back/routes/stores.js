@@ -100,64 +100,127 @@ module.exports = (prisma) => {
     }
   });
 
-/* ───────── CREATE ───────── */
-router.post("/", async (req, res) => {
-  try {
-    const {
-      storeName,
-      address,
-      latitude,
-      longitude,
-      city,
-      zipCode,
-      email,
-      tlf,
-    } = req.body;
-
-    const result = await prisma.$transaction(async (tx) => {
-      // 1️⃣ Crear tienda
-      const store = await tx.store.create({
-        data: {
+    /* ───────── CREATE ───────── */
+    router.post("/", async (req, res) => {
+      try {
+        const {
           storeName,
           address,
+          latitude,
+          longitude,
           city,
           zipCode,
           email,
           tlf,
-          latitude: latitude !== "" ? +latitude : null,
-          longitude: longitude !== "" ? +longitude : null,
-        },
-      });
+          acceptsReservations,
+          reservationCapacity
+        } = req.body;
 
-      // 2️⃣ Inicializar pizzas (ya lo hacías)
-      await zeroStockForNewStore(tx, store.id);
+        const result = await prisma.$transaction(async (tx) => {
 
-      // 3️⃣ 🔥 Inicializar ingredientes (LO QUE FALTABA)
-      const ingredients = await tx.ingredient.findMany({
-        select: { id: true },
-      });
+          // 1️⃣ Crear tienda
+          const store = await tx.store.create({
+            data: {
+              storeName,
+              address,
+              city,
+              zipCode,
+              email,
+              tlf,
 
-      if (ingredients.length) {
-        await tx.storeIngredientStock.createMany({
-          data: ingredients.map((ing) => ({
-            storeId: store.id,
-            ingredientId: ing.id,
-            stock: 0,
-            active: true,
-          })),
+              latitude: latitude !== "" ? +latitude : null,
+              longitude: longitude !== "" ? +longitude : null,
+
+              acceptsReservations: Boolean(acceptsReservations),
+
+              reservationCapacity: acceptsReservations
+                ? Number(reservationCapacity || 0)
+                : null
+            },
+          });
+
+          // 2️⃣ Inicializar pizzas (ya lo hacías)
+          await zeroStockForNewStore(tx, store.id);
+
+          // 3️⃣ Inicializar ingredientes
+          const ingredients = await tx.ingredient.findMany({
+            select: { id: true },
+          });
+
+          if (ingredients.length) {
+            await tx.storeIngredientStock.createMany({
+              data: ingredients.map((ing) => ({
+                storeId: store.id,
+                ingredientId: ing.id,
+                stock: 0,
+                active: true,
+              })),
+            });
+          }
+
+          return store;
         });
+
+        res.json(result);
+
+      } catch (err) {
+        console.error("[POST /stores]", err);
+        res.status(400).json({ error: err.message });
+      }
+    });
+    /* ───────── UPDATE STORE ───────── */
+    router.patch("/:id", async (req, res) => {
+
+      const id = Number(req.params.id);
+
+      if (Number.isNaN(id)) {
+        return res.status(400).json({ error: "id must be number" });
       }
 
-      return store;
+      try {
+
+        const {
+          storeName,
+          address,
+          latitude,
+          longitude,
+          city,
+          zipCode,
+          email,
+          tlf,
+          acceptsReservations,
+          reservationCapacity
+        } = req.body;
+
+        const updated = await prisma.store.update({
+          where: { id },
+          data: {
+
+            storeName,
+            address,
+            city,
+            zipCode,
+            email,
+            tlf,
+
+            latitude: latitude !== "" ? +latitude : null,
+            longitude: longitude !== "" ? +longitude : null,
+
+            acceptsReservations: Boolean(acceptsReservations),
+
+            reservationCapacity: acceptsReservations
+              ? Number(reservationCapacity || 0)
+              : null
+          }
+        });
+
+        res.json(updated);
+
+      } catch (err) {
+        console.error("[PATCH /stores/:id]", err);
+        res.status(400).json({ error: err.message });
+      }
     });
-
-    res.json(result);
-  } catch (err) {
-    console.error("[POST /stores]", err);
-    res.status(400).json({ error: err.message });
-  }
-});
-
 
   /* ───────── DELETE ───────── */
   router.delete("/:id", async (req, res) => {

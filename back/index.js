@@ -67,8 +67,10 @@ const printRouter             = require("./routes/print");
 const incentivesRoutes        = require("./routes/incentives")(prisma);
 const basesPizzas             = require("./routes/basesPizzas");
 const storeHoursRouter        = require("./routes/storeHours")(prisma);
+const reservations = require("./routes/reservations")(prisma);
 
 /* Montaje */
+app.use("/api/reservations", reservations);
 app.use("/api/store-hours",     storeHoursRouter);
 app.use("/api/bases-pizzas", basesPizzas(prisma));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
