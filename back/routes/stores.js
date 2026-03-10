@@ -26,8 +26,6 @@ module.exports = (prisma) => {
       res.status(400).json({ error: err.message });
     }
   });
-
-  /* ───────── TIENDA MÁS CERCANA ───────── */
   router.get("/nearest", async (req, res) => {
     const lat = Number(req.query.lat);
     const lng = Number(req.query.lng);
@@ -73,8 +71,30 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "internal" });
     }
   });
+  router.get("/reservations-enabled", async (_, res) => {
 
-  /* ───────── GET store BY ID ───────── */
+    try {
+
+      const stores = await prisma.store.findMany({
+        where:{
+          acceptsReservations:true,
+          active:true
+        },
+        select:{
+          id:true,
+          storeName:true,
+          reservationCapacity:true
+        }
+      });
+
+      res.json(stores);
+
+    } catch(err){
+      console.error("[GET stores reservations-enabled]", err);
+      res.status(500).json({error:"internal"});
+    }
+
+  });
   router.get("/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {
@@ -89,8 +109,6 @@ module.exports = (prisma) => {
       res.status(400).json({ error: err.message });
     }
   });
-
-  /* ───────── LIST ───────── */
   router.get("/", async (_, res) => {
     try {
       const stores = await prisma.store.findMany({ orderBy: { id: "desc" } });
@@ -99,36 +117,7 @@ module.exports = (prisma) => {
       res.status(500).json({ error: "Error fetching stores" });
     }
   });
-
-  /* ───────── STORES WITH RESERVATIONS ───────── */
-
-router.get("/reservations-enabled", async (_, res) => {
-
-  try {
-
-    const stores = await prisma.store.findMany({
-      where:{
-        acceptsReservations:true,
-        active:true
-      },
-      select:{
-        id:true,
-        storeName:true,
-        reservationCapacity:true
-      }
-    });
-
-    res.json(stores);
-
-  } catch(err){
-    console.error("[GET stores reservations-enabled]", err);
-    res.status(500).json({error:"internal"});
-  }
-
-});
-
-    /* ───────── CREATE ───────── */
-    router.post("/", async (req, res) => {
+  router.post("/", async (req, res) => {
       try {
         const {
           storeName,
@@ -194,9 +183,8 @@ router.get("/reservations-enabled", async (_, res) => {
         console.error("[POST /stores]", err);
         res.status(400).json({ error: err.message });
       }
-    });
-    /* ───────── UPDATE STORE ───────── */
-    router.patch("/:id", async (req, res) => {
+  });
+  router.patch("/:id", async (req, res) => {
 
       const id = Number(req.params.id);
 
@@ -247,9 +235,7 @@ router.get("/reservations-enabled", async (_, res) => {
         console.error("[PATCH /stores/:id]", err);
         res.status(400).json({ error: err.message });
       }
-    });
-
-  /* ───────── DELETE ───────── */
+  });
   router.delete("/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id)) {
