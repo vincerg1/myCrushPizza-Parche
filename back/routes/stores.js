@@ -100,6 +100,33 @@ module.exports = (prisma) => {
     }
   });
 
+  /* ───────── STORES WITH RESERVATIONS ───────── */
+
+router.get("/reservations-enabled", async (_, res) => {
+
+  try {
+
+    const stores = await prisma.store.findMany({
+      where:{
+        acceptsReservations:true,
+        active:true
+      },
+      select:{
+        id:true,
+        storeName:true,
+        reservationCapacity:true
+      }
+    });
+
+    res.json(stores);
+
+  } catch(err){
+    console.error("[GET stores reservations-enabled]", err);
+    res.status(500).json({error:"internal"});
+  }
+
+});
+
     /* ───────── CREATE ───────── */
     router.post("/", async (req, res) => {
       try {
