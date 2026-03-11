@@ -5,7 +5,7 @@ const auth = require("../middleware/auth");            // ← IMPORTA auth
 const router = express.Router();
 
 module.exports = (prisma) => {
-  /* ───────── activate ───────── */
+  /* ───────── activat ───────── */
   router.patch("/:id/active", async (req, res) => {
     const id = Number(req.params.id);
     if (Number.isNaN(id))
