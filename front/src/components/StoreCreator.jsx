@@ -512,7 +512,7 @@ const applyAllDays = () => {
   );
 }
 
-/* ─────────────── RESERVATIONS MODAL ─────────────── */
+/* ─────────────── RESERVATIONS MODL ─────────────── */
 
 function ReservationsModal({ store, onClose }) {
 
