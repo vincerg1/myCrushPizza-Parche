@@ -78,7 +78,6 @@ module.exports = (prisma) => {
       const stores = await prisma.store.findMany({
         where:{
           acceptsReservations:true,
-          active:true
         },
         select:{
           id:true,
