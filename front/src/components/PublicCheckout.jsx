@@ -64,7 +64,12 @@ export default function PublicCheckout() {
     code: "",
     phone: ""
   });
+  const [reservationStores, setReservationStores] = useState([]);
+  const [showReservationBtn, setShowReservationBtn] = useState(false);
+  const [resBtnPos, setResBtnPos] = useState({  x: null, y: null });
+  const resDragRef = useRef(null);
 
+  const [reservationModalOpen, setReservationModalOpen] = useState(false);
 useEffect(() => {
 
   if (pending?.items?.length) {
@@ -159,6 +164,27 @@ useEffect(() => {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
+  // ===== CHECK RESERVATIONS ENABLED =====
+useEffect(() => {
+
+  const loadReservationStores = async () => {
+    try {
+
+      const { data } = await api.get("/api/stores/reservations-enabled");
+
+      if (Array.isArray(data) && data.length > 0) {
+        setReservationStores(data);
+        setShowReservationBtn(true);
+      }
+
+    } catch (err) {
+      console.log("reservation stores check failed");
+    }
+  };
+
+  loadReservationStores();
+
+}, []);
 
   const CONSENT_KEY = "mcp_cookie_consent_v1";
   const getConsent = () => {
@@ -498,6 +524,51 @@ const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
     if (e.key === "ArrowRight") goForward();
 };
+// ===== DRAG RESERVATION BUTTON =====
+const startResDrag = (e) => {
+
+  const startX = e.clientX || e.touches?.[0]?.clientX;
+  const startY = e.clientY || e.touches?.[0]?.clientY;
+
+  resDragRef.current = {
+    startX,
+    startY,
+    origX: resBtnPos.x,
+    origY: resBtnPos.y
+  };
+
+  window.addEventListener("mousemove", moveResDrag);
+  window.addEventListener("mouseup", stopResDrag);
+  window.addEventListener("touchmove", moveResDrag);
+  window.addEventListener("touchend", stopResDrag);
+};
+
+const moveResDrag = (e) => {
+
+  if (!resDragRef.current) return;
+
+  const clientX = e.clientX || e.touches?.[0]?.clientX;
+  const clientY = e.clientY || e.touches?.[0]?.clientY;
+
+  const dx = clientX - resDragRef.current.startX;
+  const dy = clientY - resDragRef.current.startY;
+
+  setResBtnPos({
+    x: resDragRef.current.origX + dx,
+    y: resDragRef.current.origY + dy
+  });
+
+};
+
+const stopResDrag = () => {
+
+  resDragRef.current = null;
+
+  window.removeEventListener("mousemove", moveResDrag);
+  window.removeEventListener("mouseup", stopResDrag);
+  window.removeEventListener("touchmove", moveResDrag);
+  window.removeEventListener("touchend", stopResDrag);
+};
 
   // =================== VISTAS ===================
   const flashCustomerBtn = useCallback(() => {
@@ -529,7 +600,296 @@ const onKeyDown = (e) => {
       </div>
     );
   }
+function ReservationModal({ open, stores, onClose }) {
 
+  const [storeId,setStoreId] = useState("");
+  const [partySize,setPartySize] = useState(2);
+  const [date,setDate] = useState("");
+  const [selectedTime,setSelectedTime] = useState("");
+  const [customerName,setCustomerName] = useState("")
+const [customerPhone,setCustomerPhone] = useState("")
+  const [storeHours, setStoreHours] = useState([])
+  const [availability,setAvailability] = useState([]);
+  const [loadingSlots,setLoadingSlots] = useState(false);
+  const [capacityGlobal,setCapacityGlobal] = useState(0)
+  const createReservation = async () => {
+
+    if(!storeId || !date || !selectedTime){
+      alert("Selecciona tienda, día y hora");
+      return;
+    }
+
+    try{
+
+      await api.post("/api/reservations",{
+        storeId:Number(storeId),
+        customerName,
+        customerPhone,
+        partySize,
+        reservationDate:date,
+        reservationTime:selectedTime
+      });
+
+      alert("Reserva creada correctamente");
+
+      onClose();
+
+    }catch(err){
+
+      console.error("reservation create error",err);
+      alert("No se pudo crear la reserva");
+
+    }
+
+  };
+
+  const loadAvailability = async (sId,d,pSize) => {
+
+    if(!sId || !d) return;
+
+    try{
+
+      setLoadingSlots(true);
+
+      const {data} = await api.get("/api/reservations/availability",{
+        params:{
+          storeId:sId,
+          date:d,
+          partySize:pSize
+        }
+      });
+
+      setAvailability(data.availability || [])
+      setCapacityGlobal(data.capacity || 0)
+
+    }catch(err){
+      console.error("availability error",err);
+    }finally{
+      setLoadingSlots(false);
+    }
+
+  };
+
+  useEffect(() => {
+
+    if (!storeId) return;
+
+    api
+      .get(`/api/store-hours/${storeId}`)
+      .then(r => {
+        setStoreHours(Array.isArray(r.data) ? r.data : []);
+      })
+      .catch(() => {
+        setStoreHours([]);
+      });
+
+  }, [storeId]);
+
+  useEffect(()=>{
+
+    if(storeId && date){
+      loadAvailability(storeId,date,partySize);
+    }
+
+  },[storeId,date,partySize]);
+
+  if (!open) return null;
+
+  return (
+    <div className="reservation-modal-overlay" onClick={onClose}>
+
+      <div
+        className="reservation-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+
+        <div className="reservation-modal-header">
+
+          <h3>Reservar mesa</h3>
+
+          <button
+            className="reservation-modal-close"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+
+        </div>
+
+        <div className="reservation-modal-body">
+
+          <h4>Selecciona tienda</h4>
+
+          <select
+            className="pc-select"
+            value={storeId}
+            onChange={(e)=>setStoreId(e.target.value)}
+          >
+
+            <option value="">– seleccionar tienda –</option>
+
+            {stores.map((s) => (
+
+              <option key={s.id} value={s.id}>
+                {s.storeName} · plazas {s.reservationCapacity}
+              </option>
+
+            ))}
+
+          </select>
+
+          <h4 style={{marginTop:20}}>Personas</h4>
+
+          <select
+            className="pc-select"
+            value={partySize}
+            onChange={(e)=>setPartySize(Number(e.target.value))}
+          >
+
+          {Array.from({length:12}).map((_,i)=>{
+
+            const n = i+1;
+
+            return(
+              <option key={n} value={n}>
+                {n} persona{n>1?"s":""}
+              </option>
+            );
+
+          })}
+
+          </select>
+
+          <div style={{ marginTop: 20 }}>
+            <h4 style={{marginTop:20}}>Nombre</h4>
+
+<input
+  className="pc-input"
+  value={customerName}
+  onChange={(e)=>setCustomerName(e.target.value)}
+  placeholder="Tu nombre"
+/>
+
+<h4 style={{marginTop:20}}>Teléfono</h4>
+
+<input
+  className="pc-input"
+  value={customerPhone}
+  onChange={(e)=>setCustomerPhone(e.target.value)}
+  placeholder="Teléfono"
+/>
+            <h4>Selecciona día</h4>
+
+            <div className="reservation-days">
+
+            {Array.from({length:10}).map((_,i)=>{
+
+              const d = new Date();
+              d.setDate(d.getDate()+i);
+
+              const iso = d.toISOString().slice(0,10);
+
+              const label = d.toLocaleDateString("es-ES",{
+                weekday:"short",
+                day:"numeric"
+              });
+
+              return(
+
+                <button
+                  key={iso}
+                  className={`reservation-day-btn ${date===iso?"active":""}`}
+                  onClick={()=>setDate(iso)}
+                >
+                  {label}
+                </button>
+
+              );
+
+            })}
+
+            </div>
+
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <h4>Selecciona hora</h4>
+
+            <div className="reservation-hours">
+
+            {loadingSlots && (
+              <div className="pc-note">cargando…</div>
+            )}
+
+            {availability.map(slot=>{
+
+              const occupied = slot.occupied ?? 0
+              const available = slot.available ?? 0
+              const capacity = capacityGlobal ?? 0
+
+              const canFit = available >= partySize
+              const isFull = available <= 0
+
+              const ratio = capacity > 0 ? occupied / capacity : 0
+
+              let level = "low"
+
+              if(isFull) level = "full"
+              else if(ratio >= 0.7) level = "high"
+              else if(ratio >= 0.3) level = "medium"
+
+              return(
+
+                <button
+                  key={slot.time}
+                  className={`reservation-slot ${level} ${selectedTime===slot.time?"active":""}`}
+                  disabled={!canFit}
+                  onClick={()=>setSelectedTime(slot.time)}
+                >
+
+                  <span className="reservation-slot-time">
+                    {slot.time}
+                  </span>
+
+                  <span className="reservation-slot-capacity">
+
+                    {isFull
+                      ? "FULL"
+                      : `(${occupied}/${capacity})`
+                    }
+
+                  </span>
+
+                </button>
+
+              )
+
+            })}
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <div className="reservation-modal-footer">
+
+          <button
+            className="pc-btn pc-btn-primary"
+            onClick={createReservation}
+            disabled={!storeId || !date || !selectedTime}
+          >
+            Confirmar reserva
+          </button>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+
+}
   function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
     return (
       <BaseModal
@@ -555,7 +915,6 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-
   function CookiePrefsModal({ open, onClose }) {
     const current = getConsent() || { necessary: true, analytics: false };
     const [analytics, setAnalytics] = useState(!!current.analytics);
@@ -608,7 +967,6 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-
   function TermsPurchaseModal({ open, onClose }) {
     return (
       <BaseModal open={open} title="Términos y Condiciones de Compra" onClose={onClose}>
@@ -675,7 +1033,6 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-
   function PrivacyPolicyModal({ open, onClose }) {
     return (
       <BaseModal open={open} title="Política de Privacidad — Portal de ventas" onClose={onClose}>
@@ -739,7 +1096,6 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-
   function CookiesPolicyModal({ open, onClose }) {
     return (
       <BaseModal open={open} title="Política de Cookies" onClose={onClose}>
@@ -775,7 +1131,6 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-
   function RestrictionModal({ open, info, onClose }) {
     if (!open) return null;
     const msg = info?.reason || "No podemos continuar con este número.";
@@ -922,131 +1277,131 @@ const onKeyDown = (e) => {
       </BaseModal>
     );
   }
-function CouponNextStepModal({ open, onClose }) {
-  if (!open) return null;
+  function CouponNextStepModal({ open, onClose }) {
+    if (!open) return null;
 
-  return (
-    <div className="coupon-flow-overlay">
-      <div className="coupon-flow-modal">
-
-        <button
-          className="coupon-flow-close"
-          onClick={onClose}
-          aria-label="Cerrar"
-        >
-          ✕
-        </button>
-
-        <div className="coupon-flow-header">
-          <div className="coupon-flow-badge">Cupón activado 🎉</div>
-          <h2>¿Cómo quieres recibir tu pedido?</h2>
-          <p>Tu descuento ya está aplicado. Elige cómo continuar.</p>
-        </div>
-
-        <div className="coupon-flow-options">
+    return (
+      <div className="coupon-flow-overlay">
+        <div className="coupon-flow-modal">
 
           <button
-            className="coupon-flow-card"
+            className="coupon-flow-close"
+            onClick={onClose}
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+
+          <div className="coupon-flow-header">
+            <div className="coupon-flow-badge">Cupón activado 🎉</div>
+            <h2>¿Cómo quieres recibir tu pedido?</h2>
+            <p>Tu descuento ya está aplicado. Elige cómo continuar.</p>
+          </div>
+
+          <div className="coupon-flow-options">
+
+            <button
+              className="coupon-flow-card"
+              onClick={() => {
+                setMode("pickupLocate");
+                setStep("locate");
+                onClose();
+              }}
+            >
+              <div className="coupon-flow-icon"></div>
+              <div className="coupon-flow-title">Recoger</div>
+              <div className="coupon-flow-desc">
+                Recoge tu pedido en tienda
+              </div>
+            </button>
+
+            <button
+              className="coupon-flow-card"
+              onClick={() => {
+                setMode("deliveryLocate");
+                setStep("locate");
+                onClose();
+              }}
+            >
+              <div className="coupon-flow-icon">🛵</div>
+              <div className="coupon-flow-title">Domicilio</div>
+              <div className="coupon-flow-desc">
+                Te lo llevamos a casa
+              </div>
+            </button>
+
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+    // Paso 0: escoger modo
+  const chooseMode = (
+    <div className="pc-card pc-card--hero pc-hero-new">
+
+      {/* CONTENEDOR BLANCO REAL */}
+      <div className="pc-hero-whiteBox">
+
+        {/* LOGO */}
+        <div className="pc-hero-logoInner">
+          <img src={logo} alt="MyCrushPizza" />
+        </div>
+
+        {/* PREGUNTA */}
+        <h2 className="pc-hero-question">
+          ¿Cómo quieres tu pedido?
+        </h2>
+
+        {/* BOTONES */}
+        <div className="pc-hero-actions">
+          <button
+            className="pc-btn pc-hero-btn"
             onClick={() => {
               setMode("pickupLocate");
               setStep("locate");
-              onClose();
+              setTriedNext(false);
             }}
           >
-            <div className="coupon-flow-icon"></div>
-            <div className="coupon-flow-title">Recoger</div>
-            <div className="coupon-flow-desc">
-              Recoge tu pedido en tienda
-            </div>
+            Recoger
           </button>
 
           <button
-            className="coupon-flow-card"
+            className="pc-btn pc-hero-btn"
             onClick={() => {
               setMode("deliveryLocate");
               setStep("locate");
-              onClose();
+              setTriedNext(false);
             }}
           >
-            <div className="coupon-flow-icon">🛵</div>
-            <div className="coupon-flow-title">Domicilio</div>
-            <div className="coupon-flow-desc">
-              Te lo llevamos a casa
-            </div>
+            Domicilio
           </button>
-
         </div>
 
       </div>
+
+
+  <div
+    className="pc-hero-offers"
+    onClick={() => window.location.href = "https://juego.mycrushpizza.com/"}
+    role="button"
+    aria-label="Ver ofertas"
+  >
+    <span className="offers-title">OFERTAS</span>
+    <span className="offers-sub">[pulse aquí]</span>
+
+    <div className="offers-stars">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
+      </svg>
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
+      </svg>
+    </div>
+  </div>
+
     </div>
   );
-}
-  // Paso 0: escoger modo
-const chooseMode = (
-  <div className="pc-card pc-card--hero pc-hero-new">
-
-    {/* CONTENEDOR BLANCO REAL */}
-    <div className="pc-hero-whiteBox">
-
-      {/* LOGO */}
-      <div className="pc-hero-logoInner">
-        <img src={logo} alt="MyCrushPizza" />
-      </div>
-
-      {/* PREGUNTA */}
-      <h2 className="pc-hero-question">
-        ¿Cómo quieres tu pedido?
-      </h2>
-
-      {/* BOTONES */}
-      <div className="pc-hero-actions">
-        <button
-          className="pc-btn pc-hero-btn"
-          onClick={() => {
-            setMode("pickupLocate");
-            setStep("locate");
-            setTriedNext(false);
-          }}
-        >
-          Recoger
-        </button>
-
-        <button
-          className="pc-btn pc-hero-btn"
-          onClick={() => {
-            setMode("deliveryLocate");
-            setStep("locate");
-            setTriedNext(false);
-          }}
-        >
-          Domicilio
-        </button>
-      </div>
-
-    </div>
-
-
-<div
-  className="pc-hero-offers"
-  onClick={() => window.location.href = "https://juego.mycrushpizza.com/"}
-  role="button"
-  aria-label="Ver ofertas"
->
-  <span className="offers-title">OFERTAS</span>
-  <span className="offers-sub">[pulse aquí]</span>
-
-  <div className="offers-stars">
-    <svg viewBox="0 0 24 24">
-      <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
-    </svg>
-    <svg viewBox="0 0 24 24">
-      <path d="M12 2L14 8L20 10L14 12L12 18L10 12L4 10L10 8Z" />
-    </svg>
-  </div>
-</div>
-
-  </div>
-);
 
   const deliveryLocateView = (
     <div className="pc-card">
@@ -2009,7 +2364,26 @@ if (couponOk && coupon?.code) {
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
       {CouponToast}
-
+{showReservationBtn && mode === "choose" && !reservationModalOpen && (
+  <div
+    className="reservation-fab"
+    style={{
+      left: resBtnPos.x !== null ? resBtnPos.x : undefined,
+      top: resBtnPos.y !== null ? resBtnPos.y : undefined,
+      right: resBtnPos.x === null ? 18 : undefined,
+      bottom: resBtnPos.y === null ? 220 : undefined
+    }}
+    onMouseDown={startResDrag}
+    onTouchStart={startResDrag}
+    onClick={() => {
+       setReservationModalOpen(true);
+    }}
+  >
+    <span className="reservation-label">
+      Reserva
+    </span>
+  </div>
+)}
       {/* Banner de cookies */}
       <CookieGateModal
         open={!hasConsent()}
@@ -2066,6 +2440,11 @@ if (couponOk && coupon?.code) {
         info={restrictModal}
         onClose={() => setRestrictModal(m => ({ ...m, open: false }))}
       />
+      <ReservationModal
+          open={reservationModalOpen}
+          stores={reservationStores}
+          onClose={() => setReservationModalOpen(false)}
+        />
       <PublicFooter />
     </div>
   );

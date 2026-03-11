@@ -11,7 +11,7 @@ import PrivacyPage from "./components/PrivacyPage";
 import TermsPage from "./components/TermsPage";
 import DataDeletionPage from "./components/DataDeletionPage";
 import OrderTracking from "./components/OrderTracking";
-
+import ReservationCancelPage from "./components/ReservationCancelPage";
 
 export default function App() {
   const { auth } = useAuth();
@@ -48,6 +48,8 @@ export default function App() {
 
       {/* Cualquier otra ruta -> ventas */}
       <Route path="*" element={<Navigate to="/venta" replace />} />
+      <Route
+      path="/reservation/:id/cancel" element={<ReservationCancelPage />}/>
     </Routes>
   );
 }

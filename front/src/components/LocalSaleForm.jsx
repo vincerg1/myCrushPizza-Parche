@@ -140,7 +140,6 @@ const generateSlots = (date, hours) => {
 
   let start = open + PREP_BUFFER;
 
-  // 🔴 si el buffer empuja después del cierre
   if (start >= close) {
     start = open;
   }
@@ -149,6 +148,38 @@ const generateSlots = (date, hours) => {
   const slots = [];
 
   for (let m = start; m <= close; m += interval) {
+    slots.push(m);
+  }
+
+  return slots;
+};
+const generateReservationSlots = (date, hours) => {
+
+  if (!date || !hours?.length) return [];
+
+  const day = date.getDay();
+
+  const dayConfig = hours.find(
+    h => Number(h.dayOfWeek) === day
+  );
+
+  if (!dayConfig) return [];
+
+  const open = Number(dayConfig.openTime);
+  const close = Number(dayConfig.closeTime);
+
+  const START_BUFFER = 30;   // +30 min desde apertura
+  const END_BUFFER = 60;     // -60 min antes de cierre
+  const interval = 15;
+
+  const start = open + START_BUFFER;
+  const end = close - END_BUFFER;
+
+  if (start >= end) return [];
+
+  const slots = [];
+
+  for (let m = start; m <= end; m += interval) {
     slots.push(m);
   }
 
