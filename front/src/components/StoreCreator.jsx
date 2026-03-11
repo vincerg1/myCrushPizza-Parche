@@ -511,6 +511,135 @@ const applyAllDays = () => {
     </div>
   );
 }
+
+/* ─────────────── RESERVATIONS MODAL ─────────────── */
+
+function ReservationsModal({ store, onClose }) {
+
+  const [rows,setRows] = useState([]);
+
+  useEffect(()=>{
+
+    if(!store?.id) return;
+
+    api
+      .get(`/api/reservations/store/${store.id}`)
+      .then(r => setRows(r.data || []));
+
+  },[store?.id]);
+
+  const cancelReservation = async(id)=>{
+
+    if(!window.confirm("Cancel this reservation?")) return;
+
+    await api.patch(`/api/reservations/${id}/cancel`);
+
+    setRows(prev =>
+      prev.map(r =>
+        r.id === id
+          ? { ...r, status:"cancelled" }
+          : r
+      )
+    );
+
+  };
+
+  return (
+
+    <div className="sc-modalBack" onMouseDown={onClose}>
+
+      <div className="sc-modalBox" onMouseDown={e=>e.stopPropagation()}>
+
+        <header className="sc-modalHead">
+          <h3>Reservations – {store.storeName}</h3>
+          <button className="sc-iconBtn" onClick={onClose}>✕</button>
+        </header>
+
+        <div className="sc-modalBody">
+
+          <table className="store-table">
+
+            <thead>
+              <tr>
+                
+                <th>Date</th>
+                <th>Time</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>People</th>
+                <th>Status</th>
+                <th className="actions">Actions</th>
+                <th></th>
+              </tr>
+            </thead>
+
+            <tbody>
+
+              {rows.map(r=>{
+
+                const date =
+                  new Date(r.reservationDate)
+                  .toLocaleDateString("es-ES");
+
+                return(
+
+                  <tr key={r.id}>
+
+                    <td>{date}</td>
+                    <td>{r.reservationTime}</td>
+                    <td>{r.customerName}</td>
+                    <td>{r.customerPhone}</td>
+                    <td>{r.partySize}</td>
+                    <td>{r.status}</td>
+                    <td className="actions">
+
+                    {r.status === "pending" ? (
+
+                    <button
+                    className="table-btn cancel"
+                    onClick={()=>cancelReservation(r.id)}
+                    >
+                    Cancel
+                    </button>
+
+                    ) : (
+
+                    <button
+                      className="table-btn cancel cancelled"
+                      disabled
+                      >
+                      Cancelled
+                      </button>
+
+                    )}
+
+                    </td>
+
+                  </tr>
+
+                );
+
+              })}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+        <footer className="sc-modalFooter">
+          <button className="sc-btn ghost" onClick={onClose}>
+            Close
+          </button>
+        </footer>
+
+      </div>
+
+    </div>
+
+  );
+
+}
 /* ─────────────── MAIN ─────────────── */
 export default function StoreCreator() {
 const emptyStore = {
@@ -531,6 +660,7 @@ const emptyStore = {
   const [showCust, setShowCust] = useState(false);
   const [stockModal, setStockModal] = useState(null);
   const [hoursModal, setHoursModal] = useState(null);
+  const [reservationsModal, setReservationsModal] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(emptyStore);
   const [editingStore, setEditingStore] = useState(null);
@@ -647,6 +777,7 @@ const submitStore = async (e) => {
                 <th>Status</th>
                 <th>Stock</th>
                 <th>Hours</th>
+                <th>Reservations</th>
               </tr>
             </thead>
             <tbody>
@@ -686,6 +817,14 @@ const submitStore = async (e) => {
                   >
                     Hours
                   </button>
+                </td>
+                <td>
+                <button
+                  className="table-btn reservations"
+                  onClick={() => setReservationsModal(s)}
+                >
+                  Reservations
+                </button>
                 </td>
                 </tr>
               ))}
@@ -904,6 +1043,13 @@ const submitStore = async (e) => {
   <StoreHoursModal
     store={hoursModal}
     onClose={() => setHoursModal(null)}
+  />
+  
+)}
+{reservationsModal && (
+  <ReservationsModal
+    store={reservationsModal}
+    onClose={() => setReservationsModal(null)}
   />
 )}
     </>

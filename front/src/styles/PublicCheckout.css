@@ -1257,7 +1257,6 @@ border-radius: 20px;
 .offers-stars svg:nth-child(2) {
   animation: sparkle 2.2s ease-in-out infinite 0.8s;
 }
-
 .pc-hero-whiteBox {
   background: #ffffff;
   border-radius: 20px;
@@ -1303,7 +1302,7 @@ border-radius: 20px;
   animation:reservePulse 2.6s infinite;
 
   /* POSICIÓN DESKTOP */
-   right:350px !important;
+   right:650px !important;
     bottom:350px !important;
 
 }
