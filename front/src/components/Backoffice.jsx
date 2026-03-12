@@ -139,6 +139,7 @@ export default function Backoffice() {
           >
             Inventory
           </button>
+          
         </div>
 
   <div className="app-toggle">

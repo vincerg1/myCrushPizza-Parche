@@ -98,7 +98,9 @@
   justify-content:center;
   z-index:999;
 }
-
+.pt-modal-card{
+  position:relative;
+}
 .modal-card,
 .pt-modal-card {
   background:var(--pos-bg);
@@ -476,4 +478,154 @@ button {
     line-height: 1.15;
   }
 }
+/* ───────── RESERVATIONS FLOATING BUTTON ───────── */
 
+.reservations-fab{
+  position:fixed;
+  right:22px;
+  bottom:50px;
+
+  width:54px;
+  height:54px;
+
+  border-radius:50%;
+  border:none;
+
+  background:#e5e7eb;
+  color:#333;
+
+  font-size:22px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  cursor:pointer;
+
+  box-shadow:0 4px 12px rgba(0,0,0,0.15);
+
+  transition:all .2s ease;
+
+  z-index:1200;
+}
+.reservations-fab:hover{
+  transform:scale(1.05);
+}
+.reservations-fab.active{
+  background:#f92672;
+  color:white;
+}
+.fab-count{
+  position:absolute;
+  top:-6px;
+  right:-6px;
+
+  background:#111;
+  color:#fff;
+
+  font-size:11px;
+  font-weight:700;
+
+  padding:2px 6px;
+  border-radius:10px;
+}
+/* ───────── RESERVATIONS ───────── */
+
+.reservation-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+
+  border-bottom:1px solid #eee;
+
+  padding:8px 0;
+}
+
+.reservation-info{
+  display:flex;
+  flex-direction:column;
+}
+
+.reservation-time{
+  font-weight:700;
+}
+
+.reservation-client{
+  font-size:14px;
+}
+
+.reservation-meta{
+  font-size:12px;
+  opacity:.7;
+}
+
+.reservation-complete{
+  border:1px solid #28a745;
+  color:#28a745;
+  background:#fff;
+
+  padding:6px 10px;
+  border-radius:8px;
+
+  cursor:pointer;
+}
+
+.reservation-complete:hover{
+  background:#28a745;
+  color:white;
+}
+
+.reservation-complete:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
+.reservation-header{
+  display:flex;
+  align-items:center;
+  width:100%;
+  margin-bottom:12px;
+}
+
+
+.reservation-close{
+
+   margin-left:100px; 
+
+  width:34px;
+  height:34px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  border:none;
+  border-radius:8px;
+
+  background:#f3f3f3;
+
+  font-size:18px;
+  font-weight:700;
+
+  color:#444;
+
+  cursor:pointer;
+
+  transition:all .15s ease;
+}
+
+
+.reservation-close:hover{
+  background:#f92672;
+  color:#fff;
+}
+
+.reservation-close:active{
+  transform:scale(.92);
+}
+
+.reservation-complete-bottom:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  border-color:#ddd;
+  color:#aaa;
+}

@@ -30,6 +30,9 @@ export default function PendingTable() {
 
   const { auth } = useAuth();
   const [confirmOrderId, setConfirmOrderId] = useState(null);
+  const [todayReservations, setTodayReservations] = useState([]);
+const [calendarOpen, setCalendarOpen] = useState(false);
+const [activeReservation, setActiveReservation] = useState(null);
   const lastFetchAtRef = useRef(null);
 
   /* ---------- sound control ---------- */
@@ -157,6 +160,16 @@ export default function PendingTable() {
       console.error("load stores", e);
     }
   }, []);
+  const loadTodayReservations = useCallback(async () => {
+  try {
+    if (!auth?.storeId) return;
+
+    const { data } = await api.get(`/api/reservations/today/${auth.storeId}`);
+    setTodayReservations(Array.isArray(data) ? data : []);
+  } catch (e) {
+    console.error("load today reservations", e);
+  }
+}, [auth?.storeId]);
 
   /* ---------- SSE connection handling and fallback polling ---------- */
   useEffect(() => {
@@ -175,7 +188,12 @@ export default function PendingTable() {
     };
 
     const init = async () => {
-      await Promise.all([loadPending(), loadMenu(), loadStores()]);
+      await Promise.all([
+          loadPending(),
+          loadMenu(),
+          loadStores(),
+          loadTodayReservations()
+        ]);
       startFallbackPolling();
     };
 
@@ -428,7 +446,7 @@ const canBeReady = (sale) => {
   const badgeNext =
     loading ? "Updating…" : secondsLeft != null ? `Next: ${secondsLeft}s` : "";
   const badgeCount = rows.length ? rows.length : null;
-
+  const hasReservationsToday = todayReservations.length > 0;
   return (
     <>
       <audio ref={audioRef} src="/telephone-ring-03b.mp3" preload="auto" />
@@ -671,7 +689,103 @@ const canBeReady = (sale) => {
           </div>
         </div>
       )}
+      {/* ───────── RESERVATIONS MODAL ───────── */}
 
+      {calendarOpen && (
+        <div className="pt-modal-back" onClick={() => setCalendarOpen(false)}>
+          <div
+             className="pt-modal-card reservations-modal"
+           
+            onClick={(e) => e.stopPropagation()}
+          >
+          <div className="reservation-header">
+                    <h3>Reservas de hoy</h3>
+
+                    <button
+                      className="reservation-close"
+                      onClick={() => setCalendarOpen(false)}
+                      aria-label="Cerrar"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                      {todayReservations.length === 0 && (
+              <div style={{ opacity: 0.7 }}>
+                No hay reservas para hoy
+              </div>
+            )}
+
+            {todayReservations.map((r) => {
+
+              const now = new Date();
+              const reservationMoment = new Date(
+                `${r.reservationDate}T${r.reservationTime}`
+              );
+
+              const canComplete = reservationMoment <= now;
+
+              return (
+                <div
+                    key={r.id}
+                    className={`reservation-row ${activeReservation?.id === r.id ? "active" : ""}`}
+                    onClick={() => setActiveReservation(r)}
+                  >
+                  <div className="reservation-info">
+                    <div className="reservation-time">
+                      {r.reservationTime}
+                    </div>
+
+                    <div className="reservation-client">
+                      {r.customerName}
+                    </div>
+
+                    <div className="reservation-meta">
+                      👥 {r.partySize} · 📞 {r.customerPhone}
+                    </div>
+                  </div>
+
+                </div>
+              );
+            })}
+      <div className="pt-buttons">
+
+        <button
+          className="reservation-complete-bottom"
+          disabled={
+            !activeReservation ||
+            new Date(`${activeReservation.reservationDate}T${activeReservation.reservationTime}`) > new Date()
+          }
+          onClick={async () => {
+
+            if (!activeReservation) return;
+
+            try {
+
+              await api.patch(`/api/reservations/${activeReservation.id}/complete`);
+
+              setTodayReservations(prev =>
+                prev.filter(x => x.id !== activeReservation.id)
+              );
+
+              setActiveReservation(null);
+
+              showToast("Reserva completada");
+
+            } catch (e) {
+              console.error(e);
+            }
+
+          }}
+        >
+          Complete
+        </button>
+
+      </div>
+            
+          </div>
+        </div>
+      )}
       {alertOrders.length > 0 && (
         <div className="pt-modal-back">
           <div
@@ -706,6 +820,16 @@ const canBeReady = (sale) => {
             {toastMsg}
           </div>
         )}
+        <button
+            className={`reservations-fab ${hasReservationsToday ? "active" : ""}`}
+            onClick={() => setCalendarOpen(true)}
+            title="Reservas de hoy"
+          >
+            📅
+            {todayReservations.length > 0 && (
+              <span className="fab-count">{todayReservations.length}</span>
+            )}
+          </button>
       <style>{`
       .ready-bubble{
             position:absolute;
@@ -816,6 +940,7 @@ const canBeReady = (sale) => {
         .alert-list li{margin:.25rem 0}
         .more{opacity:.7; font-size:.9rem}
         .mute-inline{margin-left:auto; padding:.25rem .55rem; cursor:pointer}
+        
       `}</style>
     </>
   );
