@@ -273,6 +273,86 @@ router.patch("/:id/cancel", async (req, res) => {
 
 })
 
+/* ───────── COMPLETE RESERVATION ───────── */
+
+router.patch("/:id/complete", async (req, res) => {
+
+  try {
+
+    const id = Number(req.params.id)
+
+    const updated = await prisma.reservation.update({
+      where:{ id },
+      data:{ status:"completed" }
+    })
+
+    res.json(updated)
+
+  } catch(err){
+
+    console.error("[PATCH /reservations/complete]", err)
+    res.status(500).json({ error:"internal error" })
+
+  }
+
+})
+
+// ───────────────── TODAY RESERVATIONS (POS) ─────────────────
+
+router.get("/today/:storeId", async (req, res) => {
+
+  try {
+
+    const storeId = Number(req.params.storeId);
+
+    if (!storeId) {
+      return res.status(400).json({ error: "Invalid storeId" });
+    }
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const reservations = await prisma.reservation.findMany({
+
+      where:{
+        storeId,
+        status:"pending",
+        reservationDate:{
+          gte:today,
+          lt:tomorrow
+        }
+      },
+
+      orderBy:{
+        reservationTime:"asc"
+      },
+
+      select:{
+        id:true,
+        reservationDate:true,
+        reservationTime:true,
+        customerName:true,
+        customerPhone:true,
+        partySize:true,
+        status:true
+      }
+
+    });
+
+    res.json(reservations);
+
+  } catch (err) {
+
+    console.error("today reservations", err);
+    res.status(500).json({ error:"server error" });
+
+  }
+
+});
+
 return router
 
 }
