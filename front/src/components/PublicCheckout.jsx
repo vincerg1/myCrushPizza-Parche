@@ -66,8 +66,7 @@ export default function PublicCheckout() {
   });
   const [reservationStores, setReservationStores] = useState([]);
   const [showReservationBtn, setShowReservationBtn] = useState(false);
-  const [resBtnPos, setResBtnPos] = useState({  x: null, y: null });
-  const resDragRef = useRef(null);
+
 
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
 useEffect(() => {
@@ -524,51 +523,7 @@ const onKeyDown = (e) => {
     if (e.key === "ArrowLeft") goBack();
     if (e.key === "ArrowRight") goForward();
 };
-// ===== DRAG RESERVATION BUTTON =====
-const startResDrag = (e) => {
 
-  const startX = e.clientX || e.touches?.[0]?.clientX;
-  const startY = e.clientY || e.touches?.[0]?.clientY;
-
-  resDragRef.current = {
-    startX,
-    startY,
-    origX: resBtnPos.x,
-    origY: resBtnPos.y
-  };
-
-  window.addEventListener("mousemove", moveResDrag);
-  window.addEventListener("mouseup", stopResDrag);
-  window.addEventListener("touchmove", moveResDrag);
-  window.addEventListener("touchend", stopResDrag);
-};
-
-const moveResDrag = (e) => {
-
-  if (!resDragRef.current) return;
-
-  const clientX = e.clientX || e.touches?.[0]?.clientX;
-  const clientY = e.clientY || e.touches?.[0]?.clientY;
-
-  const dx = clientX - resDragRef.current.startX;
-  const dy = clientY - resDragRef.current.startY;
-
-  setResBtnPos({
-    x: resDragRef.current.origX + dx,
-    y: resDragRef.current.origY + dy
-  });
-
-};
-
-const stopResDrag = () => {
-
-  resDragRef.current = null;
-
-  window.removeEventListener("mousemove", moveResDrag);
-  window.removeEventListener("mouseup", stopResDrag);
-  window.removeEventListener("touchmove", moveResDrag);
-  window.removeEventListener("touchend", stopResDrag);
-};
 
   // =================== VISTAS ===================
   const flashCustomerBtn = useCallback(() => {
@@ -600,296 +555,300 @@ const stopResDrag = () => {
       </div>
     );
   }
-function ReservationModal({ open, stores, onClose }) {
+  function ReservationModal({ open, stores, onClose }) {
 
-  const [storeId,setStoreId] = useState("");
-  const [partySize,setPartySize] = useState(2);
-  const [date,setDate] = useState("");
-  const [selectedTime,setSelectedTime] = useState("");
-  const [customerName,setCustomerName] = useState("")
-const [customerPhone,setCustomerPhone] = useState("")
-  const [storeHours, setStoreHours] = useState([])
-  const [availability,setAvailability] = useState([]);
-  const [loadingSlots,setLoadingSlots] = useState(false);
-  const [capacityGlobal,setCapacityGlobal] = useState(0)
-  const createReservation = async () => {
+    const [storeId,setStoreId] = useState("");
+    const [partySize,setPartySize] = useState(2);
+    const [date,setDate] = useState("");
+    const [selectedTime,setSelectedTime] = useState("");
+    const [customerName,setCustomerName] = useState("")
+  const [customerPhone,setCustomerPhone] = useState("")
+    const [storeHours, setStoreHours] = useState([])
+    const [availability,setAvailability] = useState([]);
+    const [loadingSlots,setLoadingSlots] = useState(false);
+    const [capacityGlobal,setCapacityGlobal] = useState(0)
+    const createReservation = async () => {
 
-    if(!storeId || !date || !selectedTime){
-      alert("Selecciona tienda, día y hora");
-      return;
-    }
-
-    try{
-
-      await api.post("/api/reservations",{
-        storeId:Number(storeId),
-        customerName,
-        customerPhone,
-        partySize,
-        reservationDate:date,
-        reservationTime:selectedTime
-      });
-
-      alert("Reserva creada correctamente");
-
-      onClose();
-
-    }catch(err){
-
-      console.error("reservation create error",err);
-      alert("No se pudo crear la reserva");
-
-    }
-
-  };
-
-  const loadAvailability = async (sId,d,pSize) => {
-
-    if(!sId || !d) return;
-
-    try{
-
-      setLoadingSlots(true);
-
-      const {data} = await api.get("/api/reservations/availability",{
-        params:{
-          storeId:sId,
-          date:d,
-          partySize:pSize
+      if(!storeId || !date || !selectedTime){
+        alert("Selecciona tienda, día y hora");
+        return;
+      }
+      if(!customerName.trim() || !customerPhone.trim()){
+          alert("Introduce nombre y teléfono");
+          return;
         }
-      });
 
-      setAvailability(data.availability || [])
-      setCapacityGlobal(data.capacity || 0)
+      try{
 
-    }catch(err){
-      console.error("availability error",err);
-    }finally{
-      setLoadingSlots(false);
-    }
+        await api.post("/api/reservations",{
+          storeId:Number(storeId),
+          customerName,
+          customerPhone,
+          partySize,
+          reservationDate:date,
+          reservationTime:selectedTime
+        });
 
-  };
+        alert("Reserva creada correctamente");
 
-  useEffect(() => {
+        onClose();
 
-    if (!storeId) return;
+      }catch(err){
 
-    api
-      .get(`/api/store-hours/${storeId}`)
-      .then(r => {
-        setStoreHours(Array.isArray(r.data) ? r.data : []);
-      })
-      .catch(() => {
-        setStoreHours([]);
-      });
+        console.error("reservation create error",err);
+        alert("No se pudo crear la reserva");
 
-  }, [storeId]);
+      }
 
-  useEffect(()=>{
+    };
 
-    if(storeId && date){
-      loadAvailability(storeId,date,partySize);
-    }
+    const loadAvailability = async (sId,d,pSize) => {
 
-  },[storeId,date,partySize]);
+      if(!sId || !d) return;
 
-  if (!open) return null;
+      try{
 
-  return (
-    <div className="reservation-modal-overlay" onClick={onClose}>
+        setLoadingSlots(true);
 
-      <div
-        className="reservation-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+        const {data} = await api.get("/api/reservations/availability",{
+          params:{
+            storeId:sId,
+            date:d,
+            partySize:pSize
+          }
+        });
 
-        <div className="reservation-modal-header">
+        setAvailability(data.availability || [])
+        setCapacityGlobal(data.capacity || 0)
 
-          <h3>Reservar mesa</h3>
+      }catch(err){
+        console.error("availability error",err);
+      }finally{
+        setLoadingSlots(false);
+      }
 
-          <button
-            className="reservation-modal-close"
-            onClick={onClose}
-          >
-            ✕
-          </button>
+    };
 
-        </div>
+    useEffect(() => {
 
-        <div className="reservation-modal-body">
+      if (!storeId) return;
 
-          <h4>Selecciona tienda</h4>
+      api
+        .get(`/api/store-hours/${storeId}`)
+        .then(r => {
+          setStoreHours(Array.isArray(r.data) ? r.data : []);
+        })
+        .catch(() => {
+          setStoreHours([]);
+        });
 
-          <select
-            className="pc-select"
-            value={storeId}
-            onChange={(e)=>setStoreId(e.target.value)}
-          >
+    }, [storeId]);
 
-            <option value="">– seleccionar tienda –</option>
+    useEffect(()=>{
 
-            {stores.map((s) => (
+      if(storeId && date){
+        loadAvailability(storeId,date,partySize);
+      }
 
-              <option key={s.id} value={s.id}>
-                {s.storeName} · plazas {s.reservationCapacity}
-              </option>
+    },[storeId,date,partySize]);
 
-            ))}
+    if (!open) return null;
 
-          </select>
+    return (
+      <div className="reservation-modal-overlay" onClick={onClose}>
 
-          <h4 style={{marginTop:20}}>Personas</h4>
+        <div
+          className="reservation-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
 
-          <select
-            className="pc-select"
-            value={partySize}
-            onChange={(e)=>setPartySize(Number(e.target.value))}
-          >
+          <div className="reservation-modal-header">
 
-          {Array.from({length:12}).map((_,i)=>{
+            <h3>Reservar mesa</h3>
 
-            const n = i+1;
+            <button
+              className="reservation-modal-close"
+              onClick={onClose}
+            >
+              ✕
+            </button>
 
-            return(
-              <option key={n} value={n}>
-                {n} persona{n>1?"s":""}
-              </option>
-            );
+          </div>
 
-          })}
+          <div className="reservation-modal-body">
 
-          </select>
+            <h4>Selecciona tienda</h4>
 
-          <div style={{ marginTop: 20 }}>
-            <h4 style={{marginTop:20}}>Nombre</h4>
+            <select
+              className="pc-select"
+              value={storeId}
+              onChange={(e)=>setStoreId(e.target.value)}
+            >
 
-<input
-  className="pc-input"
-  value={customerName}
-  onChange={(e)=>setCustomerName(e.target.value)}
-  placeholder="Tu nombre"
-/>
+              <option value="">– seleccionar tienda –</option>
 
-<h4 style={{marginTop:20}}>Teléfono</h4>
+              {stores.map((s) => (
 
-<input
-  className="pc-input"
-  value={customerPhone}
-  onChange={(e)=>setCustomerPhone(e.target.value)}
-  placeholder="Teléfono"
-/>
-            <h4>Selecciona día</h4>
+                <option key={s.id} value={s.id}>
+                  {s.storeName} · plazas {s.reservationCapacity}
+                </option>
 
-            <div className="reservation-days">
+              ))}
 
-            {Array.from({length:10}).map((_,i)=>{
+            </select>
 
-              const d = new Date();
-              d.setDate(d.getDate()+i);
+            <h4 style={{marginTop:20}}>Personas</h4>
 
-              const iso = d.toISOString().slice(0,10);
+            <select
+              className="pc-select"
+              value={partySize}
+              onChange={(e)=>setPartySize(Number(e.target.value))}
+            >
 
-              const label = d.toLocaleDateString("es-ES",{
-                weekday:"short",
-                day:"numeric"
-              });
+            {Array.from({length:12}).map((_,i)=>{
+
+              const n = i+1;
 
               return(
-
-                <button
-                  key={iso}
-                  className={`reservation-day-btn ${date===iso?"active":""}`}
-                  onClick={()=>setDate(iso)}
-                >
-                  {label}
-                </button>
-
+                <option key={n} value={n}>
+                  {n} persona{n>1?"s":""}
+                </option>
               );
 
             })}
 
+            </select>
+
+            <div style={{ marginTop: 20 }}>
+              <h4 style={{marginTop:20}}>Nombre</h4>
+
+  <input
+    className="pc-input"
+    value={customerName}
+    onChange={(e)=>setCustomerName(e.target.value)}
+    placeholder="Tu nombre"
+  />
+
+  <h4 style={{marginTop:20}}>Teléfono</h4>
+
+  <input
+    className="pc-input"
+    value={customerPhone}
+    onChange={(e)=>setCustomerPhone(e.target.value)}
+    placeholder="Teléfono"
+  />
+              <h4>Selecciona día</h4>
+
+              <div className="reservation-days">
+
+              {Array.from({length:10}).map((_,i)=>{
+
+                const d = new Date();
+                d.setDate(d.getDate()+i);
+
+                const iso = d.toISOString().slice(0,10);
+
+                const label = d.toLocaleDateString("es-ES",{
+                  weekday:"short",
+                  day:"numeric"
+                });
+
+                return(
+
+                  <button
+                    key={iso}
+                    className={`reservation-day-btn ${date===iso?"active":""}`}
+                    onClick={()=>setDate(iso)}
+                  >
+                    {label}
+                  </button>
+
+                );
+
+              })}
+
+              </div>
+
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <h4>Selecciona hora</h4>
+
+              <div className="reservation-hours">
+
+              {loadingSlots && (
+                <div className="pc-note">cargando…</div>
+              )}
+
+              {availability.map(slot=>{
+
+                const occupied = slot.occupied ?? 0
+                const available = slot.available ?? 0
+                const capacity = capacityGlobal ?? 0
+
+                const canFit = available >= partySize
+                const isFull = available <= 0
+
+                const ratio = capacity > 0 ? occupied / capacity : 0
+
+                let level = "low"
+
+                if(isFull) level = "full"
+                else if(ratio >= 0.7) level = "high"
+                else if(ratio >= 0.3) level = "medium"
+
+                return(
+
+                  <button
+                    key={slot.time}
+                    className={`reservation-slot ${level} ${selectedTime===slot.time?"active":""}`}
+                    disabled={!canFit}
+                    onClick={()=>setSelectedTime(slot.time)}
+                  >
+
+                    <span className="reservation-slot-time">
+                      {slot.time}
+                    </span>
+
+                    <span className="reservation-slot-capacity">
+
+                      {isFull
+                        ? "FULL"
+                        : `(${occupied}/${capacity})`
+                      }
+
+                    </span>
+
+                  </button>
+
+                )
+
+              })}
+
+              </div>
+
             </div>
 
           </div>
 
-          <div style={{ marginTop: 20 }}>
-            <h4>Selecciona hora</h4>
-
-            <div className="reservation-hours">
-
-            {loadingSlots && (
-              <div className="pc-note">cargando…</div>
-            )}
-
-            {availability.map(slot=>{
-
-              const occupied = slot.occupied ?? 0
-              const available = slot.available ?? 0
-              const capacity = capacityGlobal ?? 0
-
-              const canFit = available >= partySize
-              const isFull = available <= 0
-
-              const ratio = capacity > 0 ? occupied / capacity : 0
-
-              let level = "low"
-
-              if(isFull) level = "full"
-              else if(ratio >= 0.7) level = "high"
-              else if(ratio >= 0.3) level = "medium"
-
-              return(
+          <div className="reservation-modal-footer">
 
                 <button
-                  key={slot.time}
-                  className={`reservation-slot ${level} ${selectedTime===slot.time?"active":""}`}
-                  disabled={!canFit}
-                  onClick={()=>setSelectedTime(slot.time)}
+                  className="pc-btn pc-btn-primary"
+                  onClick={createReservation}
+                  disabled={!storeId || !date || !selectedTime || !customerName.trim() || !customerPhone.trim()}
                 >
-
-                  <span className="reservation-slot-time">
-                    {slot.time}
-                  </span>
-
-                  <span className="reservation-slot-capacity">
-
-                    {isFull
-                      ? "FULL"
-                      : `(${occupied}/${capacity})`
-                    }
-
-                  </span>
-
-                </button>
-
-              )
-
-            })}
-
-            </div>
+              Confirmar reserva
+            </button>
 
           </div>
-
-        </div>
-
-        <div className="reservation-modal-footer">
-
-          <button
-            className="pc-btn pc-btn-primary"
-            onClick={createReservation}
-            disabled={!storeId || !date || !selectedTime}
-          >
-            Confirmar reserva
-          </button>
 
         </div>
 
       </div>
+    );
 
-    </div>
-  );
-
-}
+  }
   function CookieGateModal({ open, onManage, onAcceptAll, onRejectOptional }) {
     return (
       <BaseModal
@@ -2367,17 +2326,7 @@ if (couponOk && coupon?.code) {
 {showReservationBtn && mode === "choose" && !reservationModalOpen && (
   <div
     className="reservation-fab"
-    style={{
-      left: resBtnPos.x !== null ? resBtnPos.x : undefined,
-      top: resBtnPos.y !== null ? resBtnPos.y : undefined,
-      right: resBtnPos.x === null ? 18 : undefined,
-      bottom: resBtnPos.y === null ? 220 : undefined
-    }}
-    onMouseDown={startResDrag}
-    onTouchStart={startResDrag}
-    onClick={() => {
-       setReservationModalOpen(true);
-    }}
+    onClick={() => setReservationModalOpen(true)}
   >
     <span className="reservation-label">
       Reserva

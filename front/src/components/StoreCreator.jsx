@@ -544,6 +544,22 @@ function ReservationsModal({ store, onClose }) {
 
   };
 
+  const completeReservation = async(id)=>{
+
+    if(!window.confirm("Mark this reservation as completed?")) return;
+
+    await api.patch(`/api/reservations/${id}/complete`);
+
+    setRows(prev =>
+      prev.map(r =>
+        r.id === id
+          ? { ...r, status:"completed" }
+          : r
+      )
+    );
+
+  };
+
   return (
 
     <div className="sc-modalBack" onMouseDown={onClose}>
@@ -561,7 +577,6 @@ function ReservationsModal({ store, onClose }) {
 
             <thead>
               <tr>
-                
                 <th>Date</th>
                 <th>Time</th>
                 <th>Name</th>
@@ -569,13 +584,32 @@ function ReservationsModal({ store, onClose }) {
                 <th>People</th>
                 <th>Status</th>
                 <th className="actions">Actions</th>
-                <th></th>
               </tr>
             </thead>
 
             <tbody>
 
-              {rows.map(r=>{
+              {[...rows]
+
+              .sort((a,b)=>{
+
+                const order = {
+                  pending:0,
+                  completed:1,
+                  cancelled:2
+                };
+
+                const statusDiff = order[a.status] - order[b.status];
+                if(statusDiff !== 0) return statusDiff;
+
+                const da = new Date(`${a.reservationDate}T${a.reservationTime}`);
+                const db = new Date(`${b.reservationDate}T${b.reservationTime}`);
+
+                return da - db;
+
+              })
+
+              .map(r=>{
 
                 const date =
                   new Date(r.reservationDate)
@@ -591,27 +625,44 @@ function ReservationsModal({ store, onClose }) {
                     <td>{r.customerPhone}</td>
                     <td>{r.partySize}</td>
                     <td>{r.status}</td>
+
                     <td className="actions">
 
-                    {r.status === "pending" ? (
+                      {r.status === "pending" && (
+                        <>
+                          <button
+                            className="table-btn complete"
+                            onClick={()=>completeReservation(r.id)}
+                          >
+                            Complete
+                          </button>
 
-                    <button
-                    className="table-btn cancel"
-                    onClick={()=>cancelReservation(r.id)}
-                    >
-                    Cancel
-                    </button>
+                          <button
+                            className="table-btn cancel"
+                            onClick={()=>cancelReservation(r.id)}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
 
-                    ) : (
+                      {r.status === "completed" && (
+                        <button
+                          className="table-btn completed"
+                          disabled
+                        >
+                          Completed
+                        </button>
+                      )}
 
-                    <button
-                      className="table-btn cancel cancelled"
-                      disabled
-                      >
-                      Cancelled
-                      </button>
-
-                    )}
+                      {r.status === "cancelled" && (
+                        <button
+                          className="table-btn cancel cancelled"
+                          disabled
+                        >
+                          Cancelled
+                        </button>
+                      )}
 
                     </td>
 

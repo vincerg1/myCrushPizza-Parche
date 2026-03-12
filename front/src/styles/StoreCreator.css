@@ -242,7 +242,8 @@
 }
 
 .store-table {
-  width: 100%;
+  min-width:900px;
+  width: auto;
   border-collapse: separate;
   border-spacing: 0;
 }
@@ -363,7 +364,7 @@
 .sc-modalBox{
   background:#fff;
   border-radius:16px;
-  width:min(1100px,95vw);   /* ← más ancho */
+  width:min(1250px,96vw);
   max-height:90vh;
   overflow:auto;
   box-shadow:0 10px 35px rgba(0,0,0,.18);
@@ -646,9 +647,9 @@
 }
 .table-btn.cancel.cancelled{
 
-  border:1px solid #d1d5db;
-  background:#f3f4f6;
-  color:#9ca3af;
+  border:1px solid #e5e7eb;
+  background:#fafafa;
+  color:#9aa1aa;
 
   cursor:not-allowed;
   pointer-events:none;
@@ -703,5 +704,55 @@ margin-left:12px;
 font-size:13px;
 color:#6b7280;
 font-weight:500;
+
+}
+.table-btn.complete{
+
+  border:1px solid #28a745;
+  color:#28a745;
+  background:#fff;
+
+  padding:6px 12px;
+  border-radius:8px;
+
+  font-size:13px;
+  min-width:90px;
+  text-align:center;
+
+  cursor:pointer;
+  transition:all .15s ease;
+
+}
+
+.table-btn.complete:hover{
+
+  background:#28a745;
+  color:#fff;
+
+}
+
+.table-btn.completed{
+
+  border:1px solid #e5e7eb;
+  background:#fafafa;
+    color:#9aa1aa;
+  border-radius: 10px;
+  cursor:not-allowed;
+  pointer-events:none;
+
+}
+.store-table td.actions{
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:8px;
+
+}
+.table-btn.complete,
+.table-btn.cancel{
+
+  min-width:90px;
+  text-align:center;
 
 }
