@@ -2323,15 +2323,23 @@ if (couponOk && coupon?.code) {
   return (
     <div className="pc-page" onKeyDown={onKeyDown} data-consent={consentTick}>
       {CouponToast}
-{showReservationBtn && mode === "choose" && !reservationModalOpen && (
-  <div
-    className="reservation-fab"
-    onClick={() => setReservationModalOpen(true)}
-  >
-    <span className="reservation-label">
-      Reserva
-    </span>
-  </div>
+{showReservationBtn &&
+  mode === "choose" &&
+  !reservationModalOpen &&
+  !showTermsPurchase &&
+  !showPrivacyPolicy &&
+  !showCookiesPolicy &&
+  !showCookiePrefs &&
+  !restrictModal.open &&
+  hasConsent() && (
+    <div
+      className="reservation-fab"
+      onClick={() => setReservationModalOpen(true)}
+    >
+      <span className="reservation-label">
+        Reserva
+      </span>
+    </div>
 )}
       {/* Banner de cookies */}
       <CookieGateModal

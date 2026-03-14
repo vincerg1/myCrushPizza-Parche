@@ -20,17 +20,17 @@ export default function CustomerModal({
 
   const [err, setErr] = useState("");
 
-  useEffect(() => {
-    setForm({
-      name: initial.name ?? "",
-      phone: initial.phone ?? "",
-      address: (initial.address_1 || "").toUpperCase(),
-      observations: initial.observations ?? "",
-      lat: initial.lat ?? null,
-      lng: initial.lng ?? null,
-    });
-    setErr("");
-  }, [initial, variant]);
+ useEffect(() => {
+  setForm({
+    name: initial.name ?? "",
+    phone: initial.phone ?? "",
+    address: (initial.address_1 || initial.address || "").toUpperCase(),
+    observations: initial.observations ?? "",
+    lat: initial.lat ?? null,
+    lng: initial.lng ?? null,
+  });
+  setErr("");
+}, [initial?.id, variant]);
 
   const update = (k) => (e) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
