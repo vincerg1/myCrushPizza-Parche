@@ -1432,8 +1432,8 @@ const cur =
   groups.get(k) || {
     type: isSurprise ? 'SURPRISE_AMOUNT' : typeFor(r),
     key: isSurprise ? 'SURPRISE' : k.split(':')[1],
-    title: isSurprise ? '🎁 Cupón sorpresa' : titleFor(r),
-    subtitle: isSurprise ? 'Escanea y descubre' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
+    title: isSurprise ? 'Cupón sorpresa' : titleFor(r),
+    subtitle: isSurprise ? 'Reclama y descubre' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
     cta: isSurprise ? 'Descubrir' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
     remaining: 0,
     sample: null,
