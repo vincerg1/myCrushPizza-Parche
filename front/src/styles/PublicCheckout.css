@@ -966,7 +966,8 @@ border-radius: 20px;
 }
 .pc-hero-offers {
   all: unset;
-
+max-width: 320px;
+width: 90%;
   position: relative; /* 🔥 CLAVE */
   display: inline-flex;
   flex-direction: column;
@@ -984,7 +985,8 @@ border-radius: 20px;
   text-align: center;
 
   width: fit-content;
-  margin: 20px auto;
+ margin: 16px auto 0 auto;
+display: block;
 
   overflow: hidden; /* 🔥 evita que las líneas se salgan */
 }
