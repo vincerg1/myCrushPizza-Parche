@@ -1104,7 +1104,8 @@ stage = 'build_where_type_key';
 
 let whereTypeKey = null;
 
-if (isPizzaGratisQr) {
+// 🔥 FORZAR flujo QR si campaign viene o si no hay type/key
+if (campaign === 'PIZZA_GRATIS_QR' || (!type && !key)) {
   whereTypeKey = {
     campaign: 'PIZZA_GRATIS_QR',
     kind: 'AMOUNT',
@@ -1112,8 +1113,15 @@ if (isPizzaGratisQr) {
   };
 } else {
   whereTypeKey = buildWhereForTypeKey(type, key);
+
+  // 🔥 fallback silencioso (NO romper UX)
   if (!whereTypeKey) {
-    return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
+    console.warn('[direct-claim] fallback to QR campaign');
+    whereTypeKey = {
+      campaign: 'PIZZA_GRATIS_QR',
+      kind: 'AMOUNT',
+      variant: 'FIXED'
+    };
   }
 }
 
