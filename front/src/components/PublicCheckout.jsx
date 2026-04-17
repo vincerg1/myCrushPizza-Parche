@@ -48,6 +48,14 @@ useEffect(() => {
   if (!codeFromUrl) return;
 
   console.log("🎟️ CUPÓN URL:", codeFromUrl);
+
+  setCouponCode(codeFromUrl);
+
+  // 🔥 aplicar automáticamente
+  setTimeout(() => {
+    checkCoupon();
+  }, 300);
+
 }, []);
   const [mode, setMode] = useState("choose");
   const [step, setStep] = useState("locate");

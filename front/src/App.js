@@ -25,7 +25,7 @@ export default function App() {
       <Route path="/data-deletion" element={<DataDeletionPage />} />
 
       {/* Home -> portal de ventas */}
-      <Route path="/" element={<Navigate to="/venta" replace />} />
+      <Route path="/" element={<PublicCheckout />} />
 
       {/* Flujo público de compra */}
       <Route path="/venta" element={<PublicCheckout />} />
