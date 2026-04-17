@@ -1131,14 +1131,17 @@ if (isPizzaGratisQr) {
 
     // ---------- 2) Cupón activo ----------
     stage = 'check_active_coupon';
-    const activeCoupon = await prisma.coupon.findFirst({
-      where: {
-        assignedToId: customer.id,
-        status: 'ACTIVE',
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
-      },
-      orderBy: { id: 'asc' }
-    });
+const activeCoupon = await prisma.coupon.findFirst({
+  where: {
+    assignedToId: customer.id,
+    status: 'ACTIVE',
+    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    ...(isPizzaGratisQr
+      ? { campaign: 'PIZZA_GRATIS_QR' }
+      : {})
+  },
+  orderBy: { id: 'asc' }
+});
 
     if (activeCoupon) {
       const notify = { user: { tried: false }, admin: { tried: false } };
@@ -1312,28 +1315,29 @@ router.get('/gallery', async (_req, res) => {
         status: 'ACTIVE',
         visibility: 'PUBLIC',
       },
-      select: {
-        code: true,
-        kind: true,
-        variant: true,
-        percent: true,
-        percentMin: true,
-        percentMax: true,
-        amount: true,
-        maxAmount: true,
-        daysActive: true,
-        windowStart: true,
-        windowEnd: true,
-        activeFrom: true,
-        expiresAt: true,
-        usageLimit: true,
-        usedCount: true,
-        assignedToId: true, 
-        visibility: true,
-        acquisition: true,
-        channel: true,
-        gameId: true,
-      },
+select: {
+  code: true,
+  kind: true,
+  variant: true,
+  percent: true,
+  percentMin: true,
+  percentMax: true,
+  amount: true,
+  maxAmount: true,
+  daysActive: true,
+  windowStart: true,
+  windowEnd: true,
+  activeFrom: true,
+  expiresAt: true,
+  usageLimit: true,
+  usedCount: true,
+  assignedToId: true,
+  visibility: true,
+  acquisition: true,
+  channel: true,
+  gameId: true,
+  campaign: true,
+},
       orderBy: { id: 'asc' },
     });
 
