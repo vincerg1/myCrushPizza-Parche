@@ -75,6 +75,10 @@ function buildWhereForTypeKey(type, key) {
   return null;
 }
 function titleForCouponRow(r) {
+  if (r.campaign === 'PIZZA_GRATIS_QR') {
+    return '🎁 Cupón sorpresa';
+  }
+
   const kind = r.kind;
   const variant = r.variant || 'FIXED';
   const pct = toNum(r.percent);
@@ -1071,33 +1075,47 @@ router.post('/direct-claim', async (req, res) => {
     console.log('[VENTAS] /api/coupons/direct-claim HIT', req.body);
 
     const {
-      phone,
-      name,
-      type,
-      key,
-      hours = 24,
-      campaign = null
-    } = req.body || {};
+  phone,
+  name,
+  type,
+  key,
+  hours = 24,
+  campaign = null
+} = req.body || {};
 
-    const phoneE164 = normalizeES(phone);
-    if (!phoneE164) {
-      return res.status(400).json({ ok: false, error: 'invalid_phone' });
-    }
-    if (!type || !key) {
-      return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
-    }
+const phoneE164 = normalizeES(phone);
+if (!phoneE164) {
+  return res.status(400).json({ ok: false, error: 'invalid_phone' });
+}
 
-    const H = Number(hours);
-    if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
-      return res.status(400).json({ ok: false, error: 'bad_hours' });
-    }
+const isPizzaGratisQr = campaign === 'PIZZA_GRATIS_QR';
 
-    // ---------- TYPE + KEY ----------
-    stage = 'build_where_type_key';
-    const whereTypeKey = buildWhereForTypeKey(type, key);
-    if (!whereTypeKey) {
-      return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
-    }
+if (!isPizzaGratisQr && (!type || !key)) {
+  return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
+}
+
+const H = Number(hours);
+if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
+  return res.status(400).json({ ok: false, error: 'bad_hours' });
+}
+
+// ---------- TYPE + KEY / CAMPAIGN ----------
+stage = 'build_where_type_key';
+
+let whereTypeKey = null;
+
+if (isPizzaGratisQr) {
+  whereTypeKey = {
+    campaign: 'PIZZA_GRATIS_QR',
+    kind: 'AMOUNT',
+    variant: 'FIXED'
+  };
+} else {
+  whereTypeKey = buildWhereForTypeKey(type, key);
+  if (!whereTypeKey) {
+    return res.status(400).json({ ok: false, error: 'bad_type_or_key' });
+  }
+}
 
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
@@ -1163,21 +1181,22 @@ router.post('/direct-claim', async (req, res) => {
         }
       }
 
-      return res.json({
-        ok: true,
-        code: activeCoupon.code,
-        type,
-        key,
-        expiresAt: activeCoupon.expiresAt || expiresAt,
-        customerId: customer.id,
-        kind: activeCoupon.kind,
-        variant: activeCoupon.variant,
-        percent: activeCoupon.percent ? Number(activeCoupon.percent) : null,
-        amount: activeCoupon.amount ? Number(activeCoupon.amount) : null,
-        maxAmount: activeCoupon.maxAmount ? Number(activeCoupon.maxAmount) : null,
-        notify,
-        reused: true
-      });
+    return res.json({
+      ok: true,
+      code: activeCoupon.code,
+      type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
+      key: isPizzaGratisQr ? 'SURPRISE' : key,
+      expiresAt: activeCoupon.expiresAt || expiresAt,
+      customerId: customer.id,
+      kind: activeCoupon.kind,
+      variant: activeCoupon.variant,
+      percent: activeCoupon.percent ? Number(activeCoupon.percent) : null,
+      amount: activeCoupon.amount ? Number(activeCoupon.amount) : null,
+      maxAmount: activeCoupon.maxAmount ? Number(activeCoupon.maxAmount) : null,
+      campaign: activeCoupon.campaign || null,
+      notify,
+      reused: true
+    });
     }
 
     // ---------- 3) Buscar cupón del pool ----------
@@ -1246,21 +1265,22 @@ router.post('/direct-claim', async (req, res) => {
       );
     }
 
-    return res.json({
-      ok: true,
-      code: finalCoupon.code,
-      type,
-      key,
-      expiresAt: finalCoupon.expiresAt || expiresAt,
-      customerId: customer.id,
-      kind: finalCoupon.kind,
-      variant: finalCoupon.variant,
-      percent: finalCoupon.percent ? Number(finalCoupon.percent) : null,
-      amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
-      maxAmount: finalCoupon.maxAmount ? Number(finalCoupon.maxAmount) : null,
-      notify,
-      reused: false
-    });
+return res.json({
+  ok: true,
+  code: finalCoupon.code,
+  type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
+  key: isPizzaGratisQr ? 'SURPRISE' : key,
+  expiresAt: finalCoupon.expiresAt || expiresAt,
+  customerId: customer.id,
+  kind: finalCoupon.kind,
+  variant: finalCoupon.variant,
+  percent: finalCoupon.percent ? Number(finalCoupon.percent) : null,
+  amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
+  maxAmount: finalCoupon.maxAmount ? Number(finalCoupon.maxAmount) : null,
+  campaign: finalCoupon.campaign || null,
+  notify,
+  reused: false
+});
 
   } catch (e) {
     console.error('[coupons.direct-claim] FATAL error at stage', stage, e);
@@ -1332,54 +1352,64 @@ router.get('/gallery', async (_req, res) => {
       if (r.kind === 'AMOUNT') dbg.byKind.AMOUNT++;
     }
 
-    const keyFor = (r) => {
-      const v = variantOf(r);
-      const pct = toNum(r.percent);
-      const pMin = toNum(r.percentMin);
-      const pMax = toNum(r.percentMax);
-      const amt = toNum(r.amount);
+const keyFor = (r) => {
+  if (r.campaign === 'PIZZA_GRATIS_QR') {
+    return 'SURPRISE_AMOUNT:PIZZA_GRATIS_QR:G0';
+  }
 
-      // 🔥 Tag por juego (G0 = no juego / genérico)
-      const gameTag =
-        r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null
-          ? `G${r.gameId || 0}`
-          : `G0`;
+  const v = variantOf(r);
+  const pct = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt = toNum(r.amount);
 
-      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
-        return `RANDOM_PERCENT:${pMin}-${pMax}:${gameTag}`;
+  // 🔥 Tag por juego (G0 = no juego / genérico)
+  const gameTag =
+    r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null
+      ? `G${r.gameId || 0}`
+      : `G0`;
 
-      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
-        return `FIXED_PERCENT:${pct}:${gameTag}`;
+  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+    return `RANDOM_PERCENT:${pMin}-${pMax}:${gameTag}`;
 
-      if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
-        return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
+  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+    return `FIXED_PERCENT:${pct}:${gameTag}`;
 
-      return null;
-    };
+  if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
+    return `FIXED_AMOUNT:${amt.toFixed(2)}:${gameTag}`;
 
-    const titleFor = (r) => {
-      const v = variantOf(r);
-      const pct = toNum(r.percent);
-      const pMin = toNum(r.percentMin);
-      const pMax = toNum(r.percentMax);
-      const amt = toNum(r.amount);
+  return null;
+};
 
-      if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
-        return `${pMin}–${pMax}%`;
-      if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
-        return `${pct}%`;
-      if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
-        return `${amt.toFixed(2)} €`;
-      return 'Cupón';
-    };
+const titleFor = (r) => {
+  if (r.campaign === 'PIZZA_GRATIS_QR') {
+    return '🎁 Cupón sorpresa';
+  }
 
-    const typeFor = (r) => {
-      const v = variantOf(r);
-      if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
-      if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
-      if (r.kind === 'AMOUNT' && v === 'FIXED') return 'FIXED_AMOUNT';
-      return 'UNKNOWN';
-    };
+  const v = variantOf(r);
+  const pct = toNum(r.percent);
+  const pMin = toNum(r.percentMin);
+  const pMax = toNum(r.percentMax);
+  const amt = toNum(r.amount);
+
+  if (r.kind === 'PERCENT' && v === 'RANGE' && pMin != null && pMax != null)
+    return `${pMin}–${pMax}%`;
+  if (r.kind === 'PERCENT' && v === 'FIXED' && pct != null)
+    return `${pct}%`;
+  if (r.kind === 'AMOUNT' && v === 'FIXED' && amt != null)
+    return `${amt.toFixed(2)} €`;
+  return 'Cupón';
+};
+
+const typeFor = (r) => {
+  if (r.campaign === 'PIZZA_GRATIS_QR') return 'SURPRISE_AMOUNT';
+
+  const v = variantOf(r);
+  if (r.kind === 'PERCENT' && v === 'RANGE') return 'RANDOM_PERCENT';
+  if (r.kind === 'PERCENT' && v === 'FIXED') return 'FIXED_PERCENT';
+  if (r.kind === 'AMOUNT' && v === 'FIXED') return 'FIXED_AMOUNT';
+  return 'UNKNOWN';
+};
 
     const groups = new Map();
     const scoreSample = (r) => {
@@ -1393,21 +1423,23 @@ router.get('/gallery', async (_req, res) => {
       const k = keyFor(r);
       if (!k) continue;
 
-      const cur =
-        groups.get(k) || {
-          type: typeFor(r),
-          key: k.split(':')[1],
-          title: titleFor(r),
-          subtitle: r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis',
-          cta: r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis',
-          remaining: 0,
-          sample: null,
-          sampleScore: -1,
-          visibility: r.visibility || 'PUBLIC',
-          acquisition: r.acquisition || null,
-          channel: r.channel || null,
-          gameId: r.gameId ?? null,
-        };
+const isSurprise = r.campaign === 'PIZZA_GRATIS_QR';
+
+const cur =
+  groups.get(k) || {
+    type: typeFor(r),
+    key: isSurprise ? 'SURPRISE' : k.split(':')[1],
+    title: titleFor(r),
+    subtitle: isSurprise ? 'Escanea y descubre' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
+    cta: isSurprise ? 'Descubrir' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
+    remaining: 0,
+    sample: null,
+    sampleScore: -1,
+    visibility: r.visibility || 'PUBLIC',
+    acquisition: r.acquisition || null,
+    channel: r.channel || null,
+    gameId: r.gameId ?? null,
+  };
 
       const used = toNum(r.usedCount) ?? 0;
       const limitNum =

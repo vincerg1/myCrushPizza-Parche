@@ -20,7 +20,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^6.9.0",
+    "@prisma/client": "^5.2.0",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -28,7 +28,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "node-cron": "^4.2.0",
-    "prisma": "^6.9.0",
+    "prisma": "^5.2.0",
+    "prisma-erd-generator": "^2.4.2",
     "stripe": "^18.4.0",
     "twilio": "^5.8.0"
   },

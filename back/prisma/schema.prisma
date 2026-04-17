@@ -8,9 +8,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
-/**
- * ======================= ENUMS =======================
- */
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "ERD.svg"
+}
 
 enum CustomerOrigin {
   PHONE
@@ -120,9 +121,7 @@ enum ProductType {
   BASE
 }
 
-/**
- * ======================= MODELOS =======================
- */
+
 
 model MenuPizza {
   id            Int           @id @default(autoincrement())
