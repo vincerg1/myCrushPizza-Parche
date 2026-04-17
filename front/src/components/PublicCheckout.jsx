@@ -10,12 +10,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faWhatsapp, faTiktok } from "@fortawesome/free-brands-svg-icons";
 import { faMobileScreenButton, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 
-useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const codeFromUrl = params.get("coupon");
 
-  console.log("🎟️ CUPÓN URL:", codeFromUrl);
-}, []);
 const GOOGLE_KEY =
   process.env.REACT_APP_GOOGLE_KEY ||
   (typeof import.meta !== "undefined" ? import.meta.env.REACT_APP_GOOGLE_KEY : undefined);
@@ -46,7 +41,14 @@ async function reverseGeocode({ lat, lng }) {
 }
 
 export default function PublicCheckout() {
-  // Flow: choose → deliveryLocate/pickupLocate (locate) → order → review
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const codeFromUrl = params.get("coupon");
+
+  if (!codeFromUrl) return;
+
+  console.log("🎟️ CUPÓN URL:", codeFromUrl);
+}, []);
   const [mode, setMode] = useState("choose");
   const [step, setStep] = useState("locate");
   const [query, setQuery] = useState("");
