@@ -1358,7 +1358,7 @@ select: {
 
 const keyFor = (r) => {
   if (r.campaign === 'PIZZA_GRATIS_QR') {
-    return 'SURPRISE_AMOUNT:PIZZA_GRATIS_QR:G0';
+    return 'SURPRISE';
   }
 
   const v = variantOf(r);
@@ -1367,7 +1367,6 @@ const keyFor = (r) => {
   const pMax = toNum(r.percentMax);
   const amt = toNum(r.amount);
 
-  // 🔥 Tag por juego (G0 = no juego / genérico)
   const gameTag =
     r.acquisition === 'GAME' || r.channel === 'GAME' || r.gameId != null
       ? `G${r.gameId || 0}`
@@ -1431,9 +1430,9 @@ const isSurprise = r.campaign === 'PIZZA_GRATIS_QR';
 
 const cur =
   groups.get(k) || {
-    type: typeFor(r),
+    type: isSurprise ? 'SURPRISE_AMOUNT' : typeFor(r),
     key: isSurprise ? 'SURPRISE' : k.split(':')[1],
-    title: titleFor(r),
+    title: isSurprise ? '🎁 Cupón sorpresa' : titleFor(r),
     subtitle: isSurprise ? 'Escanea y descubre' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
     cta: isSurprise ? 'Descubrir' : (r.kind === 'AMOUNT' ? 'Jugar' : 'Gratis'),
     remaining: 0,
