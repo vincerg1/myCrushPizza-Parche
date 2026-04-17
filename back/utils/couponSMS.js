@@ -51,20 +51,19 @@ module.exports.buildCouponSMS = function ({
     amount,
   });
 
-  return (
+return (
 `Hola ${name} 👋
 
-Hemos creado para ti un cupón exclusivo:
-
-CÓDIGO
-${code}
+🎁 Tienes un regalo en MyCrushPizza
 
 ${discountLine}
-Válido hasta ${exp}
+⏳ Válido hasta ${exp}
 
-Canjéalo en:
-www.mycrushpizza.com 🍕
+👉 Abre tu cupón aquí:
+https://www.mycrushpizza.com/venta?coupon=${code}
 
-¡Buen provecho!`
-  );
+🔥 Tu descuento ya está listo, solo entra y pide.
+
+¡A disfrutar! 🍕`
+);
 };
