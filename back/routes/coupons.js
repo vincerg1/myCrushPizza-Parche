@@ -507,8 +507,8 @@ router.post('/issue', requireApiKey, async (req, res) => {
     }
 
     const now = nowInTZ();
-    const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
+    // ---------- POOL ----------
     const candidates = await prisma.coupon.findMany({
       where: {
         code: { startsWith: prefix },
@@ -523,24 +523,78 @@ router.post('/issue', requireApiKey, async (req, res) => {
       take: 200
     });
 
-    const row = candidates.find(r => {
+    const valid = candidates.filter(r => {
       const used  = Number(r.usedCount || 0);
       const limit = r.usageLimit == null ? null : Number(r.usageLimit);
-      return limit == null || used < limit;
+      return (limit == null || used < limit);
     });
 
-    if (!row) return res.status(409).json({ error: 'out_of_stock' });
+    if (!valid.length) {
+      return res.status(409).json({ error: 'out_of_stock' });
+    }
 
+    // ---------- GROUP ----------
+    const groups = {};
+    for (const c of valid) {
+      const amt = c.amount ? Number(c.amount) : 0;
+      if (!groups[amt]) groups[amt] = [];
+      groups[amt].push(c);
+    }
+
+    const amounts = Object.keys(groups)
+      .map(Number)
+      .sort((a, b) => b - a);
+
+    // ---------- WEIGHTS ----------
+    const weights = amounts.map(a => {
+      if (a >= 9.99) return 1;
+      if (a >= 4.99) return 3;
+      if (a >= 2.99) return 6;
+      return 10;
+    });
+
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+
+    let selectedAmount = amounts[0];
+
+    for (let i = 0; i < amounts.length; i++) {
+      if (r < weights[i]) {
+        selectedAmount = amounts[i];
+        break;
+      }
+      r -= weights[i];
+    }
+
+    const candidatesGroup = groups[selectedAmount];
+    const row = candidatesGroup[Math.floor(Math.random() * candidatesGroup.length)];
+
+    if (!row) {
+      return res.status(409).json({ error: 'out_of_stock' });
+    }
+
+    // ---------- TTL DINÁMICO ----------
+    let ttlHours;
+    const amt = Number(row.amount || 0);
+
+    if (amt >= 9.99) ttlHours = 24;
+    else if (amt >= 4.99) ttlHours = 48;
+    else if (amt >= 2.99) ttlHours = 72;
+    else ttlHours = 96;
+
+    const expiresAt = new Date(now.getTime() + ttlHours * 3600 * 1000);
+
+    // ---------- UPDATE ----------
     await prisma.coupon.update({
       where: { code: row.code },
       data: { expiresAt }
     });
 
+    // ---------- SMS ----------
     const contact    = normPhone(req.body.contact || '');
     const adminPhone = process.env.ADMIN_PHONE || '';
     const notify = { user: { tried: false }, admin: { tried: false } };
 
-    // ───── SMS USUARIO (🔥 UNIFICADO 🔥) ─────
     if (contact) {
       notify.user.tried = true;
       try {
@@ -562,7 +616,6 @@ router.post('/issue', requireApiKey, async (req, res) => {
       }
     }
 
-    // ───── SMS ADMIN (sin tocar) ─────
     if (adminPhone) {
       notify.admin.tried = true;
       try {
@@ -577,6 +630,7 @@ router.post('/issue', requireApiKey, async (req, res) => {
       }
     }
 
+    // ---------- RESPONSE ----------
     return res.json({
       ok: true,
       code: row.code,
@@ -1059,7 +1113,6 @@ router.get('/redemptions', async (req, res) => {
 router.post('/direct-claim', async (req, res) => {
   let stage = 'init';
 
-  // 🇪🇸 Normalizador canónico España → +34XXXXXXXXX
   function normalizeES(v) {
     if (!v) return null;
     let raw = String(v).trim().replace(/[^\d+]/g, '');
@@ -1075,86 +1128,82 @@ router.post('/direct-claim', async (req, res) => {
     console.log('[VENTAS] /api/coupons/direct-claim HIT', req.body);
 
     const {
-  phone,
-  name,
-  type,
-  key,
-  hours = 24,
-  campaign = null
-} = req.body || {};
+      phone,
+      name,
+      type,
+      key,
+      hours = 24,
+      campaign = null
+    } = req.body || {};
 
-const phoneE164 = normalizeES(phone);
-if (!phoneE164) {
-  return res.status(400).json({ ok: false, error: 'invalid_phone' });
-}
+    const phoneE164 = normalizeES(phone);
+    if (!phoneE164) {
+      return res.status(400).json({ ok: false, error: 'invalid_phone' });
+    }
 
-const isPizzaGratisQr = campaign === 'PIZZA_GRATIS_QR';
+    const isPizzaGratisQr = campaign === 'PIZZA_GRATIS_QR';
 
-if (!isPizzaGratisQr && (!type || !key)) {
-  return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
-}
+    if (!isPizzaGratisQr && (!type || !key)) {
+      return res.status(400).json({ ok: false, error: 'missing_type_or_key' });
+    }
 
-const H = Number(hours);
-if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
-  return res.status(400).json({ ok: false, error: 'bad_hours' });
-}
+    const H = Number(hours);
+    if (!Number.isFinite(H) || H <= 0 || H > 24 * 30) {
+      return res.status(400).json({ ok: false, error: 'bad_hours' });
+    }
 
-// ---------- TYPE + KEY / CAMPAIGN ----------
-stage = 'build_where_type_key';
+    stage = 'build_where_type_key';
 
-let whereTypeKey = null;
+    let whereTypeKey = null;
 
-// 🔥 FORZAR flujo QR si campaign viene o si no hay type/key
-if (campaign === 'PIZZA_GRATIS_QR' || (!type && !key)) {
-  whereTypeKey = {
-    campaign: 'PIZZA_GRATIS_QR',
-    kind: 'AMOUNT',
-    variant: 'FIXED'
-  };
-} else {
-  whereTypeKey = buildWhereForTypeKey(type, key);
+    if (campaign === 'PIZZA_GRATIS_QR' || (!type && !key)) {
+      whereTypeKey = {
+        campaign: 'PIZZA_GRATIS_QR',
+        kind: 'AMOUNT',
+        variant: 'FIXED'
+      };
+    } else {
+      whereTypeKey = buildWhereForTypeKey(type, key);
 
-  // 🔥 fallback silencioso (NO romper UX)
-  if (!whereTypeKey) {
-    console.warn('[direct-claim] fallback to QR campaign');
-    whereTypeKey = {
-      campaign: 'PIZZA_GRATIS_QR',
-      kind: 'AMOUNT',
-      variant: 'FIXED'
-    };
-  }
-}
+      if (!whereTypeKey) {
+        console.warn('[direct-claim] fallback to QR campaign');
+        whereTypeKey = {
+          campaign: 'PIZZA_GRATIS_QR',
+          kind: 'AMOUNT',
+          variant: 'FIXED'
+        };
+      }
+    }
 
     const now = nowInTZ();
     const expiresAt = new Date(now.getTime() + H * 3600 * 1000);
     const adminPhone = process.env.ADMIN_PHONE || '';
 
-    // ---------- 1) Buscar / crear cliente ----------
+    // ---------- CUSTOMER ----------
     stage = 'customer_lookup';
+
     const customer = await findOrCreateCustomerByPhone(prisma, {
       phone: phoneE164,
       name: name || null,
       origin: 'QR',
     });
 
-    // ---------- 2) Cupón activo ----------
+    // ---------- ACTIVE COUPON ----------
     stage = 'check_active_coupon';
-const activeCoupon = await prisma.coupon.findFirst({
-  where: {
-    assignedToId: customer.id,
-    status: 'ACTIVE',
-    OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-    ...(isPizzaGratisQr
-      ? { campaign: 'PIZZA_GRATIS_QR' }
-      : {})
-  },
-  orderBy: { id: 'asc' }
-});
+
+    const activeCoupon = await prisma.coupon.findFirst({
+      where: {
+        assignedToId: customer.id,
+        status: 'ACTIVE',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        ...(isPizzaGratisQr ? { campaign: 'PIZZA_GRATIS_QR' } : {})
+      },
+      orderBy: { id: 'asc' }
+    });
 
     if (activeCoupon) {
       const notify = { user: { tried: false }, admin: { tried: false } };
 
-      // 📩 SMS usuario (REUTILIZA buildCouponSMS)
       notify.user.tried = true;
       try {
         const smsBody = buildCouponSMS({
@@ -1177,7 +1226,6 @@ const activeCoupon = await prisma.coupon.findFirst({
         notify.user.error = err.message;
       }
 
-      // 📩 SMS admin (sin tocar formato)
       if (adminPhone) {
         notify.admin.tried = true;
         try {
@@ -1192,53 +1240,88 @@ const activeCoupon = await prisma.coupon.findFirst({
         }
       }
 
-    return res.json({
-      ok: true,
-      code: activeCoupon.code,
-      type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
-      key: isPizzaGratisQr ? 'SURPRISE' : key,
-      expiresAt: activeCoupon.expiresAt || expiresAt,
-      customerId: customer.id,
-      kind: activeCoupon.kind,
-      variant: activeCoupon.variant,
-      percent: activeCoupon.percent ? Number(activeCoupon.percent) : null,
-      amount: activeCoupon.amount ? Number(activeCoupon.amount) : null,
-      maxAmount: activeCoupon.maxAmount ? Number(activeCoupon.maxAmount) : null,
-      campaign: activeCoupon.campaign || null,
-      notify,
-      reused: true
-    });
+      return res.json({
+        ok: true,
+        code: activeCoupon.code,
+        type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
+        key: isPizzaGratisQr ? 'SURPRISE' : key,
+        expiresAt: activeCoupon.expiresAt || expiresAt,
+        customerId: customer.id,
+        reused: true
+      });
     }
 
-    // ---------- 3) Buscar cupón del pool ----------
+    // ---------- POOL ----------
     stage = 'find_pool_coupon';
-    const poolCoupon = await prisma.coupon.findFirst({
+
+    const pool = await prisma.coupon.findMany({
       where: {
         status: 'ACTIVE',
         ...whereTypeKey,
-        AND: [
-          { OR: [{ acquisition: null }, { acquisition: { not: 'GAME' } }] },
-          { OR: [{ channel: null }, { channel: { not: 'GAME' } }] },
-          { gameId: null }
-        ],
-        OR: [
-          { assignedToId: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
-          { assignedToId: { not: null }, expiresAt: { lte: now } }
-        ]
+        assignedToId: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
       },
-      orderBy: { id: 'asc' }
+      take: 300
     });
+
+    if (!pool.length) {
+      return res.status(409).json({ ok: false, error: 'out_of_stock' });
+    }
+
+    // ---------- GROUP ----------
+    const groups = {};
+    for (const c of pool) {
+      const amt = c.amount ? Number(c.amount) : 0;
+      if (!groups[amt]) groups[amt] = [];
+      groups[amt].push(c);
+    }
+
+    const amounts = Object.keys(groups).map(Number);
+
+    // ---------- WEIGHTS ----------
+    const weights = amounts.map(a => {
+      if (a >= 9.99) return 1;
+      if (a >= 4.99) return 3;
+      if (a >= 2.99) return 6;
+      return 10;
+    });
+
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+
+    let selectedAmount = amounts[0];
+
+    for (let i = 0; i < amounts.length; i++) {
+      if (r < weights[i]) {
+        selectedAmount = amounts[i];
+        break;
+      }
+      r -= weights[i];
+    }
+
+    const candidates = groups[selectedAmount];
+    const poolCoupon = candidates[Math.floor(Math.random() * candidates.length)];
 
     if (!poolCoupon) {
       return res.status(409).json({ ok: false, error: 'out_of_stock' });
     }
 
-    // ---------- 4) Asignar ----------
-    stage = 'assign_coupon';
+    // ---------- TTL DINÁMICO ----------
+    let ttlHours;
+    const amt = Number(poolCoupon.amount || 0);
+
+    if (amt >= 9.99) ttlHours = 24;
+    else if (amt >= 4.99) ttlHours = 48;
+    else if (amt >= 2.99) ttlHours = 72;
+    else ttlHours = 96;
+
+    const dynamicExpiresAt = new Date(now.getTime() + ttlHours * 3600 * 1000);
+
+    // ---------- UPDATE (CRÍTICO) ----------
     await prisma.coupon.update({
       where: { id: poolCoupon.id },
       data: {
-        expiresAt,
+        expiresAt: dynamicExpiresAt,
         assignedToId: customer.id,
         acquisition: 'CLAIM',
         channel: 'WEB',
@@ -1250,10 +1333,11 @@ const activeCoupon = await prisma.coupon.findFirst({
       where: { id: poolCoupon.id }
     });
 
-    // ---------- 5) SMS ----------
+    // ---------- SMS ----------
     const notify = { user: { tried: false }, admin: { tried: false } };
 
     notify.user.tried = true;
+
     const smsBody = buildCouponSMS({
       customerName: customer.name,
       code: finalCoupon.code,
@@ -1276,22 +1360,18 @@ const activeCoupon = await prisma.coupon.findFirst({
       );
     }
 
-return res.json({
-  ok: true,
-  code: finalCoupon.code,
-  type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
-  key: isPizzaGratisQr ? 'SURPRISE' : key,
-  expiresAt: finalCoupon.expiresAt || expiresAt,
-  customerId: customer.id,
-  kind: finalCoupon.kind,
-  variant: finalCoupon.variant,
-  percent: finalCoupon.percent ? Number(finalCoupon.percent) : null,
-  amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
-  maxAmount: finalCoupon.maxAmount ? Number(finalCoupon.maxAmount) : null,
-  campaign: finalCoupon.campaign || null,
-  notify,
-  reused: false
-});
+    return res.json({
+      ok: true,
+      code: finalCoupon.code,
+      type: isPizzaGratisQr ? 'SURPRISE_AMOUNT' : type,
+      key: isPizzaGratisQr ? 'SURPRISE' : key,
+      expiresAt: finalCoupon.expiresAt,
+      customerId: customer.id,
+      amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
+      campaign: finalCoupon.campaign || null,
+      notify,
+      reused: false
+    });
 
   } catch (e) {
     console.error('[coupons.direct-claim] FATAL error at stage', stage, e);
@@ -1762,7 +1842,6 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
     }
 
     const now = nowInTZ();
-    const expiresAt = new Date(now.getTime() + hours * 3600 * 1000);
 
     console.log('[games.issue] HIT', {
       gameId,
@@ -1772,41 +1851,28 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
       campaign: req.body.campaign || null
     });
 
-    // ---------- 0) Resolver customerId a partir del teléfono (CANÓNICO) ----------
+    // ---------- CUSTOMER ----------
     stage = 'resolve_customer';
 
     let effectiveCustomerId = req.body.customerId ? Number(req.body.customerId) : null;
-
-    // 🔒 NORMALIZACIÓN REAL → +34XXXXXXXXX o null
     const contactRaw = normalizeES(req.body.contact);
-
-    // Nombre
     const nameRaw = String(req.body.name || '').trim() || null;
 
-    console.log('[games.issue] customer input', {
-      contact: contactRaw || null,
-      name: nameRaw,
-      customerId: req.body.customerId || null,
-      portal: `GAME_${gameId}`,
-    });
-
-    // Si no viene customerId pero sí teléfono válido → resolver por teléfono canónico
     if (!effectiveCustomerId && contactRaw) {
       try {
         const customer = await findOrCreateCustomerByPhone(prisma, {
-          phone: contactRaw,          // 👈 SIEMPRE +34XXXXXXXXX
+          phone: contactRaw,
           name: nameRaw,
           origin: 'QR',
           portal: `GAME_${gameId}`,
         });
         effectiveCustomerId = customer.id;
       } catch (err) {
-        console.error('[games.issue] findOrCreateCustomerByPhone error', err);
-        // NO rompemos la emisión si falla
+        console.error('[games.issue] customer resolve error', err);
       }
     }
 
-    // ---------- 1) Buscar cupón válido del pool del juego ----------
+    // ---------- POOL ----------
     stage = 'find_pool_coupon';
 
     const candidates = await prisma.coupon.findMany({
@@ -1817,80 +1883,122 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
         assignedToId: null,
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      orderBy: { id: 'asc' },
-      take: 200
+      take: 300
     });
 
     const valid = candidates.filter(r => {
       const limit = toNum(r.usageLimit) ?? null;
-      const used  = toNum(r.usedCount)  ?? 0;
+      const used  = toNum(r.usedCount) ?? 0;
       const hasStock = (limit == null) ? true : (limit > used);
       return isActiveByDate(r, now) && isWithinWindow(r, now) && hasStock;
     });
 
-    const row = valid[0] || null;
+    if (!valid.length) {
+      return res.status(409).json({ ok: false, error: 'out_of_stock' });
+    }
 
-    console.log('[games.issue] poolCoupon elegido:', row && {
-      id: row.id,
-      code: row.code,
-      kind: row.kind,
-      variant: row.variant,
-      percent: row.percent,
-      amount: row.amount,
-      usageLimit: row.usageLimit,
-      usedCount: row.usedCount,
-      expiresAt: row.expiresAt
+    // ---------- GROUP BY AMOUNT ----------
+    const groups = {};
+    for (const c of valid) {
+      const amt = c.amount ? Number(c.amount) : 0;
+      if (!groups[amt]) groups[amt] = [];
+      groups[amt].push(c);
+    }
+
+    const amounts = Object.keys(groups).map(Number);
+
+    // ---------- WEIGHTS ----------
+    const weights = amounts.map(a => {
+      if (a >= 9.99) return 1;
+      if (a >= 4.99) return 3;
+      if (a >= 2.99) return 6;
+      return 10;
     });
+
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * totalWeight;
+
+    let selectedAmount = amounts[0];
+
+    for (let i = 0; i < amounts.length; i++) {
+      if (r < weights[i]) {
+        selectedAmount = amounts[i];
+        break;
+      }
+      r -= weights[i];
+    }
+
+    const candidatesGroup = groups[selectedAmount];
+    const row = candidatesGroup[Math.floor(Math.random() * candidatesGroup.length)];
 
     if (!row) {
       return res.status(409).json({ ok: false, error: 'out_of_stock' });
     }
 
-    // ---------- 2) Actualizar cupón ----------
+    console.log('[games.issue] seleccionado:', {
+      code: row.code,
+      amount: row.amount
+    });
+
+    // ---------- TTL DINÁMICO ----------
+    let ttlHours;
+    const amt = Number(row.amount || 0);
+
+    if (amt >= 9.99) ttlHours = 24;
+    else if (amt >= 4.99) ttlHours = 48;
+    else if (amt >= 2.99) ttlHours = 72;
+    else ttlHours = 96;
+
+    const dynamicExpiresAt = new Date(now.getTime() + ttlHours * 3600 * 1000);
+
+    // ---------- UPDATE ----------
     stage = 'update_coupon';
 
     await prisma.coupon.update({
       where: { id: row.id },
       data: {
-        expiresAt,
+        expiresAt: dynamicExpiresAt,
         assignedToId: effectiveCustomerId ?? null,
         channel: 'GAME',
         campaign: req.body.campaign ?? row.campaign ?? null
       }
     });
 
-    // ---------- 3) Recargar ----------
+    // ---------- RELOAD ----------
     stage = 'reload_coupon';
-    const finalCoupon = await prisma.coupon.findUnique({ where: { id: row.id } });
+
+    const finalCoupon = await prisma.coupon.findUnique({
+      where: { id: row.id }
+    });
 
     if (!finalCoupon) {
-      console.warn('[games.issue] finalCoupon not found after update', { id: row.id });
-      return res.status(500).json({ ok: false, error: 'server', stage: 'finalCoupon_not_found' });
+      return res.status(500).json({ ok: false, error: 'reload_failed' });
     }
 
     const code = finalCoupon.code;
-    const effectiveExpiresAt = finalCoupon.expiresAt || expiresAt;
+    const effectiveExpiresAt = finalCoupon.expiresAt;
 
-    // ---------- 4) Notificación ----------
+    // ---------- SMS ----------
     stage = 'send_sms';
 
     const siteUrl = process.env.COUPON_SITE_URL || 'https://www.mycrushpizza.com';
     const adminPhone = process.env.ADMIN_PHONE || '';
     const whenTxt = fmtExpiry(effectiveExpiresAt);
+
     const notify = { user: { tried: false }, admin: { tried: false } };
 
     if (contactRaw) {
       notify.user.tried = true;
-      const userMsg =
-        `🎉 ¡Ganaste! Premio del juego: cupón ${code}\n` +
-        `Úsalo en ${siteUrl}\n` +
-        `Vence ${whenTxt}.`;
       try {
-        const resp = await sendSMS(contactRaw, userMsg); // 👈 ahora SIEMPRE +34...
+        const msg =
+          `🎉 ¡Ganaste! Premio: ${code}\n` +
+          `Úsalo en ${siteUrl}\n` +
+          `Vence ${whenTxt}`;
+
+        const resp = await sendSMS(contactRaw, msg);
         notify.user.ok = true;
         notify.user.sid = resp.sid;
       } catch (err) {
-        console.error('[games.issue] user SMS error:', err);
         notify.user.ok = false;
         notify.user.error = err.message;
       }
@@ -1898,48 +2006,31 @@ router.post('/games/:gameId/issue', requireApiKey, async (req, res) => {
 
     if (adminPhone) {
       notify.admin.tried = true;
-      const adminMsg =
-        `ALERTA MCP 🎯 Premio juego #${gameId} emitido: ${code} (vence ${whenTxt})`;
       try {
-        const resp = await sendSMS(adminPhone, adminMsg);
+        await sendSMS(
+          adminPhone,
+          `ALERTA MCP 🎯 Premio juego #${gameId}: ${code}`
+        );
         notify.admin.ok = true;
-        notify.admin.sid = resp.sid;
       } catch (err) {
-        console.error('[games.issue] admin SMS error:', err);
         notify.admin.ok = false;
         notify.admin.error = err.message;
       }
     }
 
-    // ---------- 5) Respuesta ----------
-    const legacyKind =
-      finalCoupon.kind === 'AMOUNT' ? LEGACY_FP_LABEL : LEGACY_PERCENT_LABEL;
-
-    const amountNum = finalCoupon.amount != null ? Number(finalCoupon.amount) : null;
-    const percentNum = finalCoupon.kind === 'PERCENT' ? Number(finalCoupon.percent || 0) : null;
-    const maxAmountNum = finalCoupon.maxAmount != null ? Number(finalCoupon.maxAmount) : null;
-
+    // ---------- RESPONSE ----------
     return res.json({
       ok: true,
       code,
-      kindV2: finalCoupon.kind,
-      variant: finalCoupon.variant,
-      amount: amountNum,
-      percent: percentNum,
-      maxAmount: maxAmountNum,
+      amount: finalCoupon.amount ? Number(finalCoupon.amount) : null,
+      percent: finalCoupon.percent ? Number(finalCoupon.percent) : null,
       expiresAt: effectiveExpiresAt,
-      kind: legacyKind,
-      value: finalCoupon.kind === 'AMOUNT' ? (amountNum || 0) : (percentNum || 0),
       notify
     });
+
   } catch (e) {
-    console.error('[games.issue] FATAL error at stage', stage, e);
-    return res.status(500).json({
-      ok: false,
-      error: 'server',
-      stage,
-      meta: { message: e.message }
-    });
+    console.error('[games.issue] error', e);
+    return res.status(500).json({ ok: false, error: 'server' });
   }
 });
 router.post('/bulk-tag', requireApiKey, async (req, res) => {
